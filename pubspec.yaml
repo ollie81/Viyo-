@@ -1,5 +1,5 @@
 name: viyo
-description: Viyo – Free Creator Boost MVP
+description: Viyo – Creator Motivation + Social App
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,9 +9,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  shared_preferences: ^2.2.2
   cupertino_icons: ^1.0.6
+
+  # Backend
+  supabase_flutter: ^2.5.6
+
+  # UI / UX
   share_plus: ^7.2.1
+  cached_network_image: ^3.3.1
+  image_picker: ^1.1.2
+  video_player: ^2.9.1
+  shimmer: ^3.0.0
+  timeago: ^3.6.1
+
+  # State
+  provider: ^6.1.2
+
+  # HTTP (for FastAPI AI backend)
+  http: ^1.2.1
+  uuid: ^4.4.0
 
 dev_dependencies:
   flutter_test:
