@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../models/post.dart';
-import '../../services/post_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/post_card.dart';
-import '../notifications/notifications_screen.dart';
-import '../post/post_detail_screen.dart';
-import '../profile/profile_screen.dart';
+import '../models/post.dart';
+import '../services/post_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/post_card.dart';
+import 'notifications_screen.dart';
+import 'post/post_detail_screen.dart';
+import 'profile/profile_screen.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
