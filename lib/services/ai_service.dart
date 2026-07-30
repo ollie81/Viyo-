@@ -61,6 +61,7 @@ class AiService {
     required String postType,
     required String caption,
     String niche = '',
+    String? imageUrl,
   }) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/analyze-post'),
@@ -69,6 +70,7 @@ class AiService {
         'post_type': postType,
         'caption': caption,
         'niche': niche,
+        if (imageUrl != null) 'image_url': imageUrl,
       }),
     );
     if (res.statusCode != 200) {
