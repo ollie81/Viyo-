@@ -1,3 +1,4 @@
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -69,18 +70,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     try {
       String? mediaUrl;
+      String? thumbnailUrl;
+
       if (_mediaFile != null) {
         mediaUrl = await PostService.uploadMedia(_mediaFile!, userId);
+        if (_type == PostType.video) {
+          thumbnailUrl = await PostService.generateAndUploadVideoThumbnail(_mediaFile!, userId);
+        }
       }
 
       final caption = _caption.text.trim();
       final postType = _type;
+      // The image the coach will actually look at: the photo itself, or
+      // the extracted video frame. Null for text posts (nothing to see).
+      final coachImageUrl = postType == PostType.photo ? mediaUrl : thumbnailUrl;
 
       final post = await PostService.createPost(
         userId: userId,
         type: postType,
         caption: caption,
         mediaUrl: mediaUrl,
+        thumbnailUrl: thumbnailUrl,
         durationSeconds: postType == PostType.video ? 30 : null,
       );
 
@@ -97,7 +107,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Fire the AI Creator Coach in the background — don't block the
       // posting flow on it, and don't fail the whole post if the AI
       // backend is briefly unavailable.
-      _requestCoachFeedback(userId: userId, postId: post.id, postType: postType, caption: caption);
+      _requestCoachFeedback(
+        userId: userId,
+        postId: post.id,
+        postType: postType,
+        caption: caption,
+        imageUrl: coachImageUrl,
+      );
     } catch (e) {
       setState(() => _error = 'Failed to post. Please try again.');
     } finally {
@@ -110,6 +126,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     required String postId,
     required PostType postType,
     required String caption,
+    String? imageUrl,
   }) async {
     try {
       final profile = await ProfileService.getProfile(userId);
@@ -117,6 +134,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         postType: postType.name,
         caption: caption,
         niche: profile.niche,
+        imageUrl: imageUrl,
       );
       await PostService.saveAiFeedback(feedback, postId: postId, userId: userId);
 
