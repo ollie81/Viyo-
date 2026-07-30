@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/home_screen.dart';
-import 'screens/welcome_screen.dart';
-import 'services/storage_service.dart';
+import 'services/supabase_service.dart';
+import 'services/profile_service.dart';
+import 'theme/app_theme.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/auth/onboarding_screen.dart';
+import 'screens/home/home_shell.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -12,6 +15,7 @@ void main() {
       statusBarIconBrightness: Brightness.light,
     ),
   );
+  await SupabaseService.init();
   runApp(const ViyoApp());
 }
 
@@ -21,19 +25,9 @@ class ViyoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Viyo – Creator Boost',
+      title: 'Viyo',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B0B1A),
-        primaryColor: const Color(0xFF00E5FF),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF00E5FF),
-          secondary: Color(0xFFA855F7),
-          surface: Color(0xFF13132B),
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.dark,
       home: const SplashScreen(),
     );
   }
@@ -50,21 +44,33 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkUser();
+    _route();
   }
 
-  Future<void> _checkUser() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    final user = await StorageService.loadUser();
+  Future<void> _route() async {
+    await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
-    if (user.name.isEmpty || user.name == 'Creator') {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
-    } else {
+      return;
+    }
+
+    // Logged in — but do they have a profile yet? (edge case: user signed
+    // up but closed the app during onboarding)
+    try {
+      await ProfileService.getProfile(userId);
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(user: user)),
+        MaterialPageRoute(builder: (_) => const HomeShell()),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => OnboardingScreen(userId: userId)),
       );
     }
   }
@@ -81,16 +87,16 @@ class _SplashScreenState extends State<SplashScreen> {
               style: TextStyle(
                 fontSize: 42,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF00E5FF),
+                color: AppColors.primary,
               ),
             ),
             SizedBox(height: 12),
             Text(
               'Creator Boost',
-              style: TextStyle(color: Colors.white54, fontSize: 16),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
             ),
             SizedBox(height: 40),
-            CircularProgressIndicator(color: Color(0xFFA855F7)),
+            CircularProgressIndicator(color: AppColors.secondary),
           ],
         ),
       ),
