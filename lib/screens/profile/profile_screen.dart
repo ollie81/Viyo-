@@ -10,7 +10,7 @@ import '../../widgets/coin_badge.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../wallet_screen.dart';
-import 'edit_profile_screen.dart';
+import 'edit_profile.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? userId; // null = current user's own profile
