@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../missions/missions_screen.dart';
+import '../missions_screen.dart';
 import '../post/create_post_screen.dart';
 import '../profile/profile_screen.dart';
 import '../search/search_screen.dart';
