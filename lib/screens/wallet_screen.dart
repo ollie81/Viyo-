@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import '../../models/transaction.dart';
-import '../../models/user_profile.dart';
-import '../../services/coin_service.dart';
-import '../../services/profile_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
-import '../../utils/coin_format.dart';
+import '../models/transaction.dart';
+import '../models/user_profile.dart';
+import '../services/coin_service.dart';
+import '../services/profile_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/coin_format.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
