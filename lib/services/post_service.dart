@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:uuid/uuid.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/post_feedback.dart';
@@ -39,11 +40,35 @@ class PostService {
     return _client.storage.from(SupabaseConstants.postsBucket).getPublicUrl(path);
   }
 
+  /// Extracts a single frame from a video file as a JPEG, uploads it, and
+  /// returns its public URL. This is what lets the AI Creator Coach
+  /// actually "see" video posts — GPT-4o's vision input takes images, not
+  /// video streams, so a representative frame stands in for the video.
+  static Future<String?> generateAndUploadVideoThumbnail(File videoFile, String userId) async {
+    try {
+      final thumbPath = await vt.VideoThumbnail.thumbnailFile(
+        video: videoFile.path,
+        imageFormat: vt.ImageFormat.JPEG,
+        maxWidth: 720,
+        quality: 75,
+        timeMs: 500, // ~0.5s in — skips a possible black opening frame
+      );
+      if (thumbPath == null) return null;
+      return await uploadMedia(File(thumbPath), userId);
+    } catch (_) {
+      // Thumbnail generation is a nice-to-have for the coach, not a
+      // requirement for posting — fail silently and fall back to
+      // caption-only analysis.
+      return null;
+    }
+  }
+
   static Future<Post> createPost({
     required String userId,
     required PostType type,
     String caption = '',
     String? mediaUrl,
+    String? thumbnailUrl,
     int? durationSeconds,
   }) async {
     final inserted = await _client
@@ -53,6 +78,7 @@ class PostService {
           'post_type': type.name,
           'caption': caption,
           'media_url': mediaUrl,
+          'thumbnail_url': thumbnailUrl,
           'duration_seconds': durationSeconds,
         })
         .select()
