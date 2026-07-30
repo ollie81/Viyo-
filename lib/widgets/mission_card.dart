@@ -8,19 +8,18 @@ class MissionCard extends StatelessWidget {
   final VoidCallback? onClaim;
 
   const MissionCard({super.key, required this.mission, this.onClaim});
-
-  @override      padding: const EdgeInsets.all(16),
-
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: AppTheme.card(
-        borderColor: mission.completed && !mission.claimed
-            ? AppColors.primary.withOpacity(0.5)
-            : null,
-      ),
-      child: Row(
-        children: [
+@override
+Widget build(BuildContext context) {
+  return Container(
+    padding: const EdgeInsets.all(16),
+    margin: const EdgeInsets.only(bottom: 10),
+    decoration: AppTheme.card(
+      borderColor: mission.completed && !mission.claimed
+          ? AppColors.primary.withOpacity(0.5)
+          : null,
+    ),
+    child: Row(
+      children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
