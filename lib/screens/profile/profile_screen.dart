@@ -7,9 +7,9 @@ import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coin_badge.dart';
-import '../settings/settings_screen.dart';
-import '../store/store_screen.dart';
-import '../wallet/wallet_screen.dart';
+import '../settings_screen.dart';
+import '../store_screen.dart';
+import '../wallet_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
