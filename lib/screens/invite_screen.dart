@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../models/user_profile.dart';
-import '../../services/profile_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
+import '../models/user_profile.dart';
+import '../services/profile_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
 
 class InviteScreen extends StatefulWidget {
   const InviteScreen({super.key});
