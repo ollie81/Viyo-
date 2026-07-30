@@ -1,25 +1,43 @@
-name: Build viyo APK
+name: Build Viyo APK
 
+# Runs on every push to main, and can also be triggered manually from
+# the Actions tab (Run workflow button) without needing a push.
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: flutter_app
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.0'
+          channel: stable
 
-      - run: flutter pub get
+      - name: Install dependencies
+        run: flutter pub get
 
-      - run: flutter build apk --release
+      - name: Build release APK
+        # Real credentials come from GitHub Secrets (Settings -> Secrets
+        # and variables -> Actions), never committed to the repo.
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=AI_BACKEND_URL=${{ secrets.AI_BACKEND_URL }}
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: viyo-release-apk
+          path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
