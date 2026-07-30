@@ -32,3 +32,4 @@ class AppBadge {
         unlocked: json['unlocked'] ?? false,
       );
 }
+
