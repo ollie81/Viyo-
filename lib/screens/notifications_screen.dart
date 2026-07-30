@@ -1,96 +1,86 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:timeago/timeago.dart' as timeago;
-import '../services/notification_service.dart';
-import '../services/supabase_service.dart';
+import '../services/profile_service.dart';
 import '../theme/app_theme.dart';
+import 'profile/profile_screen.dart';
 
-class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+class SearchScreen extends StatefulWidget {
+  const SearchScreen({super.key});
 
   @override
-  State<NotificationsScreen> createState() => _NotificationsScreenState();
+  State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
-  List<Map<String, dynamic>> _notifications = [];
-  bool _loading = true;
+class _SearchScreenState extends State<SearchScreen> {
+  final _query = TextEditingController();
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+  Timer? _debounce;
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(value));
   }
 
-  Future<void> _load() async {
-    final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
+  Future<void> _search(String value) async {
+    if (value.trim().isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
     setState(() => _loading = true);
-    final data = await NotificationService.getNotifications(userId);
+    final results = await ProfileService.searchCreators(value.trim());
     if (!mounted) return;
     setState(() {
-      _notifications = data;
+      _results = results;
       _loading = false;
     });
-  }
-
-  IconData _iconFor(String type) {
-    switch (type) {
-      case 'like':
-        return Icons.favorite;
-      case 'comment':
-        return Icons.mode_comment;
-      case 'follow':
-        return Icons.person_add;
-      case 'gift':
-        return Icons.card_giftcard;
-      case 'mission':
-        return Icons.flag;
-      default:
-        return Icons.notifications;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Notifications')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
-              onRefresh: _load,
-              color: AppColors.primary,
-              child: _notifications.isEmpty
-                  ? ListView(
-                      children: const [
-                        Padding(
-                          padding: EdgeInsets.only(top: 80),
-                          child: Center(
-                            child: Text('No notifications yet', style: TextStyle(color: AppColors.textMuted)),
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView.builder(
-                      itemCount: _notifications.length,
-                      itemBuilder: (ctx, i) {
-                        final n = _notifications[i];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: n['is_read'] == true
-                                ? AppColors.surfaceBorder
-                                : AppColors.primary.withOpacity(0.25),
-                            child: Icon(_iconFor(n['type']), size: 18, color: AppColors.primary),
-                          ),
-                          title: Text(n['message'] ?? '', style: const TextStyle(fontSize: 14)),
-                          subtitle: Text(
-                            timeago.format(DateTime.parse(n['created_at'])),
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                          ),
-                          onTap: () => NotificationService.markRead(n['id']),
-                        );
-                      },
-                    ),
+      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Discover')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TextField(
+              controller: _query,
+              onChanged: _onChanged,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Search creators by name or username',
+                prefixIcon: Icon(Icons.search, color: AppColors.textMuted),
+              ),
             ),
+            const SizedBox(height: 16),
+            if (_loading) const CircularProgressIndicator(color: AppColors.primary),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _results.length,
+                itemBuilder: (ctx, i) {
+                  final r = _results[i];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppColors.surfaceBorder,
+                      backgroundImage: r['avatar_url'] != null ? NetworkImage(r['avatar_url']) : null,
+                      child: r['avatar_url'] == null
+                          ? Text((r['display_name'] ?? '?')[0].toUpperCase())
+                          : null,
+                    ),
+                    title: Text(r['display_name'] ?? ''),
+                    subtitle: Text('@${r['username']}${r['niche'] != null && r['niche'] != '' ? ' · ${r['niche']}' : ''}',
+                        style: const TextStyle(color: AppColors.textMuted)),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => ProfileScreen(userId: r['id'])),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
