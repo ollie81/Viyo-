@@ -1,10 +1,11 @@
+
 import 'package:flutter/material.dart';
-import '../../models/creator_stats.dart';
-import '../../models/user_profile.dart';
-import '../../services/profile_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/coin_badge.dart';
+import '../models/creator_stats.dart';
+import '../models/user_profile.dart';
+import '../services/profile_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/coin_badge.dart';
 
 /// The Creator Growth Dashboard — one place to see performance,
 /// progress, level, achievements, and a nudge toward the AI Coach.
