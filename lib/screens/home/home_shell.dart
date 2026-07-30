@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+
+ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../missions_screen.dart';
+import '../mission_screen.dart';
 import '../post/create_post_screen.dart';
 import '../profile/profile_screen.dart';
 import '../search_screen.dart';
-import 'feed_screen.dart';
+import '../feed_screen.dart';
 
 /// Bottom-nav container for the 5 primary tabs. Notifications, wallet,
 /// store, settings, and invite-friends are reached from the Profile tab
