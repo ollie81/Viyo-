@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../models/app_badge.dart';
-import '../../services/coin_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/coin_badge.dart';
+import '../models/app_badge.dart';
+import '../services/coin_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/coin_badge.dart';
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
