@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import '../../services/notification_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
+import '../services/notification_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
