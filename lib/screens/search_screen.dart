@@ -2,8 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/profile_service.dart';
 import '../../theme/app_theme.dart';
-import '../profile/profile_screen.dart';
-
+import 'profile/profile_screen.dart';
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
