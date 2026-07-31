@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
-import '../auth/login_screen.dart';
-import '../invite/invite_screen.dart';
+import 'auth/login_screen.dart';
+import 'invite_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
