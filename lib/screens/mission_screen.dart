@@ -6,8 +6,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/mission_card.dart';
 import '../../utils/coin_format.dart';
-import '../dashboard/creator_dashboard_screen.dart';
-
+import 'creator_dashboard_screen.dart';
 class MissionsScreen extends StatefulWidget {
   const MissionsScreen({super.key});
 
