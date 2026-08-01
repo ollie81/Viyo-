@@ -9,6 +9,8 @@ class PostCard extends StatelessWidget {
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback? onOpenProfile;
+  final String? currentUserId;
+  final VoidCallback? onDelete;
 
   const PostCard({
     super.key,
@@ -16,6 +18,8 @@ class PostCard extends StatelessWidget {
     required this.onLike,
     required this.onComment,
     this.onOpenProfile,
+    this.currentUserId,
+    this.onDelete,
   });
 
   @override
@@ -72,6 +76,19 @@ class PostCard extends StatelessWidget {
                         'BOOSTED',
                         style: TextStyle(fontSize: 9, color: AppColors.secondary),
                       ),
+                    ),
+                  if (currentUserId != null && currentUserId == post.userId)
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: AppColors.textSecondary, size: 20),
+                      onSelected: (value) {
+                        if (value == 'delete') onDelete?.call();
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete post'),
+                        ),
+                      ],
                     ),
                 ],
               ),
