@@ -7,6 +7,7 @@ import '../widgets/post_card.dart';
 import 'notifications_screen.dart';
 import 'post/post_detail_screen.dart';
 import 'profile/profile_screen.dart';
+import 'video_feed_screen.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -42,6 +43,23 @@ class _FeedScreenState extends State<FeedScreen> {
     _load();
   }
 
+  Future<void> _delete(Post post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete post?'),
+        content: const Text('This can\'t be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await PostService.deletePost(post);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,6 +74,13 @@ class _FeedScreenState extends State<FeedScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.play_circle_outline),
+            tooltip: 'Shorts',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VideoFeedScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
             onPressed: () => Navigator.of(context).push(
