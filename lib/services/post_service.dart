@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../constants/supabase_constants.dart';
@@ -31,12 +32,74 @@ class PostService {
     return (data as List).map((e) => Post.fromJson(e)).toList();
   }
 
+  /// Video-only feed for the full-screen Shorts-style player.
+  static Future<List<Post>> getVideoFeed({int limit = 20, int offset = 0}) async {
+    final data = await _client
+        .from('posts')
+        .select('*, profiles(username, display_name, avatar_url)')
+        .eq('post_type', 'video')
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+    return (data as List).map((e) => Post.fromJson(e)).toList();
+  }
+
   static Future<String> uploadMedia(File file, String userId) async {
     final ext = file.path.split('.').last;
     final path = '$userId/${const Uuid().v4()}.$ext';
     await _client.storage
         .from(SupabaseConstants.postsBucket)
         .upload(path, file);
+    return _client.storage.from(SupabaseConstants.postsBucket).getPublicUrl(path);
+  }
+
+  static String _mimeTypeFor(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'mp4':
+      case 'mov':
+      case 'm4v':
+        return 'video/mp4';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  /// Same as [uploadMedia] but reports upload progress (0.0-1.0) so the UI
+  /// can show a percentage instead of a plain spinner. Uses dio directly
+  /// against Supabase Storage's REST endpoint since supabase_flutter's
+  /// convenience `.upload()` doesn't expose progress callbacks.
+  static Future<String> uploadMediaWithProgress(
+    File file,
+    String userId, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final ext = file.path.split('.').last;
+    final path = '$userId/${const Uuid().v4()}.$ext';
+    final bytes = await file.readAsBytes();
+    final token = _client.auth.currentSession?.accessToken;
+
+    final url =
+        '${SupabaseConstants.url}/storage/v1/object/${SupabaseConstants.postsBucket}/$path';
+
+    final dio = Dio();
+    await dio.put(
+      url,
+      data: bytes,
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+          'apikey': SupabaseConstants.anonKey,
+          'Content-Type': _mimeTypeFor(ext),
+        },
+      ),
+      onSendProgress: (sent, total) {
+        if (total > 0) onProgress?.call(sent / total);
+      },
+    );
+
     return _client.storage.from(SupabaseConstants.postsBucket).getPublicUrl(path);
   }
 
@@ -92,6 +155,27 @@ class PostService {
     });
 
     return Post.fromJson(inserted);
+  }
+
+  /// Deletes a post: removes the media file(s) from storage first, then
+  /// the database row. Only the post owner should ever call this — the
+  /// storage RLS policy and a `posts` RLS delete policy enforce that
+  /// server-side too, so this can't be bypassed by editing the client.
+  static Future<void> deletePost(Post post) async {
+    final pathsToRemove = <String>[];
+    for (final url in [post.mediaUrl, post.thumbnailUrl]) {
+      if (url == null) continue;
+      // Public URLs look like: .../storage/v1/object/public/<bucket>/<path>
+      final marker = '${SupabaseConstants.postsBucket}/';
+      final idx = url.indexOf(marker);
+      if (idx != -1) {
+        pathsToRemove.add(url.substring(idx + marker.length));
+      }
+    }
+    if (pathsToRemove.isNotEmpty) {
+      await _client.storage.from(SupabaseConstants.postsBucket).remove(pathsToRemove);
+    }
+    await _client.from('posts').delete().eq('id', post.id);
   }
 
   static Future<Map<String, dynamic>> likePost(String userId, String postId) async {
