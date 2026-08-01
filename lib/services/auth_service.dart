@@ -63,5 +63,12 @@ class AuthService {
         .maybeSingle();
     return existing == null;
   }
+  static Future<void> resendConfirmation(String email) async {
+  await _client.auth.resend(
+    type: OtpType.signup,
+    email: email,
+  );
 }
+}
+
 
