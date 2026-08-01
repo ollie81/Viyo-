@@ -15,12 +15,16 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _loading = false;
+  bool _resending = false;
+  bool _obscurePassword = true;
   String? _error;
+  bool _showResend = false;
 
   Future<void> _login() async {
     setState(() {
       _loading = true;
       _error = null;
+      _showResend = false;
     });
     try {
       await AuthService.signIn(
@@ -33,9 +37,26 @@ class _LoginScreenState extends State<LoginScreen> {
         (_) => false,
       );
     } catch (e) {
-      setState(() => _error = 'Login failed. Check your email and password.');
+      final msg = e.toString().toLowerCase();
+      setState(() {
+        _error = 'Login failed: $e';
+        _showResend = msg.contains('confirm');
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _resendConfirmation() async {
+    setState(() => _resending = true);
+    try {
+      await AuthService.resendConfirmation(_email.text.trim());
+      if (!mounted) return;
+      setState(() => _error = 'Confirmation email resent. Check your inbox.');
+    } catch (e) {
+      setState(() => _error = 'Could not resend: $e');
+    } finally {
+      if (mounted) setState(() => _resending = false);
     }
   }
 
@@ -74,13 +95,35 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 14),
               TextField(
                 controller: _password,
-                obscureText: true,
+                obscureText: _obscurePassword,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(hintText: 'Password'),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      color: AppColors.textSecondary,
+                    ),
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+              ],
+              if (_showResend) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _resending ? null : _resendConfirmation,
+                  child: _resending
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Resend confirmation email'),
+                ),
               ],
               const SizedBox(height: 22),
               ElevatedButton(
@@ -110,3 +153,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
