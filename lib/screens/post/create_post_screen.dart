@@ -1,6 +1,8 @@
 
+
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
@@ -9,6 +11,7 @@ import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import 'coach_feedback_screen.dart';
+import 'video_trim_screen.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -22,6 +25,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final _caption = TextEditingController();
   File? _mediaFile;
   bool _posting = false;
+  double _uploadProgress = 0;
   bool _improvingCaption = false;
   String? _error;
 
@@ -30,10 +34,37 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final XFile? picked = video
         ? await picker.pickVideo(source: source, maxDuration: const Duration(seconds: 30))
         : await picker.pickImage(source: source);
-    if (picked != null) {
+    if (picked == null) return;
+
+    if (video) {
+      // Let the user trim before it's attached to the post.
+      final trimmedPath = await Navigator.of(context).push<String>(
+        MaterialPageRoute(builder: (_) => VideoTrimScreen(file: File(picked.path))),
+      );
+      if (trimmedPath == null) return; // user backed out without saving
       setState(() {
-        _mediaFile = File(picked.path);
-        _type = video ? PostType.video : PostType.photo;
+        _mediaFile = File(trimmedPath);
+        _type = PostType.video;
+      });
+    } else {
+      // Let the user crop/rotate before it's attached to the post.
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Edit photo',
+            toolbarColor: AppColors.background,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(title: 'Edit photo'),
+        ],
+      );
+      if (cropped == null) return; // user cancelled the crop
+      setState(() {
+        _mediaFile = File(cropped.path);
+        _type = PostType.photo;
       });
     }
   }
@@ -45,7 +76,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final improved = await AiService.improveCaption(_caption.text.trim());
       setState(() => _caption.text = improved);
     } catch (e) {
-      setState(() => _error = 'Could not improve caption right now.');
+      setState(() => _error = 'Could not improve caption: $e');
     } finally {
       if (mounted) setState(() => _improvingCaption = false);
     }
@@ -65,6 +96,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     setState(() {
       _posting = true;
+      _uploadProgress = 0;
       _error = null;
     });
 
@@ -73,7 +105,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       String? thumbnailUrl;
 
       if (_mediaFile != null) {
-        mediaUrl = await PostService.uploadMedia(_mediaFile!, userId);
+        mediaUrl = await PostService.uploadMediaWithProgress(
+          _mediaFile!,
+          userId,
+          onProgress: (p) {
+            if (mounted) setState(() => _uploadProgress = p);
+          },
+        );
         if (_type == PostType.video) {
           thumbnailUrl = await PostService.generateAndUploadVideoThumbnail(_mediaFile!, userId);
         }
@@ -115,7 +153,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         imageUrl: coachImageUrl,
       );
     } catch (e) {
-      setState(() => _error = 'Failed to post. Please try again.');
+      setState(() => _error = 'Failed to post: $e');
     } finally {
       if (mounted) setState(() => _posting = false);
     }
@@ -142,9 +180,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => CoachFeedbackScreen(feedback: feedback)),
       );
-    } catch (_) {
-      // Coach feedback is a bonus, not a requirement — silently skip if
-      // the AI backend is unavailable so posting never feels broken.
+    } catch (e) {
+      // TODO: once AI backend is confirmed stable, go back to silently
+      // skipping so a flaky AI call never makes posting feel broken.
+      // For now, surfacing this so we can see what's actually failing.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Coach feedback failed: $e')),
+        );
+      }
     }
   }
 
@@ -226,6 +270,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ],
+            if (_posting && _mediaFile != null) ...[
+              const SizedBox(height: 10),
+              LinearProgressIndicator(
+                value: _uploadProgress > 0 ? _uploadProgress : null,
+                backgroundColor: AppColors.surfaceBorder,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Uploading ${(_uploadProgress * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
             ],
             const SizedBox(height: 12),
             ElevatedButton(
