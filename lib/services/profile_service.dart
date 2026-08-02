@@ -87,6 +87,18 @@ class ProfileService {
         .eq('following_id', followingId);
   }
 
+  /// Spends coins to unlock the Premium/Verified badge. Server-enforced via
+  /// the `purchase_premium` RPC so it can't be granted by editing the client.
+  static Future<Map<String, dynamic>> purchasePremium({
+    required String userId,
+    required double cost,
+  }) async {
+    return await _client.rpc('purchase_premium', params: {
+      'p_user_id': userId,
+      'p_cost': cost,
+    });
+  }
+
   /// Backs the Creator Growth Dashboard — one RPC call instead of the
   /// client stitching together several separate queries.
   static Future<CreatorStats> getCreatorStats(String userId) async {
