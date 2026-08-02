@@ -1,5 +1,4 @@
 
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -11,8 +10,7 @@ import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import 'coach_feedback_screen.dart';
-import 'video_trim_screen.dart';
-
+     
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
 
@@ -37,13 +35,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     if (picked == null) return;
 
     if (video) {
-      // Let the user trim before it's attached to the post.
-      final trimmedPath = await Navigator.of(context).push<String>(
-        MaterialPageRoute(builder: (_) => VideoTrimScreen(file: File(picked.path))),
-      );
-      if (trimmedPath == null) return; // user backed out without saving
+      // Trimming removed: the package it relied on (video_trimmer, via
+      // ffmpeg_kit_flutter) can no longer build — Arthenica discontinued
+      // ffmpeg-kit and pulled its binaries from Maven in April 2025.
+      // Videos are still capped at 30s via maxDuration above.
       setState(() {
-        _mediaFile = File(trimmedPath);
+        _mediaFile = File(picked.path);
         _type = PostType.video;
       });
     } else {
@@ -325,3 +322,5 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 }
+
+
