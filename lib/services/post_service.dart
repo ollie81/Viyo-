@@ -18,18 +18,65 @@ class PostService {
     final data = await _client
         .from('posts')
         .select('*, profiles(username, display_name, avatar_url)')
+        .eq('is_private', false)
+        .eq('is_archived', false)
+        .order('is_pinned', ascending: false)
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
     return (data as List).map((e) => Post.fromJson(e)).toList();
   }
 
+  /// A profile's posts as seen by the *owner* — includes private/archived
+  /// posts so they can manage them. For viewing someone else's profile,
+  /// use [getPublicUserPosts] instead, which respects privacy.
   static Future<List<Post>> getUserPosts(String userId) async {
     final data = await _client
         .from('posts')
         .select('*, profiles(username, display_name, avatar_url)')
         .eq('user_id', userId)
+        .order('is_pinned', ascending: false)
         .order('created_at', ascending: false);
     return (data as List).map((e) => Post.fromJson(e)).toList();
+  }
+
+  /// A profile's posts as seen by *anyone else* — hides private and
+  /// archived posts, since those should only be visible to the owner.
+  static Future<List<Post>> getPublicUserPosts(String userId) async {
+    final data = await _client
+        .from('posts')
+        .select('*, profiles(username, display_name, avatar_url)')
+        .eq('user_id', userId)
+        .eq('is_private', false)
+        .eq('is_archived', false)
+        .order('is_pinned', ascending: false)
+        .order('created_at', ascending: false);
+    return (data as List).map((e) => Post.fromJson(e)).toList();
+  }
+
+  static Future<void> setPrivate(String postId, bool isPrivate) async {
+    await _client.from('posts').update({'is_private': isPrivate}).eq('id', postId);
+  }
+
+  static Future<void> setArchived(String postId, bool isArchived) async {
+    await _client.from('posts').update({'is_archived': isArchived}).eq('id', postId);
+  }
+
+  static Future<void> setPinned(String postId, bool isPinned) async {
+    await _client.from('posts').update({'is_pinned': isPinned}).eq('id', postId);
+  }
+
+  /// Spends coins to boost a post's visibility. Server-enforced via the
+  /// `boost_post` RPC so the balance check/deduction can't be bypassed.
+  static Future<Map<String, dynamic>> boostPost({
+    required String userId,
+    required String postId,
+    required double cost,
+  }) async {
+    return await _client.rpc('boost_post', params: {
+      'p_user_id': userId,
+      'p_post_id': postId,
+      'p_cost': cost,
+    });
   }
 
   /// Video-only feed for the full-screen Shorts-style player.
