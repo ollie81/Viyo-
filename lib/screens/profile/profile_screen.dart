@@ -43,7 +43,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _loading = true);
 
     final profile = await ProfileService.getProfile(targetId);
-    final posts = await PostService.getUserPosts(targetId);
+    final posts = _isOwnProfile
+        ? await PostService.getUserPosts(targetId)
+        : await PostService.getPublicUserPosts(targetId);
     final followers = await ProfileService.getFollowerCount(targetId);
     final following = await ProfileService.getFollowingCount(targetId);
 
@@ -131,8 +133,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(p.displayName,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          Text(p.displayName,
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          if (p.isPremium) ...[
+                            const SizedBox(width: 6),
+                            const Icon(Icons.verified, color: AppColors.secondary, size: 18),
+                          ],
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
@@ -266,28 +276,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 itemBuilder: (ctx, i) {
                   final post = _posts[i];
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                      image: post.mediaUrl != null
-                          ? DecorationImage(
-                              image: NetworkImage(post.thumbnailUrl ?? post.mediaUrl!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
+                  return GestureDetector(
+                    onLongPress: _isOwnProfile ? () => _showPostMenu(post) : null,
+                    child: Stack(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            image: post.mediaUrl != null
+                                ? DecorationImage(
+                                    image: NetworkImage(post.thumbnailUrl ?? post.mediaUrl!),
+                                    fit: BoxFit.cover,
+                                    colorFilter: post.isArchived
+                                        ? ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.darken)
+                                        : null,
+                                  )
+                                : null,
+                          ),
+                          child: post.mediaUrl == null
+                              ? Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Text(
+                                    post.caption,
+                                    maxLines: 4,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 10, color: Colors.white70),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        if (post.isPinned)
+                          const Positioned(
+                            top: 4,
+                            left: 4,
+                            child: Icon(Icons.push_pin, size: 14, color: Colors.white),
+                          ),
+                        if (post.isPrivate)
+                          const Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Icon(Icons.lock, size: 14, color: Colors.white),
+                          ),
+                        if (post.isBoosted)
+                          const Positioned(
+                            bottom: 4,
+                            left: 4,
+                            child: Icon(Icons.trending_up, size: 14, color: AppColors.secondary),
+                          ),
+                        if (post.isArchived)
+                          const Positioned(
+                            bottom: 4,
+                            right: 4,
+                            child: Icon(Icons.archive_outlined, size: 14, color: Colors.white70),
+                          ),
+                      ],
                     ),
-                    child: post.mediaUrl == null
-                        ? Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Text(
-                              post.caption,
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 10, color: Colors.white70),
-                            ),
-                          )
-                        : null,
                   );
                 },
               ),
@@ -295,6 +339,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showPostMenu(Post post) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(post.isPinned ? Icons.push_pin : Icons.push_pin_outlined),
+              title: Text(post.isPinned ? 'Unpin from profile' : 'Pin to top of profile'),
+              onTap: () => Navigator.pop(ctx, 'pin'),
+            ),
+            ListTile(
+              leading: Icon(post.isPrivate ? Icons.lock_open : Icons.lock_outline),
+              title: Text(post.isPrivate ? 'Make public' : 'Make private'),
+              onTap: () => Navigator.pop(ctx, 'private'),
+            ),
+            ListTile(
+              leading: Icon(post.isArchived ? Icons.unarchive_outlined : Icons.archive_outlined),
+              title: Text(post.isArchived ? 'Unarchive' : 'Archive (hide without deleting)'),
+              onTap: () => Navigator.pop(ctx, 'archive'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.trending_up, color: AppColors.secondary),
+              title: const Text('Boost this post (50 coins)'),
+              onTap: () => Navigator.pop(ctx, 'boost'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.danger),
+              title: const Text('Delete post', style: TextStyle(color: AppColors.danger)),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (action == null) return;
+
+    try {
+      switch (action) {
+        case 'pin':
+          await PostService.setPinned(post.id, !post.isPinned);
+          break;
+        case 'private':
+          await PostService.setPrivate(post.id, !post.isPrivate);
+          break;
+        case 'archive':
+          await PostService.setArchived(post.id, !post.isArchived);
+          break;
+        case 'boost':
+          final userId = SupabaseService.currentUserId;
+          if (userId == null) return;
+          await PostService.boostPost(userId: userId, postId: post.id, cost: 50);
+          break;
+        case 'delete':
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Delete post?'),
+              content: const Text("This can't be undone."),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+          await PostService.deletePost(post);
+          break;
+      }
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Action failed: $e')));
+    }
   }
 
   Widget _statChip(String value, String label) {
