@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/app_badge.dart';
+import '../models/user_profile.dart';
 import '../services/coin_service.dart';
+import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/coin_badge.dart';
@@ -14,8 +16,12 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   List<AppBadge> _badges = [];
+  UserProfile? _profile;
   bool _loading = true;
+  bool _purchasingPremium = false;
   String? _toast;
+
+  static const double _premiumCost = 500;
 
   @override
   void initState() {
@@ -28,11 +34,32 @@ class _StoreScreenState extends State<StoreScreen> {
     if (userId == null) return;
     setState(() => _loading = true);
     final badges = await CoinService.getStoreBadges(userId);
+    final profile = await ProfileService.getProfile(userId);
     if (!mounted) return;
     setState(() {
       _badges = badges;
+      _profile = profile;
       _loading = false;
     });
+  }
+
+  Future<void> _purchasePremium() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    setState(() => _purchasingPremium = true);
+    try {
+      final result = await ProfileService.purchasePremium(userId: userId, cost: _premiumCost);
+      if (result['success'] == true) {
+        _showToast('Welcome to Premium! ✓');
+        _load();
+      } else {
+        _showToast(result['message'] ?? 'Purchase failed');
+      }
+    } catch (e) {
+      _showToast('Purchase failed: $e');
+    } finally {
+      if (mounted) setState(() => _purchasingPremium = false);
+    }
   }
 
   void _showToast(String msg) {
@@ -75,6 +102,68 @@ class _StoreScreenState extends State<StoreScreen> {
                           style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                         ),
                       ),
+                      if (_profile != null)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.all(16),
+                          decoration: AppTheme.card(
+                            borderColor: AppColors.secondary.withOpacity(0.5),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.verified, color: AppColors.secondary, size: 28),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Text('Premium / Verified',
+                                            style: TextStyle(fontWeight: FontWeight.w600)),
+                                        if (_profile!.isPremium) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary.withOpacity(0.25),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text('OWNED',
+                                                style: TextStyle(fontSize: 9, color: AppColors.primary)),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    const Text(
+                                      'A verified badge on your profile, forever.',
+                                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    CoinBadge(amount: _premiumCost, fontSize: 13),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: (_profile!.isPremium || _purchasingPremium)
+                                    ? null
+                                    : _purchasePremium,
+                                style: ElevatedButton.styleFrom(
+                                  disabledBackgroundColor: Colors.white12,
+                                  disabledForegroundColor: Colors.white38,
+                                ),
+                                child: _purchasingPremium
+                                    ? const SizedBox(
+                                        height: 16,
+                                        width: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : Text(_profile!.isPremium ? '✓' : 'Unlock'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ..._badges.map((b) => Container(
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(16),
