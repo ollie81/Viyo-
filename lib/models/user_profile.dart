@@ -16,6 +16,7 @@ class UserProfile {
   final DateTime? lastCheckinDate;
 
   final String referralCode;
+  final bool isPremium;
 
   UserProfile({
     required this.id,
@@ -32,6 +33,7 @@ class UserProfile {
     this.longestStreak = 0,
     this.lastCheckinDate,
     required this.referralCode,
+    this.isPremium = false,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
@@ -51,6 +53,7 @@ class UserProfile {
             ? DateTime.tryParse(json['last_checkin_date'])
             : null,
         referralCode: json['referral_code'] ?? '',
+        isPremium: json['is_premium'] ?? false,
       );
 
   /// XP required to reach the *next* level, using a simple curve.
@@ -71,4 +74,6 @@ class UserProfile {
     return 'Diamond';
   }
 }
+
+
 
