@@ -22,6 +22,9 @@ class Post {
   final int likeCount;
   final int commentCount;
   final bool isBoosted;
+  final bool isPrivate;
+  final bool isArchived;
+  final bool isPinned;
   final DateTime createdAt;
 
   // Populated client-side after a join with `profiles` — not stored in the
@@ -42,6 +45,9 @@ class Post {
     this.likeCount = 0,
     this.commentCount = 0,
     this.isBoosted = false,
+    this.isPrivate = false,
+    this.isArchived = false,
+    this.isPinned = false,
     required this.createdAt,
     this.authorUsername,
     this.authorDisplayName,
@@ -60,6 +66,9 @@ class Post {
         likeCount: json['like_count'] ?? 0,
         commentCount: json['comment_count'] ?? 0,
         isBoosted: json['is_boosted'] ?? false,
+        isPrivate: json['is_private'] ?? false,
+        isArchived: json['is_archived'] ?? false,
+        isPinned: json['is_pinned'] ?? false,
         createdAt: DateTime.parse(json['created_at']),
         authorUsername: json['profiles']?['username'],
         authorDisplayName: json['profiles']?['display_name'],
