@@ -19,7 +19,6 @@ dependencies:
   cached_network_image: ^3.3.1
   image_picker: ^1.1.2
   image_cropper: ^8.1.0
-  video_trimmer: ^4.0.1
   video_player: ^2.9.1
   video_thumbnail: ^0.5.3
   shimmer: ^3.0.0
