@@ -52,7 +52,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final path = '${widget.profile.id}/avatar.$ext';
       await client.storage
           .from(SupabaseConstants.avatarsBucket)
-          .upload(path, _pickedAvatar!, fileOptions: const FileOptions(upsert: true));
+          .upload(path, _pickedAvatar!, fileOptions: FileOptions(upsert: true));
       return client.storage.from(SupabaseConstants.avatarsBucket).getPublicUrl(path);
     } catch (e) {
       setState(() => _error =
