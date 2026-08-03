@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import '../../models/mission.dart';
-import '../../services/coin_service.dart';
-import '../../services/mission_service.dart';
-import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/mission_card.dart';
-import '../../utils/coin_format.dart';
+import '../models/mission.dart';
+import '../services/coin_service.dart';
+import '../services/mission_service.dart';
+import '../services/supabase_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/mission_card.dart';
+import '../utils/coin_format.dart';
 import 'creator_dashboard_screen.dart';
+
 class MissionsScreen extends StatefulWidget {
   const MissionsScreen({super.key});
 
@@ -19,6 +20,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
   bool _loading = true;
   bool _checkinBusy = false;
   String? _toast;
+  String? _loadError;
 
   @override
   void initState() {
@@ -29,13 +31,24 @@ class _MissionsScreenState extends State<MissionsScreen> {
   Future<void> _load() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
-    setState(() => _loading = true);
-    final missions = await MissionService.getTodayMissions(userId);
-    if (!mounted) return;
     setState(() {
-      _missions = missions;
-      _loading = false;
+      _loading = true;
+      _loadError = null;
     });
+    try {
+      final missions = await MissionService.getTodayMissions(userId);
+      if (!mounted) return;
+      setState(() {
+        _missions = missions;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load missions: $e';
+        _loading = false;
+      });
+    }
   }
 
   void _showToast(String msg) {
@@ -96,7 +109,27 @@ class _MissionsScreenState extends State<MissionsScreen> {
         children: [
           _loading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-              : RefreshIndicator(
+              : _loadError != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, color: AppColors.danger, size: 40),
+                            const SizedBox(height: 12),
+                            Text(
+                              _loadError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: AppColors.danger, fontSize: 13),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(onPressed: _load, child: const Text('Retry')),
+                          ],
+                        ),
+                      ),
+                    )
+                  : RefreshIndicator(
                   onRefresh: _load,
                   color: AppColors.primary,
                   child: ListView(
