@@ -62,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         (_) => false,
       );
     } catch (e) {
-      setState(() => _error = 'Something went wrong. Please try again.');
+      setState(() => _error = 'Signup failed: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
