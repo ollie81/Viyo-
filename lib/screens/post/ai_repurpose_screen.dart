@@ -1,0 +1,210 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import '../../constants/supabase_constants.dart';
+import '../../models/post.dart';
+import '../../services/post_service.dart';
+import '../../services/supabase_service.dart';
+import '../../theme/app_theme.dart';
+
+/// AI Repurposer — upload a longer video, get back one AI-selected
+/// highlight clip, auto-cropped to 9:16 with burned-in captions.
+///
+/// This calls the real Railway backend (not a hardcoded emulator IP),
+/// sends the user's actual Supabase auth token, and — once a clip is
+/// ready — posts it straight into the real Viyo feed via
+/// PostService.createPost, instead of just showing a mock preview card.
+class AiRepurposeScreen extends StatefulWidget {
+  const AiRepurposeScreen({super.key});
+
+  @override
+  State<AiRepurposeScreen> createState() => _AiRepurposeScreenState();
+}
+
+class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
+  File? _selectedVideo;
+  bool _isProcessing = false;
+  String? _error;
+  Map<String, dynamic>? _result;
+  bool _posting = false;
+
+  Future<void> _pickVideo() async {
+    setState(() => _error = null);
+    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() {
+        _selectedVideo = File(picked.path);
+        _result = null;
+      });
+    }
+  }
+
+  Future<void> _process() async {
+    if (_selectedVideo == null) return;
+    setState(() {
+      _isProcessing = true;
+      _error = null;
+    });
+
+    try {
+      final token = SupabaseService.client.auth.currentSession?.accessToken;
+      final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
+      final request = http.MultipartRequest('POST', uri);
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      request.files.add(await http.MultipartFile.fromPath('file', _selectedVideo!.path));
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode == 200) {
+        setState(() => _result = jsonDecode(response.body));
+      } else {
+        final body = jsonDecode(response.body);
+        throw Exception(body['detail'] ?? 'Server returned ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() => _error = 'Processing failed: $e');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _postToFeed() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null || _result == null) return;
+
+    setState(() => _posting = true);
+    try {
+      final videoUrl = _result!['processed_video_url'] as String;
+      final title = _result!['highlight']?['suggested_title'] as String? ?? '';
+
+      await PostService.createPost(
+        userId: userId,
+        type: PostType.video,
+        caption: title,
+        mediaUrl: videoUrl,
+        durationSeconds: 60,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Posted to your feed! 🎉')),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      setState(() => _error = 'Could not post: $e');
+    } finally {
+      if (mounted) setState(() => _posting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: const Text('AI Repurposer'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Upload a longer video — the AI finds the best highlight, '
+              'crops it to 9:16, and adds burned-in captions.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Limits: up to 3 minutes / 60MB in, up to 5 per day.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+            ),
+            const SizedBox(height: 20),
+
+            GestureDetector(
+              onTap: _isProcessing ? null : _pickVideo,
+              child: Container(
+                height: 180,
+                decoration: AppTheme.card(),
+                child: _selectedVideo == null
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.video_library_outlined, size: 40, color: AppColors.primary),
+                            SizedBox(height: 10),
+                            Text('Tap to select a video', style: TextStyle(color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      )
+                    : Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.check_circle, size: 36, color: AppColors.success),
+                            const SizedBox(height: 8),
+                            Text(
+                              _selectedVideo!.path.split('/').last,
+                              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            ElevatedButton(
+              onPressed: (_selectedVideo == null || _isProcessing) ? null : _process,
+              child: _isProcessing
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 12),
+                        Text('Processing (this can take a minute)...'),
+                      ],
+                    )
+                  : const Text('Run AI Repurpose'),
+            ),
+
+            if (_error != null) ...[
+              const SizedBox(height: 14),
+              Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ],
+
+            if (_result != null) ...[
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: AppTheme.card(borderColor: AppColors.primary.withOpacity(0.4)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _result!['highlight']?['suggested_title'] ?? 'Clip ready',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _result!['highlight']?['reason'] ?? '',
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _posting ? null : _postToFeed,
+                      child: Text(_posting ? 'Posting...' : 'Post This Clip to My Feed'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
