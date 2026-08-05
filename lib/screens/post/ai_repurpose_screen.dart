@@ -9,6 +9,7 @@ import '../../models/post.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// AI Repurposer — upload a longer video, get back one AI-selected
 /// highlight clip, auto-cropped to 9:16 with burned-in captions.
