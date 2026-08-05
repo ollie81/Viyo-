@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 import '../../constants/supabase_constants.dart';
 import '../../models/post.dart';
 import '../../services/post_service.dart';
@@ -12,10 +13,18 @@ import '../../theme/app_theme.dart';
 /// AI Repurposer — upload a longer video, get back one AI-selected
 /// highlight clip, auto-cropped to 9:16 with burned-in captions.
 ///
-/// This calls the real Railway backend (not a hardcoded emulator IP),
-/// sends the user's actual Supabase auth token, and — once a clip is
-/// ready — posts it straight into the real Viyo feed via
-/// PostService.createPost, instead of just showing a mock preview card.
+/// Fix for "Broken pipe" error:
+///   Previously the video was streamed directly to Railway via multipart,
+///   which hit Railway's ~60s inbound proxy timeout during upload +
+///   processing. Now we upload the raw video to Supabase Storage first
+///   (bypassing Railway entirely), then send just the URL to the backend.
+///   Railway only handles a small JSON request, so there is nothing to
+///   time out during the upload phase.
+///
+/// Fix for "Token verification failed" error:
+///   That was a backend bug (PyJWT 2.x requires algorithms= even with
+///   verify_signature=False). Fixed in repurpose.py — no Flutter change
+///   needed; the token was always correct on this side.
 class AiRepurposeScreen extends StatefulWidget {
   const AiRepurposeScreen({super.key});
 
@@ -25,7 +34,9 @@ class AiRepurposeScreen extends StatefulWidget {
 
 class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   File? _selectedVideo;
+  bool _isUploading = false;
   bool _isProcessing = false;
+  double _uploadProgress = 0;
   String? _error;
   Map<String, dynamic>? _result;
   bool _posting = false;
@@ -44,19 +55,51 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   Future<void> _process() async {
     if (_selectedVideo == null) return;
     setState(() {
-      _isProcessing = true;
+      _isUploading = true;
+      _uploadProgress = 0;
       _error = null;
     });
 
     try {
+      // Step 1: Upload the video to Supabase Storage.
+      // This keeps large file data off Railway's inbound proxy, which
+      // has a hard timeout that caused the "Broken pipe" error before.
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) throw Exception('Not logged in');
+
+      final ext = _selectedVideo!.path.split('.').last.toLowerCase();
+      final storagePath = '$userId/${const Uuid().v4()}.$ext';
+
+      await SupabaseService.client.storage
+          .from(SupabaseConstants.postsBucket)
+          .upload(
+            storagePath,
+            _selectedVideo!,
+            fileOptions: const FileOptions(upsert: false),
+          );
+
+      final videoUrl = SupabaseService.client.storage
+          .from(SupabaseConstants.postsBucket)
+          .getPublicUrl(storagePath);
+
+      setState(() {
+        _isUploading = false;
+        _isProcessing = true;
+      });
+
+      // Step 2: Send the storage URL to the Railway backend.
+      // Railway now only handles a small JSON body — no timeout risk.
       final token = SupabaseService.client.auth.currentSession?.accessToken;
       final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
-      final request = http.MultipartRequest('POST', uri);
-      if (token != null) request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(await http.MultipartFile.fromPath('file', _selectedVideo!.path));
 
-      final streamed = await request.send();
-      final response = await http.Response.fromStream(streamed);
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'video_url': videoUrl}),
+      );
 
       if (response.statusCode == 200) {
         setState(() => _result = jsonDecode(response.body));
@@ -67,7 +110,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     } catch (e) {
       setState(() => _error = 'Processing failed: $e');
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _isProcessing = false;
+        });
+      }
     }
   }
 
@@ -100,6 +148,14 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     }
   }
 
+  String get _statusLabel {
+    if (_isUploading) return 'Uploading video...';
+    if (_isProcessing) return 'Processing (this can take a minute)...';
+    return 'Run AI Repurpose';
+  }
+
+  bool get _isBusy => _isUploading || _isProcessing;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,7 +181,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             const SizedBox(height: 20),
 
             GestureDetector(
-              onTap: _isProcessing ? null : _pickVideo,
+              onTap: _isBusy ? null : _pickVideo,
               child: Container(
                 height: 180,
                 decoration: AppTheme.card(),
@@ -158,14 +214,14 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             const SizedBox(height: 16),
 
             ElevatedButton(
-              onPressed: (_selectedVideo == null || _isProcessing) ? null : _process,
-              child: _isProcessing
-                  ? const Row(
+              onPressed: (_selectedVideo == null || _isBusy) ? null : _process,
+              child: _isBusy
+                  ? Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                        SizedBox(width: 12),
-                        Text('Processing (this can take a minute)...'),
+                        const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(width: 12),
+                        Text(_statusLabel),
                       ],
                     )
                   : const Text('Run AI Repurpose'),
