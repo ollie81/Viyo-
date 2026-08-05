@@ -75,7 +75,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           .upload(
             storagePath,
             _selectedVideo!,
-            fileOptions: const FileOptions(upsert: false),
+            fileOptions: FileOptions(upsert: false),
           );
 
       final videoUrl = SupabaseService.client.storage
