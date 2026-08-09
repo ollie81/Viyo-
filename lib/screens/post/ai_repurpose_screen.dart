@@ -10,6 +10,7 @@ import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'video_coach_screen.dart';
 
 /// AI Repurposer — upload a longer video, get back one AI-selected
 /// highlight clip, auto-cropped to 9:16 with burned-in captions.
@@ -40,6 +41,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   double _uploadProgress = 0;
   String? _error;
   Map<String, dynamic>? _result;
+  String? _videoId;
   bool _posting = false;
 
   Future<void> _pickVideo() async {
@@ -49,6 +51,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       setState(() {
         _selectedVideo = File(picked.path);
         _result = null;
+        _videoId = null;
       });
     }
   }
@@ -82,6 +85,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       final videoUrl = SupabaseService.client.storage
           .from(SupabaseConstants.postsBucket)
           .getPublicUrl(storagePath);
+
+      // This stable ID ties the Coach history to this exact uploaded video.
+      _videoId = storagePath;
 
       setState(() {
         _isUploading = false;
@@ -176,7 +182,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Limits: up to 3 minutes / 60MB in, up to 5 per day.',
+              'Limits: configured by the backend/storage plan. The Coach keeps a separate history for each video.',
               style: TextStyle(color: AppColors.textMuted, fontSize: 11),
             ),
             const SizedBox(height: 20),
@@ -254,6 +260,22 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                     ElevatedButton(
                       onPressed: _posting ? null : _postToFeed,
                       child: Text(_posting ? 'Posting...' : 'Post This Clip to My Feed'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _videoId == null
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => VideoCoachScreen(
+                                    videoId: _videoId!,
+                                  ),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('Open AI Coach'),
                     ),
                   ],
                 ),
