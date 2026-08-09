@@ -54,6 +54,53 @@ class AiService {
     return jsonDecode(res.body);
   }
 
+  /// Loads the persistent AI Coach conversation for one video.
+  static Future<List<Map<String, dynamic>>> getCoachHistory(
+      String videoId) async {
+    final res = await http.get(
+      Uri.parse(
+        '${AiBackendConstants.baseUrl}/api/v1/coach/${Uri.encodeComponent(videoId)}',
+      ),
+      headers: await _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception('Failed to load Coach history (${res.statusCode})');
+    }
+
+    final data = jsonDecode(res.body);
+    return List<Map<String, dynamic>>.from(data['messages'] ?? const []);
+  }
+
+  /// Sends a message to the Coach. The backend keeps the history attached
+  /// to this specific video.
+  static Future<Map<String, dynamic>> sendCoachMessage({
+    required String videoId,
+    required String message,
+    int videoVersion = 1,
+  }) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coach/message'),
+      headers: await _headers(),
+      body: jsonEncode({
+        'video_id': videoId,
+        'message': message,
+        'video_version': videoVersion,
+      }),
+    );
+
+    if (res.statusCode != 200) {
+      String detail = 'Coach request failed (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(res.body));
+  }
+
   /// The AI Creator Coach — called right after a post is created.
   /// Framed as coaching (what worked / what to improve / ideas / tip),
   /// not a numeric score, so it feels like mentorship, not grading.
@@ -79,4 +126,5 @@ class AiService {
     return PostFeedback.fromAiResponse(jsonDecode(res.body));
   }
 }
+
 
