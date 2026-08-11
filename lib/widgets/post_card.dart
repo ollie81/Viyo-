@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../models/post.dart';
 import '../theme/app_theme.dart';
+import '../screens/post/post_detail_screen.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -21,6 +22,15 @@ class PostCard extends StatelessWidget {
     this.currentUserId,
     this.onDelete,
   });
+
+  void _openPostDetail(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostDetailScreen(post: post),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
