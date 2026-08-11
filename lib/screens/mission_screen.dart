@@ -1,3 +1,5 @@
+import '../services/viyo_mission_router.dart';
+import '../models/viyo_mission.dart';
 import 'package:flutter/material.dart';
 import '../models/mission.dart';
 import '../services/coin_service.dart';
@@ -87,6 +89,13 @@ class _MissionsScreenState extends State<MissionsScreen> {
     } else {
       _showToast(result['message'] ?? 'Could not claim');
     }
+  }
+
+  Future<void> _openMissionAction(
+    BuildContext context,
+    ViyoMission mission,
+  ) async {
+    await const ViyoMissionRouter().openMission(context, mission);
   }
 
   @override
