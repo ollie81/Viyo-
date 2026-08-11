@@ -1,3 +1,4 @@
+// Viyo mission action safety: completion/rewards must be verified server-side.
 import 'package:flutter/material.dart';
 import '../models/mission.dart';
 import '../theme/app_theme.dart';
