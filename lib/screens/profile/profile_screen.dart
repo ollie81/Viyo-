@@ -188,7 +188,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       const Text('Balance', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                      CoinBadge(amount: p.pointsBalance),
+                      if (isOwnProfile) if (isOwnProfile) CoinBadge(amount: p.pointsBalance),
                     ],
                   ),
                 ],
