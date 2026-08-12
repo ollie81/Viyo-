@@ -1,5 +1,8 @@
-import '../services/viyo_mission_router.dart';
-import '../models/viyo_mission.dart';
+import 'video_feed_screen.dart';
+import 'post/create_post_screen.dart';
+import 'search_screen.dart';
+import 'profile/profile_screen.dart';
+import 'feed_screen.dart';
 import 'package:flutter/material.dart';
 import '../models/mission.dart';
 import '../services/coin_service.dart';
@@ -91,11 +94,45 @@ class _MissionsScreenState extends State<MissionsScreen> {
     }
   }
 
-  Future<void> _openMissionAction(
-    BuildContext context,
-    ViyoMission mission,
-  ) async {
-    await const ViyoMissionRouter().openMission(context, mission);
+  Future<void> _openMissionAction(Mission mission) async {
+    final code = mission.code.toLowerCase();
+    final title = mission.title.toLowerCase();
+    final description = mission.description.toLowerCase();
+    final text = '$code $title $description';
+
+    if (text.contains('check') || text.contains('streak')) {
+      await _checkin();
+      return;
+    }
+
+    Widget? destination;
+
+    if (text.contains('watch') || text.contains('video') || text.contains('short')) {
+      destination = const VideoFeedScreen();
+    } else if (text.contains('follow') || text.contains('circle') || text.contains('creator')) {
+      destination = const SearchScreen();
+    } else if (text.contains('like')) {
+      destination = const FeedScreen();
+    } else if (text.contains('profile')) {
+      destination = const ProfileScreen();
+    } else if (text.contains('post') ||
+        text.contains('craft') ||
+        text.contains('life') ||
+        text.contains('behind') ||
+        text.contains('style') ||
+        text.contains('share')) {
+      destination = const CreatePostScreen();
+    }
+
+    if (!mounted) return;
+
+    if (destination != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => destination!),
+      );
+    } else {
+      _showToast('Open the app and complete this mission action.');
+    }
   }
 
   @override
@@ -200,7 +237,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
                       const SizedBox(height: 12),
                       ..._missions
                           .where((m) => m.isCreatorChallenge)
-                          .map((m) => MissionCard(mission: m, onClaim: () => _claim(m))),
+                          .map((m) => MissionCard(mission: m, onClaim: () => _claim(m), onAction: () => _openMissionAction(m))),
                       const SizedBox(height: 16),
                       const Text(
                         'Quick Engagement',
@@ -214,7 +251,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
                       const SizedBox(height: 12),
                       ..._missions
                           .where((m) => !m.isCreatorChallenge)
-                          .map((m) => MissionCard(mission: m, onClaim: () => _claim(m))),
+                          .map((m) => MissionCard(mission: m, onClaim: () => _claim(m), onAction: () => _openMissionAction(m))),
                     ],
                   ),
                 ),
