@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
@@ -42,13 +43,20 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null || userId == post.userId) return;
+    if (userId == null) return;
     if (post.likedByMe) {
       await PostService.unlikePost(userId, post.id);
     } else {
       await PostService.likePost(userId, post.id);
     }
-    _load();
+    await _load();
+  }
+
+  Future<void> _share(Post post) async {
+    await Share.share(
+      post.mediaUrl ?? post.caption,
+      subject: 'Viyo post by ${post.authorUsername ?? 'creator'}',
+    );
   }
 
   Future<void> _delete(Post post) async {
@@ -141,6 +149,7 @@ class _FeedScreenState extends State<FeedScreen> {
                           currentUserId: SupabaseService.currentUserId,
                           onLike: () => _like(post),
                           onDelete: () => _delete(post),
+                          onShare: () => _share(post),
                           onComment: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => PostDetailScreen(post: post),
