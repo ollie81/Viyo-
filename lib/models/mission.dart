@@ -1,4 +1,3 @@
-import '../../widgets/mission_card.dart'; // This should work if mission_screen.dart is in lib/screens/
 class Mission {
   final String id;
   final String code;
