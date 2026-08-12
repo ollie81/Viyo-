@@ -1,3 +1,5 @@
+import 'profile/profile_screen.dart';
+import 'post/post_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -344,7 +346,11 @@ class _VideoPageState extends State<_VideoPage> {
                 icon: Icons.mode_comment_outlined,
                 color: Colors.white,
                 label: '${post.commentCount}',
-                onTap: () {}, // hook up to comments screen if/when needed
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PostDetailScreen(post: post),
+                  ),
+                ),
               ),
               const SizedBox(height: 22),
               const _ActionIcon(
@@ -367,22 +373,36 @@ class _VideoPageState extends State<_VideoPage> {
             children: [
               Row(
                 children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.surfaceBorder,
-                    backgroundImage: post.authorAvatarUrl != null
-                        ? CachedNetworkImageProvider(post.authorAvatarUrl!)
-                        : null,
-                    child: post.authorAvatarUrl == null
-                        ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
-                        : null,
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProfileScreen(userId: post.userId),
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: AppColors.surfaceBorder,
+                      backgroundImage: post.authorAvatarUrl != null
+                          ? CachedNetworkImageProvider(post.authorAvatarUrl!)
+                          : null,
+                      child: post.authorAvatarUrl == null
+                          ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '@${post.authorUsername ?? 'unknown'}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProfileScreen(userId: post.userId),
+                      ),
+                    ),
+                    child: Text(
+                      '@${post.authorUsername ?? 'unknown'}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
