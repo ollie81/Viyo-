@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import '../../models/post.dart';
+import '../../theme/app_theme.dart';
 
 enum ViyoMediaType { photo, video }
 
@@ -12,6 +14,9 @@ class ViyoPostMedia {
   final String creatorName;
   final String creatorUsername;
   final String? creatorAvatarUrl;
+  final bool likedByMe;
+  final int likeCount;
+  final int commentCount;
 
   const ViyoPostMedia({
     required this.id,
@@ -22,6 +27,9 @@ class ViyoPostMedia {
     required this.creatorName,
     required this.creatorUsername,
     this.creatorAvatarUrl,
+    this.likedByMe = false,
+    this.likeCount = 0,
+    this.commentCount = 0,
   });
 
   factory ViyoPostMedia.fromPost(Post post) => ViyoPostMedia(
@@ -35,6 +43,9 @@ class ViyoPostMedia {
         creatorName: post.authorDisplayName ?? 'Creator',
         creatorUsername: post.authorUsername ?? 'creator',
         creatorAvatarUrl: post.authorAvatarUrl,
+        likedByMe: post.likedByMe,
+        likeCount: post.likeCount,
+        commentCount: post.commentCount,
       );
 }
 
@@ -82,17 +93,11 @@ class _ViyoPostViewerState extends State<ViyoPostViewer> {
     if (widget.posts.isEmpty) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(
-          child: Text(
-            'No media',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ),
+        body: Center(child: Text('No media', style: TextStyle(color: Colors.white70))),
       );
     }
 
     final current = widget.posts[_index];
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -104,6 +109,7 @@ class _ViyoPostViewerState extends State<ViyoPostViewer> {
           children: [
             CircleAvatar(
               radius: 16,
+              backgroundColor: AppColors.surfaceBorder,
               backgroundImage: current.creatorAvatarUrl == null
                   ? null
                   : NetworkImage(current.creatorAvatarUrl!),
@@ -121,10 +127,7 @@ class _ViyoPostViewerState extends State<ViyoPostViewer> {
             ),
             Text(
               '${_index + 1}/${widget.posts.length}',
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ],
         ),
@@ -134,124 +137,190 @@ class _ViyoPostViewerState extends State<ViyoPostViewer> {
         scrollDirection: Axis.vertical,
         itemCount: widget.posts.length,
         onPageChanged: (i) => setState(() => _index = i),
-        itemBuilder: (_, i) => _page(widget.posts[i]),
+        itemBuilder: (_, i) => _CreatorMediaPage(
+          key: ValueKey(widget.posts[i].id),
+          post: widget.posts[i],
+          onLike: widget.onLike,
+          onComment: widget.onComment,
+          onShare: widget.onShare,
+          onFollow: widget.onFollow,
+        ),
+      ),
+    );
+  }
+}
+
+class _CreatorMediaPage extends StatefulWidget {
+  final ViyoPostMedia post;
+  final VoidCallback? onLike;
+  final VoidCallback? onComment;
+  final VoidCallback? onShare;
+  final VoidCallback? onFollow;
+
+  const _CreatorMediaPage({
+    super.key,
+    required this.post,
+    this.onLike,
+    this.onComment,
+    this.onShare,
+    this.onFollow,
+  });
+
+  @override
+  State<_CreatorMediaPage> createState() => _CreatorMediaPageState();
+}
+
+class _CreatorMediaPageState extends State<_CreatorMediaPage> {
+  VideoPlayerController? _video;
+  bool _liked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _liked = widget.post.likedByMe;
+    if (widget.post.type == ViyoMediaType.video) _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    final controller = VideoPlayerController.networkUrl(Uri.parse(widget.post.mediaUrl));
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _video = controller);
+      await controller.play();
+    } catch (_) {
+      await controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _video?.dispose();
+    super.dispose();
+  }
+
+  void _like() {
+    setState(() => _liked = !_liked);
+    widget.onLike?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final post = widget.post;
+    return SafeArea(
+      top: false,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: _like,
+        child: Stack(
+          children: [
+            Center(child: _media()),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 18,
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            post.creatorName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          if (post.caption.trim().isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              post.caption,
+                              maxLines: 4,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white, height: 1.35),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      children: [
+                        _Action(
+                          _liked ? Icons.favorite : Icons.favorite_border_rounded,
+                          _liked ? '${post.likeCount + (widget.post.likedByMe ? 0 : 1)}' : '${post.likeCount}',
+                          _like,
+                          active: _liked,
+                        ),
+                        const SizedBox(height: 14),
+                        _Action(
+                          Icons.chat_bubble_outline_rounded,
+                          '${post.commentCount}',
+                          widget.onComment,
+                        ),
+                        const SizedBox(height: 14),
+                        _Action(Icons.ios_share_outlined, 'Share', widget.onShare),
+                        const SizedBox(height: 14),
+                        _Action(Icons.person_add_alt_1_rounded, 'Follow', widget.onFollow),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (post.type == ViyoMediaType.video && _video != null)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: IconButton(
+                  onPressed: () {
+                    final c = _video!;
+                    setState(() => c.value.isPlaying ? c.pause() : c.play());
+                  },
+                  icon: Icon(
+                    _video!.value.isPlaying ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                    color: Colors.white,
+                    size: 30,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _page(ViyoPostMedia post) {
-    return SafeArea(
-      top: false,
-      child: Stack(
-        children: [
-          Center(
-            child: post.type == ViyoMediaType.photo
-                ? InteractiveViewer(
-                    child: Image.network(
-                      post.mediaUrl,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.broken_image_outlined,
-                        color: Colors.white54,
-                        size: 60,
-                      ),
-                    ),
-                  )
-                : Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      if (post.thumbnailUrl != null &&
-                          post.thumbnailUrl!.isNotEmpty)
-                        Image.network(
-                          post.thumbnailUrl!,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const SizedBox(),
-                        ),
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(.55),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 40,
-                        ),
-                      ),
-                    ],
-                  ),
+  Widget _media() {
+    if (widget.post.type == ViyoMediaType.photo) {
+      return InteractiveViewer(
+        child: Image.network(
+          widget.post.mediaUrl,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(
+            Icons.broken_image_outlined,
+            color: Colors.white54,
+            size: 60,
           ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 18,
-            child: SafeArea(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          post.creatorName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 17,
-                          ),
-                        ),
-                        if (post.caption.trim().isNotEmpty) ...[
-                          const SizedBox(height: 5),
-                          Text(
-                            post.caption,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Column(
-                    children: [
-                      _Action(
-                        Icons.favorite_border_rounded,
-                        'Like',
-                        widget.onLike,
-                      ),
-                      const SizedBox(height: 14),
-                      _Action(
-                        Icons.chat_bubble_outline_rounded,
-                        'Comment',
-                        widget.onComment,
-                      ),
-                      const SizedBox(height: 14),
-                      _Action(
-                        Icons.ios_share_outlined,
-                        'Share',
-                        widget.onShare,
-                      ),
-                      const SizedBox(height: 14),
-                      _Action(
-                        Icons.person_add_alt_1_rounded,
-                        'Follow',
-                        widget.onFollow,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      );
+    }
+    if (_video == null || !_video!.value.isInitialized) {
+      return widget.post.thumbnailUrl == null
+          ? const CircularProgressIndicator(color: AppColors.primary)
+          : Image.network(widget.post.thumbnailUrl!, fit: BoxFit.contain);
+    }
+    return AspectRatio(
+      aspectRatio: _video!.value.aspectRatio,
+      child: VideoPlayer(_video!),
     );
   }
 }
@@ -260,8 +329,9 @@ class _Action extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
+  final bool active;
 
-  const _Action(this.icon, this.label, this.onTap);
+  const _Action(this.icon, this.label, this.onTap, {this.active = false});
 
   @override
   Widget build(BuildContext context) {
@@ -274,23 +344,14 @@ class _Action extends StatelessWidget {
             width: 45,
             height: 45,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(.10),
+              color: active ? AppColors.secondary.withOpacity(.22) : Colors.white.withOpacity(.10),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withOpacity(.08)),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-            ),
+            child: Icon(icon, color: active ? AppColors.secondary : Colors.white),
           ),
           const SizedBox(height: 3),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 9,
-              color: Colors.white,
-            ),
-          ),
+          Text(label, style: const TextStyle(fontSize: 9, color: Colors.white)),
         ],
       ),
     );
