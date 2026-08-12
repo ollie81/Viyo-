@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:share_plus/share_plus.dart';
 import '../models/post.dart';
 import '../theme/app_theme.dart';
 import '../screens/post/post_detail_screen.dart';
@@ -12,6 +13,7 @@ class PostCard extends StatelessWidget {
   final VoidCallback? onOpenProfile;
   final String? currentUserId;
   final VoidCallback? onDelete;
+  final VoidCallback? onShare;
   final VoidCallback? onOpenMedia;
 
   /// When true (default), tapping the media opens PostDetailScreen.
@@ -27,6 +29,7 @@ class PostCard extends StatelessWidget {
     this.onOpenProfile,
     this.currentUserId,
     this.onDelete,
+    this.onShare,
     this.onOpenMedia,
     this.enableMediaTap = true,
   });
@@ -225,6 +228,24 @@ class PostCard extends StatelessWidget {
                   color: AppColors.textSecondary,
                   label: '${post.commentCount}',
                   onTap: onComment,
+                ),
+                const SizedBox(width: 18),
+                _actionButton(
+                  icon: Icons.ios_share_outlined,
+                  color: AppColors.textSecondary,
+                  label: 'Share',
+                  onTap: onShare ?? () => Share.share(
+                    post.mediaUrl ?? post.caption,
+                    subject: 'Viyo post by ${post.authorUsername ?? 'creator'}',
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'More',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {},
+                  icon: const Icon(Icons.bookmark_border_rounded,
+                      color: AppColors.textSecondary, size: 21),
                 ),
               ],
             ),
