@@ -1,0 +1,289 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
+import '../../constants/supabase_constants.dart';
+import '../../models/post.dart';
+import '../../services/post_service.dart';
+import '../../services/supabase_service.dart';
+import '../../theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'video_coach_screen.dart';
+
+/// AI Repurposer — upload a longer video, get back one AI-selected
+/// highlight clip, auto-cropped to 9:16 with burned-in captions.
+///
+/// Fix for "Broken pipe" error:
+///   Previously the video was streamed directly to Railway via multipart,
+///   which hit Railway's ~60s inbound proxy timeout during upload +
+///   processing. Now we upload the raw video to Supabase Storage first
+///   (bypassing Railway entirely), then send just the URL to the backend.
+///   Railway only handles a small JSON request, so there is nothing to
+///   time out during the upload phase.
+///
+/// Fix for "Token verification failed" error:
+///   That was a backend bug (PyJWT 2.x requires algorithms= even with
+///   verify_signature=False). Fixed in repurpose.py — no Flutter change
+///   needed; the token was always correct on this side.
+class AiRepurposeScreen extends StatefulWidget {
+  const AiRepurposeScreen({super.key});
+
+  @override
+  State<AiRepurposeScreen> createState() => _AiRepurposeScreenState();
+}
+
+class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
+  File? _selectedVideo;
+  bool _isUploading = false;
+  bool _isProcessing = false;
+  double _uploadProgress = 0;
+  String? _error;
+  Map<String, dynamic>? _result;
+  String? _videoId;
+  bool _posting = false;
+
+  Future<void> _pickVideo() async {
+    setState(() => _error = null);
+    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() {
+        _selectedVideo = File(picked.path);
+        _result = null;
+        _videoId = null;
+      });
+    }
+  }
+
+  Future<void> _process() async {
+    if (_selectedVideo == null) return;
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0;
+      _error = null;
+    });
+
+    try {
+      // Step 1: Upload the video to Supabase Storage.
+      // This keeps large file data off Railway's inbound proxy, which
+      // has a hard timeout that caused the "Broken pipe" error before.
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) throw Exception('Not logged in');
+
+      final ext = _selectedVideo!.path.split('.').last.toLowerCase();
+      final storagePath = '$userId/${const Uuid().v4()}.$ext';
+
+      await SupabaseService.client.storage
+          .from(SupabaseConstants.postsBucket)
+          .upload(
+            storagePath,
+            _selectedVideo!,
+            fileOptions: FileOptions(upsert: false),
+          );
+
+      final videoUrl = SupabaseService.client.storage
+          .from(SupabaseConstants.postsBucket)
+          .getPublicUrl(storagePath);
+
+      // This stable ID ties the Coach history to this exact uploaded video.
+      _videoId = storagePath;
+
+      setState(() {
+        _isUploading = false;
+        _isProcessing = true;
+      });
+
+      // Step 2: Send the storage URL to the Railway backend.
+      // Railway now only handles a small JSON body — no timeout risk.
+      final token = SupabaseService.client.auth.currentSession?.accessToken;
+      final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'video_url': videoUrl}),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() => _result = jsonDecode(response.body));
+      } else {
+        final body = jsonDecode(response.body);
+        throw Exception(body['detail'] ?? 'Server returned ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() => _error = 'Processing failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _postToFeed() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null || _result == null) return;
+
+    setState(() => _posting = true);
+    try {
+      final videoUrl = _result!['processed_video_url'] as String;
+      final title = _result!['highlight']?['suggested_title'] as String? ?? '';
+
+      await PostService.createPost(
+        userId: userId,
+        type: PostType.video,
+        caption: title,
+        mediaUrl: videoUrl,
+        durationSeconds: 60,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Posted to your feed! 🎉')),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      setState(() => _error = 'Could not post: $e');
+    } finally {
+      if (mounted) setState(() => _posting = false);
+    }
+  }
+
+  String get _statusLabel {
+    if (_isUploading) return 'Uploading video...';
+    if (_isProcessing) return 'Processing (this can take a minute)...';
+    return 'Run AI Repurpose';
+  }
+
+  bool get _isBusy => _isUploading || _isProcessing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: const Text('AI Repurposer'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Upload a longer video — the AI finds the best highlight, '
+              'crops it to 9:16, and adds burned-in captions.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Limits: configured by the backend/storage plan. The Coach keeps a separate history for each video.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+            ),
+            const SizedBox(height: 20),
+
+            GestureDetector(
+              onTap: _isBusy ? null : _pickVideo,
+              child: Container(
+                height: 180,
+                decoration: AppTheme.card(),
+                child: _selectedVideo == null
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.video_library_outlined, size: 40, color: AppColors.primary),
+                            SizedBox(height: 10),
+                            Text('Tap to select a video', style: TextStyle(color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      )
+                    : Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.check_circle, size: 36, color: AppColors.success),
+                            const SizedBox(height: 8),
+                            Text(
+                              _selectedVideo!.path.split('/').last,
+                              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            ElevatedButton(
+              onPressed: (_selectedVideo == null || _isBusy) ? null : _process,
+              child: _isBusy
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(width: 12),
+                        Text(_statusLabel),
+                      ],
+                    )
+                  : const Text('Run AI Repurpose'),
+            ),
+
+            if (_error != null) ...[
+              const SizedBox(height: 14),
+              Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ],
+
+            if (_result != null) ...[
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: AppTheme.card(borderColor: AppColors.primary.withOpacity(0.4)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _result!['highlight']?['suggested_title'] ?? 'Clip ready',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _result!['highlight']?['reason'] ?? '',
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _posting ? null : _postToFeed,
+                      child: Text(_posting ? 'Posting...' : 'Post This Clip to My Feed'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _videoId == null
+                          ? null
+                          : () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => VideoCoachScreen(
+                                    videoId: _videoId!,
+                                  ),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('Open AI Coach'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
