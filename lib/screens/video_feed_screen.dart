@@ -1,18 +1,24 @@
-import 'profile/profile_screen.dart';
-import 'post/post_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+
 import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'post/post_detail_screen.dart';
+import 'profile/profile_screen.dart';
+import 'search_screen.dart';
+import 'mission_screen.dart';
+import 'post/create_post_screen.dart';
 
-/// Full-screen, vertically-swipeable video feed (Shorts/TikTok style).
-/// Separate from FeedScreen, which stays a scrolling card list for
-/// text/photo posts.
+/// Viyo's video feed. It intentionally keeps the main navigation visible so
+/// watching a video does not trap the user in a separate player.
 class VideoFeedScreen extends StatefulWidget {
-  const VideoFeedScreen({super.key});
+  final String? initialPostId;
+
+  const VideoFeedScreen({super.key, this.initialPostId});
 
   @override
   State<VideoFeedScreen> createState() => _VideoFeedScreenState();
@@ -31,19 +37,110 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   }
 
   Future<void> _load() async {
-    final posts = await PostService.getVideoFeed();
-    if (!mounted) return;
-    setState(() {
-      _posts = posts;
-      _loading = false;
-    });
+    try {
+      final posts = await PostService.getVideoFeed();
+      if (!mounted) return;
+
+      var index = 0;
+      if (widget.initialPostId != null) {
+        final found = posts.indexWhere((p) => p.id == widget.initialPostId);
+        if (found >= 0) index = found;
+      }
+
+      setState(() {
+        _posts = posts;
+        _currentIndex = index;
+        _loading = false;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients && index > 0) {
+          _pageController.jumpToPage(index);
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load videos: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
-    await PostService.likePost(userId, post.id);
-    _load();
+    if (userId == null || userId == post.userId) return;
+
+    try {
+      if (post.likedByMe) {
+        await PostService.unlikePost(userId, post.id);
+      } else {
+        await PostService.likePost(userId, post.id);
+      }
+
+      // Refresh the feed so the server's count and liked state remain the
+      // source of truth.
+      final posts = await PostService.getVideoFeed();
+      if (!mounted) return;
+      setState(() => _posts = posts);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update like: $e')),
+      );
+    }
+  }
+
+  void _openComments(Post post) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+    );
+  }
+
+  Future<void> _share(Post post) async {
+    await Share.share(
+      post.caption.trim().isEmpty
+          ? 'Check out this video on Viyo.'
+          : post.caption,
+    );
+  }
+
+  void _openProfile(Post post) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ProfileScreen(userId: post.userId)),
+    );
+  }
+
+  void _selectNav(int index) {
+    // Home returns to the existing HomeShell instead of creating a second
+    // Home screen on top of it.
+    if (index == 0) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final Widget screen;
+    switch (index) {
+      case 1:
+        screen = const SearchScreen();
+        break;
+      case 2:
+        screen = const CreatePostScreen();
+        break;
+      case 3:
+        screen = const MissionsScreen();
+        break;
+      case 4:
+        screen = const ProfileScreen();
+        break;
+      default:
+        return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => screen),
+    );
   }
 
   @override
@@ -57,20 +154,14 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
           : _posts.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 48),
-                      const SizedBox(height: 12),
-                      const Text('No videos yet', style: TextStyle(color: Colors.white70)),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Back'),
-                      ),
-                    ],
+              ? const Center(
+                  child: Text(
+                    'No videos yet',
+                    style: TextStyle(color: Colors.white70),
                   ),
                 )
               : PageView.builder(
@@ -79,14 +170,53 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                   itemCount: _posts.length,
                   onPageChanged: (i) => setState(() => _currentIndex = i),
                   itemBuilder: (ctx, i) {
+                    final post = _posts[i];
                     return _VideoPage(
-                      post: _posts[i],
+                      key: ValueKey(post.id),
+                      post: post,
                       isActive: i == _currentIndex,
-                      onLike: () => _like(_posts[i]),
-                      onBack: i == 0 ? () => Navigator.of(context).pop() : null,
+                      onLike: post.userId == SupabaseService.currentUserId
+                          ? null
+                          : () => _like(post),
+                      onComment: () => _openComments(post),
+                      onShare: () => _share(post),
+                      onOpenProfile: () => _openProfile(post),
                     );
                   },
                 ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: AppColors.surface,
+        currentIndex: 0,
+        onTap: _selectNav,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: 'Discover',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.add_circle,
+              color: AppColors.primary,
+              size: 32,
+            ),
+            label: 'Post',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.flag_outlined),
+            label: 'Missions',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -94,14 +224,19 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
 class _VideoPage extends StatefulWidget {
   final Post post;
   final bool isActive;
-  final VoidCallback onLike;
-  final VoidCallback? onBack;
+  final VoidCallback? onLike;
+  final VoidCallback onComment;
+  final VoidCallback onShare;
+  final VoidCallback onOpenProfile;
 
   const _VideoPage({
+    super.key,
     required this.post,
     required this.isActive,
     required this.onLike,
-    this.onBack,
+    required this.onComment,
+    required this.onShare,
+    required this.onOpenProfile,
   });
 
   @override
@@ -112,121 +247,131 @@ class _VideoPageState extends State<_VideoPage> {
   VideoPlayerController? _controller;
   bool _muted = false;
   bool _initError = false;
-  bool _showControls = false;
 
   @override
   void initState() {
     super.initState();
-    _init();
+    _initialize();
   }
 
-  Future<void> _init() async {
+  Future<void> _initialize() async {
     final url = widget.post.mediaUrl;
-    if (url == null) {
-      setState(() => _initError = true);
+    if (url == null || url.trim().isEmpty) {
+      if (mounted) setState(() => _initError = true);
       return;
     }
+
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+
     try {
       await controller.initialize();
-      controller.setLooping(true);
-      if (widget.isActive) controller.play();
+      await controller.setLooping(true);
+      await controller.setVolume(_muted ? 0 : 1);
+
       if (!mounted) {
-        controller.dispose();
+        await controller.dispose();
         return;
       }
-      controller.addListener(() => setState(() {}));
+
+      controller.addListener(_videoListener);
       setState(() => _controller = controller);
+
+      if (widget.isActive) {
+        await controller.play();
+      }
     } catch (_) {
+      await controller.dispose();
       if (mounted) setState(() => _initError = true);
     }
+  }
+
+  void _videoListener() {
+    if (mounted) setState(() {});
   }
 
   @override
   void didUpdateWidget(covariant _VideoPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_controller == null) return;
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+
     if (widget.isActive && !oldWidget.isActive) {
-      _controller!.play();
+      c.play();
     } else if (!widget.isActive && oldWidget.isActive) {
-      _controller!.pause();
+      c.pause();
     }
-  }
-
-  void _toggleMute() {
-    setState(() {
-      _muted = !_muted;
-      _controller?.setVolume(_muted ? 0 : 1);
-    });
-  }
-
-  void _togglePlayPause() {
-    final c = _controller;
-    if (c == null) return;
-    setState(() {
-      c.value.isPlaying ? c.pause() : c.play();
-      _showControls = true;
-    });
-  }
-
-  void _seekBy(Duration offset) {
-    final c = _controller;
-    if (c == null) return;
-    var target = c.value.position + offset;
-    if (target < Duration.zero) target = Duration.zero;
-    if (target > c.value.duration) target = c.value.duration;
-    c.seekTo(target);
-  }
-
-  String _fmt(Duration d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    final m = d.inMinutes;
-    final s = d.inSeconds % 60;
-    return '$m:${two(s)}';
   }
 
   @override
   void dispose() {
+    _controller?.removeListener(_videoListener);
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _togglePlay() {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    if (c.value.isPlaying) {
+      c.pause();
+    } else {
+      c.play();
+    }
+    setState(() {});
+  }
+
+  void _toggleMute() {
+    setState(() => _muted = !_muted);
+    _controller?.setVolume(_muted ? 0 : 1);
+  }
+
+  String _time(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
+    final c = _controller;
+    final ready = c?.value.isInitialized == true;
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Video or fallback thumbnail/spinner
         GestureDetector(
-          onTap: _togglePlayPause,
+          behavior: HitTestBehavior.opaque,
+          onTap: _togglePlay,
           child: Container(
             color: Colors.black,
-            child: _controller != null && _controller!.value.isInitialized
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _controller!.value.size.width,
-                      height: _controller!.value.size.height,
-                      child: VideoPlayer(_controller!),
-                    ),
+            alignment: Alignment.center,
+            child: ready
+                ? AspectRatio(
+                    aspectRatio: c!.value.aspectRatio,
+                    child: VideoPlayer(c),
                   )
-                : (_initError
-                    ? const Center(
-                        child: Icon(Icons.error_outline, color: Colors.white54, size: 40),
+                : post.thumbnailUrl != null
+                    ? CachedNetworkImage(
+                        imageUrl: post.thumbnailUrl!,
+                        fit: BoxFit.contain,
+                        placeholder: (_, __) => const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        errorWidget: (_, __, ___) => _videoError(),
                       )
-                    : (post.thumbnailUrl != null
-                        ? CachedNetworkImage(
-                            imageUrl: post.thumbnailUrl!,
-                            fit: BoxFit.cover,
-                          )
+                    : _initError
+                        ? _videoError()
                         : const Center(
-                            child: CircularProgressIndicator(color: AppColors.primary),
-                          ))),
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
+                          ),
           ),
         ),
 
-        // Back button
         SafeArea(
           child: Align(
             alignment: Alignment.topLeft,
@@ -237,187 +382,194 @@ class _VideoPageState extends State<_VideoPage> {
           ),
         ),
 
-        // Mute toggle
         SafeArea(
           child: Align(
             alignment: Alignment.topRight,
             child: IconButton(
-              icon: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white),
+              icon: Icon(
+                _muted ? Icons.volume_off : Icons.volume_up,
+                color: Colors.white,
+              ),
               onPressed: _toggleMute,
             ),
           ),
         ),
 
-        // Full video controls: rewind / play-pause / forward + seek bar
-        if (_controller != null && _controller!.value.isInitialized)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black54],
-                ),
-              ),
+        // Creator and caption.
+        Positioned(
+          left: 14,
+          right: 82,
+          bottom: 106,
+          child: SafeArea(
+            top: false,
+            child: GestureDetector(
+              onTap: widget.onOpenProfile,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.replay_10, color: Colors.white, size: 30),
-                        onPressed: () => _seekBy(const Duration(seconds: -10)),
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: AppColors.surfaceBorder,
+                        backgroundImage: post.authorAvatarUrl != null
+                            ? CachedNetworkImageProvider(
+                                post.authorAvatarUrl!,
+                              )
+                            : null,
+                        child: post.authorAvatarUrl == null
+                            ? Text(
+                                (post.authorDisplayName ?? '?')[0]
+                                    .toUpperCase(),
+                              )
+                            : null,
                       ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        icon: Icon(
-                          _controller!.value.isPlaying ? Icons.pause_circle : Icons.play_circle,
-                          color: Colors.white,
-                          size: 44,
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          '@${post.authorUsername ?? 'unknown'}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                        onPressed: _togglePlayPause,
-                      ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        icon: const Icon(Icons.forward_10, color: Colors.white, size: 30),
-                        onPressed: () => _seekBy(const Duration(seconds: 10)),
                       ),
                     ],
                   ),
-                  Row(
-                    children: [
-                      Text(
-                        _fmt(_controller!.value.position),
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                  if (post.caption.trim().isNotEmpty) ...[
+                    const SizedBox(height: 7),
+                    Text(
+                      post.caption,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        height: 1.3,
                       ),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 2,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                          ),
-                          child: Slider(
-                            min: 0,
-                            max: _controller!.value.duration.inMilliseconds.toDouble().clamp(
-                                  1,
-                                  double.infinity,
-                                ),
-                            value: _controller!.value.position.inMilliseconds
-                                .toDouble()
-                                .clamp(0, _controller!.value.duration.inMilliseconds.toDouble()),
-                            activeColor: AppColors.primary,
-                            inactiveColor: Colors.white24,
-                            onChanged: (v) =>
-                                _controller!.seekTo(Duration(milliseconds: v.round())),
-                          ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Like/comment/share actions stay above the navigation bar.
+        Positioned(
+          right: 12,
+          bottom: 108,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                _ActionIcon(
+                  icon: post.likedByMe
+                      ? Icons.favorite
+                      : Icons.favorite_border,
+                  color: post.likedByMe
+                      ? AppColors.secondary
+                      : (widget.onLike == null
+                          ? Colors.white38
+                          : Colors.white),
+                  label: post.likedByMe
+                      ? '${post.likeCount}'
+                      : '${post.likeCount}',
+                  onTap: widget.onLike,
+                ),
+                const SizedBox(height: 18),
+                _ActionIcon(
+                  icon: Icons.mode_comment_outlined,
+                  color: Colors.white,
+                  label: '${post.commentCount}',
+                  onTap: widget.onComment,
+                ),
+                const SizedBox(height: 18),
+                _ActionIcon(
+                  icon: Icons.share_outlined,
+                  color: Colors.white,
+                  label: 'Share',
+                  onTap: widget.onShare,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Playback controls are kept above the navigation bar.
+        if (ready)
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 62,
+            child: SafeArea(
+              top: false,
+              child: Row(
+                children: [
+                  Text(
+                    _time(c!.value.position),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                    ),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 2,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 5,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 10,
                         ),
                       ),
-                      Text(
-                        _fmt(_controller!.value.duration),
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                      child: Slider(
+                        min: 0,
+                        max: c.value.duration.inMilliseconds
+                            .toDouble()
+                            .clamp(1, double.infinity),
+                        value: c.value.position.inMilliseconds
+                            .toDouble()
+                            .clamp(
+                              0,
+                              c.value.duration.inMilliseconds.toDouble(),
+                            ),
+                        activeColor: AppColors.primary,
+                        inactiveColor: Colors.white30,
+                        onChanged: (v) => c.seekTo(
+                          Duration(milliseconds: v.round()),
+                        ),
                       ),
-                    ],
+                    ),
+                  ),
+                  Text(
+                    _time(c.value.duration),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
+      ],
+    );
+  }
 
-        // Right-side action column
-        Positioned(
-          right: 12,
-          bottom: 190,
-          child: Column(
-            children: [
-              _ActionIcon(
-                icon: post.likedByMe ? Icons.favorite : Icons.favorite_border,
-                color: post.likedByMe ? AppColors.secondary : Colors.white,
-                label: '${post.likeCount}',
-                onTap: widget.onLike,
-              ),
-              const SizedBox(height: 22),
-              _ActionIcon(
-                icon: Icons.mode_comment_outlined,
-                color: Colors.white,
-                label: '${post.commentCount}',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PostDetailScreen(post: post),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 22),
-              const _ActionIcon(
-                icon: Icons.share_outlined,
-                color: Colors.white,
-                label: 'Share',
-                onTap: null,
-              ),
-            ],
-          ),
+  Widget _videoError() {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.error_outline,
+          color: Colors.white54,
+          size: 44,
         ),
-
-        // Bottom-left caption overlay
-        Positioned(
-          left: 14,
-          right: 90,
-          bottom: 150,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProfileScreen(userId: post.userId),
-                      ),
-                    ),
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: AppColors.surfaceBorder,
-                      backgroundImage: post.authorAvatarUrl != null
-                          ? CachedNetworkImageProvider(post.authorAvatarUrl!)
-                          : null,
-                      child: post.authorAvatarUrl == null
-                          ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProfileScreen(userId: post.userId),
-                      ),
-                    ),
-                    child: Text(
-                      '@${post.authorUsername ?? 'unknown'}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (post.caption.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  post.caption,
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
-          ),
+        SizedBox(height: 8),
+        Text(
+          'Video unavailable',
+          style: TextStyle(color: Colors.white70),
         ),
       ],
     );
@@ -440,12 +592,19 @@ class _ActionIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Column(
         children: [
           Icon(icon, color: color, size: 30),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
