@@ -12,6 +12,7 @@ class PostCard extends StatelessWidget {
   final VoidCallback? onOpenProfile;
   final String? currentUserId;
   final VoidCallback? onDelete;
+  final VoidCallback? onOpenMedia;
 
   /// When true (default), tapping the media opens PostDetailScreen.
   /// Set to false when PostCard is already inside PostDetailScreen to
@@ -26,6 +27,7 @@ class PostCard extends StatelessWidget {
     this.onOpenProfile,
     this.currentUserId,
     this.onDelete,
+    this.onOpenMedia,
     this.enableMediaTap = true,
   });
 
@@ -136,7 +138,9 @@ class PostCard extends StatelessWidget {
           // ── Media (photo or video thumbnail) ──
           if (post.mediaUrl != null) ...[
             GestureDetector(
-              onTap: enableMediaTap ? () => _openPostDetail(context) : null,
+              onTap: enableMediaTap
+                  ? (onOpenMedia ?? () => _openPostDetail(context))
+                  : null,
               child: AspectRatio(
                 aspectRatio: post.postType == PostType.video ? 9 / 16 : 4 / 5,
                 child: Stack(
