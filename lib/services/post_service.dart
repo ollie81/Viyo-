@@ -237,6 +237,16 @@ class PostService {
     await _client.rpc('decrement_like_count', params: {'p_post_id': postId});
   }
 
+  static Future<void> toggleLike(Post post) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    if (post.likedByMe) {
+      await unlikePost(userId, post.id);
+    } else {
+      await likePost(userId, post.id);
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> getComments(String postId) async {
     return await _client
         .from('comments')
