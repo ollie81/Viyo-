@@ -10,6 +10,7 @@ import '../../widgets/coin_badge.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../wallet_screen.dart';
+import '../post/post_detail_screen.dart';
 import 'edit_profile.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -184,13 +185,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text('${p.currentStreak} days 🔥', style: const TextStyle(fontWeight: FontWeight.w600)),
                     ],
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      const Text('Balance', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                      CoinBadge(amount: p.pointsBalance),
-                    ],
-                  ),
+                  if (_isOwnProfile)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text(
+                          'Balance',
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
+                        ),
+                        CoinBadge(amount: p.pointsBalance),
+                      ],
+                    )
+                  else
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Creator',
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
+                        ),
+                        Text(
+                          'Profile',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
@@ -306,6 +331,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 )
                               : null,
                         ),
+                        if (post.postType == PostType.video)
+                          const Positioned(
+                            right: 4,
+                            bottom: 4,
+                            child: Icon(
+                              Icons.play_circle_fill,
+                              size: 22,
+                              color: Colors.white,
+                            ),
+                          ),
                         if (post.isPinned)
                           const Positioned(
                             top: 4,
