@@ -42,8 +42,12 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
-    await PostService.likePost(userId, post.id);
+    if (userId == null || userId == post.userId) return;
+    if (post.likedByMe) {
+      await PostService.unlikePost(userId, post.id);
+    } else {
+      await PostService.likePost(userId, post.id);
+    }
     _load();
   }
 
@@ -142,6 +146,15 @@ class _FeedScreenState extends State<FeedScreen> {
                               builder: (_) => PostDetailScreen(post: post),
                             ),
                           ),
+                          onOpenMedia: post.postType == PostType.video
+                              ? () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => VideoFeedScreen(
+                                        initialPostId: post.id,
+                                      ),
+                                    ),
+                                  )
+                              : null,
                           onOpenProfile: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) =>
