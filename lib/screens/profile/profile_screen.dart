@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/post.dart';
 import '../../models/user_profile.dart';
-import '../../services/post_service.dart';  
+import '../../services/post_service.dart';    
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
