@@ -13,6 +13,7 @@ import '../store_screen.dart';
 import '../wallet_screen.dart';
 import 'edit_profile.dart';
 import '../post/viyo_post_viewer.dart';
+import '../post/post_detail_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? userId;
@@ -111,8 +112,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (_) => ViyoPostViewer(
           posts: media,
           initialIndex: mediaIndex,
+          onLike: () => _likePost(selected),
+          onComment: () => _commentPost(selected),
+          onShare: () => _sharePost(selected),
         ),
       ),
+    );
+  }
+
+  Future<void> _likePost(Post post) async {
+    try {
+      await PostService.toggleLike(post);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update like: $e')),
+      );
+    }
+  }
+
+  Future<void> _commentPost(Post post) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _sharePost(Post post) async {
+    await Share.share(
+      post.mediaUrl ?? post.caption,
+      subject: 'Viyo post by ${post.authorUsername ?? 'creator'}',
     );
   }
 
@@ -423,7 +453,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isText = post.mediaUrl == null;
 
     return GestureDetector(
-      onTap: () => isText ? _showTextPost(post) : _openCreatorContent(post),
+      onTap: () => isText ? _commentPost(post) : _openCreatorContent(post),
+      onDoubleTap: () => _likePost(post),
       onLongPress: _isOwnProfile ? () => _showPostMenu(post) : null,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(5),
@@ -501,6 +532,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.white,
                 ),
               ),
+            Positioned(
+              top: 7,
+              right: 7,
+              child: Material(
+                color: Colors.black45,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _sharePost(post),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.ios_share_outlined, size: 14, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
             if (post.isPinned)
               const Positioned(
                 left: 7,
@@ -627,4 +674,3 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 }
-
