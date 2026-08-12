@@ -67,7 +67,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             child: ListView(
               padding: const EdgeInsets.all(12),
               children: [
-                PostCard(post: widget.post, onLike: _like, onComment: () {}),
+                PostCard(post: widget.post, onLike: _like, onComment: () {}, enableMediaTap: false),
                 const SizedBox(height: 10),
                 const Text('Comments', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
