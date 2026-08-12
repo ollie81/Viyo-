@@ -7,11 +7,12 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/viyo_glass_bottom_nav.dart';
 import 'post/post_detail_screen.dart';
 import 'profile/profile_screen.dart';
-import 'search_screen.dart';
 import 'mission_screen.dart';
 import 'post/create_post_screen.dart';
+import 'search_screen.dart';
 
 /// Viyo's video feed. It intentionally keeps the main navigation visible so
 /// watching a video does not trap the user in a separate player.
@@ -70,7 +71,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
 
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null || userId == post.userId) return;
+    if (userId == null) return;
 
     try {
       if (post.likedByMe) {
@@ -175,48 +176,18 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                       key: ValueKey(post.id),
                       post: post,
                       isActive: i == _currentIndex,
-                      onLike: post.userId == SupabaseService.currentUserId
-                          ? null
-                          : () => _like(post),
+                      onLike: () => _like(post),
                       onComment: () => _openComments(post),
                       onShare: () => _share(post),
                       onOpenProfile: () => _openProfile(post),
                     );
                   },
                 ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppColors.surface,
+      bottomNavigationBar: ViyoGlassBottomNav(
         currentIndex: 0,
         onTap: _selectNav,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'Discover',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.add_circle,
-              color: AppColors.primary,
-              size: 32,
-            ),
-            label: 'Post',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.flag_outlined),
-            label: 'Missions',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
-          ),
-        ],
       ),
+
     );
   }
 }
@@ -343,6 +314,7 @@ class _VideoPageState extends State<_VideoPage> {
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _togglePlay,
+          onDoubleTap: widget.onLike,
           child: Container(
             color: Colors.black,
             alignment: Alignment.center,
@@ -468,9 +440,7 @@ class _VideoPageState extends State<_VideoPage> {
                       : Icons.favorite_border,
                   color: post.likedByMe
                       ? AppColors.secondary
-                      : (widget.onLike == null
-                          ? Colors.white38
-                          : Colors.white),
+                      : Colors.white,
                   label: post.likedByMe
                       ? '${post.likeCount}'
                       : '${post.likeCount}',
