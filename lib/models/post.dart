@@ -75,4 +75,47 @@ class Post {
         authorAvatarUrl: json['profiles']?['avatar_url'],
         likedByMe: json['liked_by_me'] ?? false,
       );
+  Post copyWith({
+    String? id,
+    String? userId,
+    PostType? postType,
+    String? caption,
+    String? mediaUrl,
+    String? thumbnailUrl,
+    int? durationSeconds,
+    int? likeCount,
+    int? commentCount,
+    bool? isBoosted,
+    bool? isPrivate,
+    bool? isArchived,
+    bool? isPinned,
+    DateTime? createdAt,
+    String? authorUsername,
+    String? authorDisplayName,
+    String? authorAvatarUrl,
+    bool? likedByMe,
+  }) {
+    return Post(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      postType: postType ?? this.postType,
+      caption: caption ?? this.caption,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      likeCount: likeCount ?? this.likeCount,
+      commentCount: commentCount ?? this.commentCount,
+      isBoosted: isBoosted ?? this.isBoosted,
+      isPrivate: isPrivate ?? this.isPrivate,
+      isArchived: isArchived ?? this.isArchived,
+      isPinned: isPinned ?? this.isPinned,
+      createdAt: createdAt ?? this.createdAt,
+      authorUsername: authorUsername ?? this.authorUsername,
+      authorDisplayName: authorDisplayName ?? this.authorDisplayName,
+      authorAvatarUrl: authorAvatarUrl ?? this.authorAvatarUrl,
+      likedByMe: likedByMe ?? this.likedByMe,
+    );
+  }
+
+
 }
