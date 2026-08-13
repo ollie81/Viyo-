@@ -115,9 +115,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onLike: () => _likePost(selected),
           onComment: () => _commentPost(selected),
           onShare: () => _sharePost(selected),
+          onLikePost: (postId) => _likePostById(postId),
+          onCommentPost: (postId) => _commentPostById(postId),
+          onSharePost: (postId) => _sharePostById(postId),
         ),
       ),
     );
+  }
+
+  Future<void> _likePostById(String postId) async {
+    final matches = _posts.where((p) => p.id == postId).toList();
+    if (matches.isEmpty) return;
+    final post = matches.first;
+    await _likePost(post);
+  }
+
+  Future<void> _commentPostById(String postId) async {
+    final matches = _posts.where((p) => p.id == postId).toList();
+    if (matches.isEmpty) return;
+    final post = matches.first;
+    await _commentPost(post);
+  }
+
+  Future<void> _sharePostById(String postId) async {
+    final matches = _posts.where((p) => p.id == postId).toList();
+    if (matches.isEmpty) return;
+    final post = matches.first;
+    await _sharePost(post);
   }
 
   Future<void> _likePost(Post post) async {
