@@ -56,6 +56,9 @@ class ViyoPostViewer extends StatefulWidget {
   final VoidCallback? onComment;
   final VoidCallback? onShare;
   final VoidCallback? onFollow;
+  final Future<void> Function(String postId)? onLikePost;
+  final Future<void> Function(String postId)? onCommentPost;
+  final Future<void> Function(String postId)? onSharePost;
 
   const ViyoPostViewer({
     super.key,
@@ -65,6 +68,9 @@ class ViyoPostViewer extends StatefulWidget {
     this.onComment,
     this.onShare,
     this.onFollow,
+    this.onLikePost,
+    this.onCommentPost,
+    this.onSharePost,
   });
 
   @override
@@ -144,6 +150,9 @@ class _ViyoPostViewerState extends State<ViyoPostViewer> {
           onComment: widget.onComment,
           onShare: widget.onShare,
           onFollow: widget.onFollow,
+          onLikePost: widget.onLikePost,
+          onCommentPost: widget.onCommentPost,
+          onSharePost: widget.onSharePost,
         ),
       ),
     );
@@ -156,6 +165,9 @@ class _CreatorMediaPage extends StatefulWidget {
   final VoidCallback? onComment;
   final VoidCallback? onShare;
   final VoidCallback? onFollow;
+  final Future<void> Function(String postId)? onLikePost;
+  final Future<void> Function(String postId)? onCommentPost;
+  final Future<void> Function(String postId)? onSharePost;
 
   const _CreatorMediaPage({
     super.key,
@@ -164,6 +176,9 @@ class _CreatorMediaPage extends StatefulWidget {
     this.onComment,
     this.onShare,
     this.onFollow,
+    this.onLikePost,
+    this.onCommentPost,
+    this.onSharePost,
   });
 
   @override
@@ -205,7 +220,27 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
 
   void _like() {
     setState(() => _liked = !_liked);
-    widget.onLike?.call();
+    if (widget.onLikePost != null) {
+      widget.onLikePost!(widget.post.id);
+    } else {
+      widget.onLike?.call();
+    }
+  }
+
+  void _comment() {
+    if (widget.onCommentPost != null) {
+      widget.onCommentPost!(widget.post.id);
+    } else {
+      widget.onComment?.call();
+    }
+  }
+
+  void _share() {
+    if (widget.onSharePost != null) {
+      widget.onSharePost!(widget.post.id);
+    } else {
+      widget.onShare?.call();
+    }
   }
 
   @override
@@ -265,10 +300,10 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
                         _Action(
                           Icons.chat_bubble_outline_rounded,
                           '${post.commentCount}',
-                          widget.onComment,
+                          _comment,
                         ),
                         const SizedBox(height: 14),
-                        _Action(Icons.ios_share_outlined, 'Share', widget.onShare),
+                        _Action(Icons.ios_share_outlined, 'Share', _share),
                         const SizedBox(height: 14),
                         _Action(Icons.person_add_alt_1_rounded, 'Follow', widget.onFollow),
                       ],
