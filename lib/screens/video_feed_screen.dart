@@ -217,11 +217,13 @@ class _VideoPage extends StatefulWidget {
 class _VideoPageState extends State<_VideoPage> {
   VideoPlayerController? _controller;
   bool _muted = false;
+  bool _liked = false;
   bool _initError = false;
 
   @override
   void initState() {
     super.initState();
+    _liked = widget.post.likedByMe;
     _initialize();
   }
 
@@ -263,6 +265,12 @@ class _VideoPageState extends State<_VideoPage> {
   @override
   void didUpdateWidget(covariant _VideoPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (widget.post.id == oldWidget.post.id &&
+        widget.post.likedByMe != oldWidget.post.likedByMe) {
+      _liked = widget.post.likedByMe;
+    }
+
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
 
@@ -278,6 +286,13 @@ class _VideoPageState extends State<_VideoPage> {
     _controller?.removeListener(_videoListener);
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _handleLike() {
+    setState(() {
+      _liked = !_liked;
+    });
+    widget.onLike?.call();
   }
 
   void _togglePlay() {
@@ -314,7 +329,7 @@ class _VideoPageState extends State<_VideoPage> {
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _togglePlay,
-          onDoubleTap: widget.onLike,
+          onDoubleTap: _handleLike,
           child: Container(
             color: Colors.black,
             alignment: Alignment.center,
@@ -435,15 +450,13 @@ class _VideoPageState extends State<_VideoPage> {
             child: Column(
               children: [
                 _ActionIcon(
-                  icon: post.likedByMe
+                  icon: _liked
                       ? Icons.favorite
                       : Icons.favorite_border,
-                  color: post.likedByMe
+                  color: _liked
                       ? AppColors.secondary
                       : Colors.white,
-                  label: post.likedByMe
-                      ? '${post.likeCount}'
-                      : '${post.likeCount}',
+                  label: '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
                   onTap: widget.onLike,
                 ),
                 const SizedBox(height: 18),
