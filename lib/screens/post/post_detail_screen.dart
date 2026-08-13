@@ -52,9 +52,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _like() async {
-    final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
-    await PostService.likePost(userId, widget.post.id);
+    try {
+      await PostService.toggleLike(widget.post);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update like: $e')),
+      );
+    }
   }
 
   @override
