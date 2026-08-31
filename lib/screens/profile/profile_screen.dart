@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/post.dart';
 import '../../models/user_profile.dart';
@@ -174,9 +175,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     if (_loading || _profile == null) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
+        backgroundColor: AppColors.background,
+        body: _ProfileSkeleton(),
       );
     }
 
@@ -223,23 +223,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Hero(
                           tag: 'profile-avatar-${p.id}',
-                          child: CircleAvatar(
-                            radius: 46,
-                            backgroundColor: AppColors.surfaceBorder,
-                            backgroundImage: p.avatarUrl == null
-                                ? null
-                                : CachedNetworkImageProvider(p.avatarUrl!),
-                            child: p.avatarUrl == null
-                                ? Text(
-                                    p.displayName.isNotEmpty
-                                        ? p.displayName[0].toUpperCase()
-                                        : '?',
-                                    style: const TextStyle(
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.w800,
+                          child: Container(
+                            padding: EdgeInsets.all(p.isPremium ? 3 : 0),
+                            decoration: p.isPremium
+                                ? const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: [AppColors.primary, AppColors.secondary],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
                                     ),
                                   )
                                 : null,
+                            child: CircleAvatar(
+                              radius: 46,
+                              backgroundColor: AppColors.surfaceBorder,
+                              backgroundImage: p.avatarUrl == null
+                                  ? null
+                                  : CachedNetworkImageProvider(p.avatarUrl!),
+                              child: p.avatarUrl == null
+                                  ? Text(
+                                      p.displayName.isNotEmpty
+                                          ? p.displayName[0].toUpperCase()
+                                          : '?',
+                                      style: const TextStyle(
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    )
+                                  : null,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 18),
@@ -347,10 +360,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         horizontal: 14,
                         vertical: 12,
                       ),
-                      decoration: AppTheme.card(),
+                      decoration: AppTheme.glowCard(
+                        glowColor: AppColors.coin,
+                        glowOpacity: 0.14,
+                      ),
                       child: Row(
                         children: [
-                          const Icon(Icons.local_fire_department_outlined),
+                          const Icon(Icons.local_fire_department_outlined, color: AppColors.coin),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
@@ -379,13 +395,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             if (posts.isEmpty)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48),
+                  padding: const EdgeInsets.symmetric(vertical: 48),
                   child: Center(
-                    child: Text(
-                      'No posts yet',
-                      style: TextStyle(color: AppColors.textMuted),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: AppColors.textMuted.withOpacity(0.08),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.grid_on_outlined, color: AppColors.textMuted, size: 24),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _isOwnProfile ? 'No posts yet' : 'No posts here yet',
+                          style: const TextStyle(color: AppColors.textMuted),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -489,8 +520,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CachedNetworkImage(
                 imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
                 fit: BoxFit.cover,
-                placeholder: (_, __) =>
-                    Container(color: AppColors.surfaceBorder),
+                placeholder: (_, __) => Shimmer.fromColors(
+                  baseColor: AppColors.surfaceBorder,
+                  highlightColor: AppColors.surface,
+                  child: Container(color: Colors.white),
+                ),
                 errorWidget: (_, __, ___) => Container(
                   color: AppColors.surfaceBorder,
                   child: const Icon(
@@ -696,5 +730,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
         SnackBar(content: Text('Action failed: $e')),
       );
     }
+  }
+}
+
+/// Shown while a profile's data is loading — mimics the header layout
+/// (avatar, stats, bio, rank card, grid) instead of a bare spinner.
+class _ProfileSkeleton extends StatelessWidget {
+  const _ProfileSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.surfaceBorder,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 24, 18, 0),
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(radius: 46, backgroundColor: Colors.white),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(
+                    3,
+                    (_) => Column(
+                      children: [
+                        Container(height: 16, width: 28, color: Colors.white),
+                        const SizedBox(height: 6),
+                        Container(height: 10, width: 42, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(height: 18, width: 160, color: Colors.white),
+          const SizedBox(height: 10),
+          Container(height: 12, width: 100, color: Colors.white),
+          const SizedBox(height: 18),
+          Container(
+            height: 40,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            height: 46,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          ),
+          const SizedBox(height: 20),
+          GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 3,
+            mainAxisSpacing: 3,
+            childAspectRatio: 0.78,
+            children: List.generate(9, (_) => Container(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 }

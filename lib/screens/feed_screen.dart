@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shimmer/shimmer.dart';
 import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
@@ -118,8 +119,7 @@ class _FeedScreenState extends State<FeedScreen> {
         ],
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
+          ? const _FeedSkeleton()
           : RefreshIndicator(
               onRefresh: _load,
               color: AppColors.primary,
@@ -127,12 +127,9 @@ class _FeedScreenState extends State<FeedScreen> {
                   ? ListView(
                       children: const [
                         Padding(
-                          padding: EdgeInsets.only(top: 100),
+                          padding: EdgeInsets.only(top: 90),
                           child: Center(
-                            child: Text(
-                              'No posts yet — be the first to share!',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
+                            child: _EmptyFeedState(),
                           ),
                         ),
                       ],
@@ -174,6 +171,87 @@ class _FeedScreenState extends State<FeedScreen> {
                       },
                     ),
             ),
+    );
+  }
+}
+
+/// Shown while the first page of the feed is loading — mimics the shape of
+/// a couple of post cards instead of a bare spinner.
+class _FeedSkeleton extends StatelessWidget {
+  const _FeedSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.surfaceBorder,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 3,
+        itemBuilder: (_, __) => Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const CircleAvatar(radius: 18, backgroundColor: Colors.white),
+                    const SizedBox(width: 10),
+                    Container(height: 12, width: 120, color: Colors.white),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                AspectRatio(
+                  aspectRatio: 4 / 5,
+                  child: Container(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Empty-feed state — an icon-led nudge instead of a lone line of text,
+/// since this is often the very first thing a new user sees.
+class _EmptyFeedState extends StatelessWidget {
+  const _EmptyFeedState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.auto_awesome_outlined, color: AppColors.primary, size: 28),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'No posts yet',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Be the first to share — your AI coach\nreviews every post right after you do.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+        ),
+      ],
     );
   }
 }
