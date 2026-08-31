@@ -62,7 +62,11 @@ class _InviteScreenState extends State<InviteScreen> {
                   const SizedBox(height: 28),
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
-                    decoration: AppTheme.card(),
+                    decoration: AppTheme.glowCard(
+                      glowColor: AppColors.secondary,
+                      gradient: AppGradients.primary,
+                      glowOpacity: 0.2,
+                    ),
                     child: Column(
                       children: [
                         const Text('Your referral code', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),

@@ -4,12 +4,14 @@ import 'search_screen.dart';
 import 'profile/profile_screen.dart';
 import 'feed_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../models/mission.dart';
 import '../services/coin_service.dart';
 import '../services/mission_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/mission_card.dart';
+import '../widgets/viyo_toast.dart';
 import '../utils/coin_format.dart';
 import 'creator_dashboard_screen.dart';
 
@@ -154,7 +156,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
       body: Stack(
         children: [
           _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              ? const _MissionsSkeleton()
               : _loadError != null
                   ? Center(
                       child: Padding(
@@ -183,7 +185,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(20),
-                        decoration: AppTheme.card(),
+                        decoration: AppTheme.glowCard(glowColor: AppColors.primary, glowOpacity: 0.16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -255,25 +257,40 @@ class _MissionsScreenState extends State<MissionsScreen> {
                     ],
                   ),
                 ),
-          if (_toast != null)
-            Positioned(
-              top: 20,
-              left: 40,
-              right: 40,
-              child: Material(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(30),
-                elevation: 8,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  child: Text(
-                    _toast!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ),
+          if (_toast != null) ViyoToast(message: _toast!),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown while today's missions are loading — mimics the check-in card
+/// plus a few mission-card-shaped blocks instead of a bare spinner.
+class _MissionsSkeleton extends StatelessWidget {
+  const _MissionsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.surfaceBorder,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          Container(
+            height: 150,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          ),
+          const SizedBox(height: 20),
+          ...List.generate(
+            3,
+            (_) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              height: 110,
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
             ),
+          ),
         ],
       ),
     );

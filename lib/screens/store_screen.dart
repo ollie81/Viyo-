@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../models/app_badge.dart';
 import '../models/user_profile.dart';
 import '../services/coin_service.dart';
@@ -6,6 +7,7 @@ import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/coin_badge.dart';
+import '../widgets/viyo_toast.dart';
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -88,7 +90,7 @@ class _StoreScreenState extends State<StoreScreen> {
       body: Stack(
         children: [
           _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              ? const _StoreSkeleton()
               : RefreshIndicator(
                   onRefresh: _load,
                   color: AppColors.primary,
@@ -106,9 +108,7 @@ class _StoreScreenState extends State<StoreScreen> {
                         Container(
                           margin: const EdgeInsets.only(bottom: 14),
                           padding: const EdgeInsets.all(16),
-                          decoration: AppTheme.card(
-                            borderColor: AppColors.secondary.withOpacity(0.5),
-                          ),
+                          decoration: AppTheme.glowCard(glowColor: AppColors.secondary),
                           child: Row(
                             children: [
                               const Icon(Icons.verified, color: AppColors.secondary, size: 28),
@@ -217,24 +217,34 @@ class _StoreScreenState extends State<StoreScreen> {
                     ],
                   ),
                 ),
-          if (_toast != null)
-            Positioned(
-              top: 16,
-              left: 40,
-              right: 40,
-              child: Material(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(30),
-                elevation: 8,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  child: Text(_toast!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                ),
-              ),
-            ),
+          if (_toast != null) ViyoToast(message: _toast!),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown while the store's badges/profile are loading — mimics the real
+/// layout instead of a bare spinner.
+class _StoreSkeleton extends StatelessWidget {
+  const _StoreSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.surfaceBorder,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        physics: const NeverScrollableScrollPhysics(),
+        children: List.generate(
+          4,
+          (_) => Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            height: 96,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../models/transaction.dart';
 import '../models/user_profile.dart';
@@ -7,6 +8,7 @@ import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/coin_format.dart';
+import '../widgets/viyo_toast.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -89,7 +91,7 @@ class _WalletScreenState extends State<WalletScreen> {
     return Scaffold(
       appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Wallet')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const _WalletSkeleton()
           : Stack(
               children: [
                 RefreshIndicator(
@@ -100,7 +102,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(24),
-                        decoration: AppTheme.card(),
+                        decoration: AppTheme.glowCard(glowColor: AppColors.coin, glowOpacity: 0.2),
                         child: Column(
                           children: [
                             const Text('Your balance', style: TextStyle(color: AppColors.textSecondary)),
@@ -174,8 +176,22 @@ class _WalletScreenState extends State<WalletScreen> {
                               ..._transactions.map((tx) => Padding(
                                     padding: const EdgeInsets.only(bottom: 10),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: (tx.isEarn ? AppColors.success : Colors.white38)
+                                                .withOpacity(0.14),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Icon(
+                                            tx.isEarn ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                                            size: 16,
+                                            color: tx.isEarn ? AppColors.success : Colors.white54,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,25 +219,43 @@ class _WalletScreenState extends State<WalletScreen> {
                     ],
                   ),
                 ),
-                if (_toast != null)
-                  Positioned(
-                    top: 16,
-                    left: 40,
-                    right: 40,
-                    child: Material(
-                      color: AppColors.secondary,
-                      borderRadius: BorderRadius.circular(30),
-                      elevation: 8,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        child: Text(_toast!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                      ),
-                    ),
-                  ),
+                if (_toast != null) ViyoToast(message: _toast!),
               ],
             ),
+    );
+  }
+}
+
+/// Shown while wallet balance/transactions are loading — mimics the real
+/// layout instead of a bare spinner.
+class _WalletSkeleton extends StatelessWidget {
+  const _WalletSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.surfaceBorder,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          Container(
+            height: 140,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            height: 150,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            height: 180,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          ),
+        ],
+      ),
     );
   }
 }

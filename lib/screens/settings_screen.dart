@@ -21,42 +21,85 @@ class SettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Settings')),
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          ListTile(
-            leading: const Icon(Icons.card_giftcard, color: AppColors.secondary),
-            title: const Text('Invite Friends'),
-            trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const InviteScreen()),
+          _section([
+            _tile(
+              context,
+              icon: Icons.card_giftcard,
+              iconColor: AppColors.secondary,
+              title: 'Invite Friends',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const InviteScreen()),
+              ),
             ),
-          ),
-          const Divider(color: AppColors.surfaceBorder),
-          ListTile(
-            leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Notification Preferences'),
-            trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.privacy_tip_outlined),
-            title: const Text('Privacy'),
-            trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.help_outline),
-            title: const Text('Help & Support'),
-            trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-            onTap: () {},
-          ),
-          const Divider(color: AppColors.surfaceBorder),
-          ListTile(
-            leading: const Icon(Icons.logout, color: AppColors.danger),
-            title: const Text('Log Out', style: TextStyle(color: AppColors.danger)),
-            onTap: () => _logout(context),
-          ),
+          ]),
+          const SizedBox(height: 16),
+          _section([
+            _tile(
+              context,
+              icon: Icons.notifications_outlined,
+              title: 'Notification Preferences',
+              onTap: () {},
+            ),
+            _divider(),
+            _tile(
+              context,
+              icon: Icons.privacy_tip_outlined,
+              title: 'Privacy',
+              onTap: () {},
+            ),
+            _divider(),
+            _tile(
+              context,
+              icon: Icons.help_outline,
+              title: 'Help & Support',
+              onTap: () {},
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _section([
+            _tile(
+              context,
+              icon: Icons.logout,
+              iconColor: AppColors.danger,
+              title: 'Log Out',
+              titleColor: AppColors.danger,
+              showChevron: false,
+              onTap: () => _logout(context),
+            ),
+          ]),
         ],
       ),
+    );
+  }
+
+  Widget _section(List<Widget> children) {
+    return Container(
+      decoration: AppTheme.card(),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
+    );
+  }
+
+  Widget _divider() => const Divider(height: 1, color: AppColors.surfaceBorder);
+
+  Widget _tile(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? titleColor,
+    bool showChevron = true,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor ?? AppColors.textSecondary),
+      title: Text(title, style: TextStyle(color: titleColor)),
+      trailing: showChevron
+          ? const Icon(Icons.chevron_right, color: AppColors.textMuted)
+          : null,
+      onTap: onTap,
     );
   }
 }
