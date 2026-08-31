@@ -1,0 +1,34 @@
+name: PR Checks
+
+# Runs on every pull request against main. The only existing workflow
+# (main.yml) builds a release APK, but only on push to main or manual
+# dispatch — nothing runs against a PR before it merges. This adds a
+# fast sanity gate: dependencies resolve and static analysis passes.
+#
+# Deliberately does NOT run `flutter test`: the one existing test file
+# (test/widget_test.dart) is unmodified Flutter counter-app boilerplate
+# that references a MyApp widget this app doesn't have (the real entry
+# point is ViyoApp in lib/main.dart) — it would fail to compile for
+# reasons unrelated to any real change. Fix or replace that file with a
+# real test before adding `flutter test` here.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
