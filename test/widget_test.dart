@@ -1,30 +1,17 @@
-// This is a basic Flutter widget test.
+// Placeholder test. The previous version was unmodified Flutter
+// counter-app boilerplate that pumped a `MyApp` widget — this app has
+// never had one; its real entry point is `ViyoApp` in lib/main.dart.
+// That made both `flutter test` and `flutter analyze` fail for reasons
+// with nothing to do with the app itself.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+// A real widget test for ViyoApp needs Supabase mocked out first (its
+// SplashScreen reads SupabaseService.currentUserId on init), which is
+// a separate piece of work. This just keeps the test suite valid in
+// the meantime.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:viyo/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('placeholder — replace with real widget/unit tests', () {
+    expect(1 + 1, 2);
   });
 }
