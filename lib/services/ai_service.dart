@@ -101,6 +101,24 @@ class AiService {
     return Map<String, dynamic>.from(jsonDecode(res.body));
   }
 
+  /// Permanently deletes the creator's account: coach history, posts,
+  /// profile, and the underlying Supabase auth user. Irreversible.
+  static Future<void> deleteAccount() async {
+    final res = await http.delete(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/account'),
+      headers: await _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      String detail = 'Failed to delete account (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+  }
+
   /// The AI Creator Coach — called right after a post is created.
   /// Framed as coaching (what worked / what to improve / ideas / tip),
   /// not a numeric score, so it feels like mentorship, not grading.
