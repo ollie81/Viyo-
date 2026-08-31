@@ -16,20 +16,31 @@ class CoinBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.monetization_on, color: AppColors.coin, size: 18),
-        const SizedBox(width: 4),
-        Text(
-          _formatted,
-          style: TextStyle(
-            color: AppColors.coin,
-            fontWeight: FontWeight.bold,
-            fontSize: fontSize,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.coin.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.coin.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ShaderMask(
+            shaderCallback: (bounds) => AppGradients.coin.createShader(bounds),
+            child: Icon(Icons.monetization_on, color: Colors.white, size: fontSize + 4),
           ),
-        ),
-      ],
+          const SizedBox(width: 4),
+          Text(
+            _formatted,
+            style: TextStyle(
+              color: AppColors.coin,
+              fontWeight: FontWeight.bold,
+              fontSize: fontSize,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../models/creator_stats.dart';
 import '../models/user_profile.dart';
 import '../services/profile_service.dart';
@@ -46,8 +47,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading || _profile == null || _stats == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      return Scaffold(
+        appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Growth Dashboard')),
+        body: const _DashboardSkeleton(),
       );
     }
 
@@ -65,7 +67,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             // Level / rank progress
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: AppTheme.card(),
+              decoration: AppTheme.glowCard(
+                glowColor: AppColors.secondary,
+                gradient: AppGradients.primary,
+                glowOpacity: 0.18,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -85,14 +91,19 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                       CoinBadge(amount: p.pointsBalance, fontSize: 18),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: p.levelProgress,
-                      backgroundColor: Colors.white10,
-                      color: AppColors.secondary,
-                      minHeight: 6,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: p.levelProgress),
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, _) => LinearProgressIndicator(
+                        value: value,
+                        backgroundColor: Colors.white10,
+                        color: AppColors.secondary,
+                        minHeight: 6,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -150,10 +161,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             ),
             const SizedBox(height: 20),
 
-            // AI Coach nudge
+            // AI Coach nudge — the differentiating feature, so it should
+            // visually stand out rather than look like another stat card.
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.4)),
+              decoration: AppTheme.glowCard(glowColor: AppColors.secondary),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -196,12 +208,67 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 6),
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 17),
+          ),
+          const SizedBox(height: 8),
           Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
         ],
       ),
     );
   }
+}
+
+/// Skeleton shown while the dashboard's profile/stats are loading — mimics
+/// the real layout instead of a bare spinner, so the screen doesn't "pop"
+/// once data arrives.
+class _DashboardSkeleton extends StatelessWidget {
+  const _DashboardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.surfaceBorder,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          _block(height: 128),
+          const SizedBox(height: 16),
+          _block(height: 16, width: 100),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.6,
+            children: List.generate(6, (_) => _block()),
+          ),
+          const SizedBox(height: 20),
+          _block(height: 64),
+          const SizedBox(height: 20),
+          _block(height: 110),
+        ],
+      ),
+    );
+  }
+
+  Widget _block({double height = 80, double? width}) => Container(
+        height: height,
+        width: width,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+      );
 }
