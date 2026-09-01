@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../models/caption_variants.dart';
 import '../../models/hook_feedback.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
@@ -27,15 +28,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   bool _improvingCaption = false;
   bool _checkingHook = false;
   HookFeedback? _hookResult;
+  bool _generatingVariants = false;
+  CaptionVariants? _captionVariants;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    // Clear a stale verdict once the caption changes, so the app never
-    // shows hook feedback for text that no longer matches what's typed.
+    // Clear stale results once the caption changes, so the app never
+    // shows feedback/variants for text that no longer matches what's typed.
     _caption.addListener(() {
       if (_hookResult != null) setState(() => _hookResult = null);
+      if (_captionVariants != null) setState(() => _captionVariants = null);
     });
   }
 
@@ -79,6 +83,29 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() => _error = 'Could not check hook: $e');
     } finally {
       if (mounted) setState(() => _checkingHook = false);
+    }
+  }
+
+  Future<void> _generateCaptionVariants() async {
+    final draft = _caption.text.trim();
+    if (draft.isEmpty) return;
+    setState(() {
+      _generatingVariants = true;
+      _captionVariants = null;
+    });
+    try {
+      String niche = '';
+      final userId = SupabaseService.currentUserId;
+      if (userId != null) {
+        final profile = await ProfileService.getProfile(userId);
+        niche = profile.niche;
+      }
+      final result = await AiService.getCaptionVariants(draft: draft, niche: niche);
+      if (mounted) setState(() => _captionVariants = result);
+    } catch (e) {
+      setState(() => _error = 'Could not generate captions: $e');
+    } finally {
+      if (mounted) setState(() => _generatingVariants = false);
     }
   }
 
@@ -269,8 +296,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               decoration: const InputDecoration(hintText: "What's on your mind, creator?"),
             ),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 0,
               children: [
                 TextButton.icon(
                   onPressed: _checkingHook ? null : _checkHook,
@@ -281,6 +310,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   label: Text(
                     _checkingHook ? 'Checking...' : 'Check My Hook',
                     style: const TextStyle(color: AppColors.primary),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _generatingVariants ? null : _generateCaptionVariants,
+                  icon: _generatingVariants
+                      ? const SizedBox(
+                          height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.lightbulb_outline, size: 16, color: AppColors.coin),
+                  label: Text(
+                    _generatingVariants ? 'Generating...' : 'Caption Ideas',
+                    style: const TextStyle(color: AppColors.coin),
                   ),
                 ),
                 TextButton.icon(
@@ -296,6 +336,46 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               ],
             ),
+            if (_captionVariants != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: AppTheme.card(borderColor: AppColors.coin.withOpacity(0.4)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _captionVariants!.personalized
+                          ? 'Based on what has worked for you before:'
+                          : 'A few options to try:',
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    ..._captionVariants!.variants.map(
+                      (variant) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: InkWell(
+                          onTap: () => setState(() {
+                            _caption.text = variant;
+                            _captionVariants = null;
+                          }),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceBorder.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(variant, style: const TextStyle(fontSize: 13)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (_hookResult != null) ...[
               const SizedBox(height: 6),
               Container(

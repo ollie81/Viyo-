@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
+import '../models/caption_variants.dart';
 import '../models/hook_feedback.dart';
 import '../models/post_feedback.dart';
 import 'supabase_service.dart';
@@ -171,6 +172,29 @@ class AiService {
       throw Exception('Failed to analyze post (${res.statusCode})');
     }
     return PostFeedback.fromAiResponse(jsonDecode(res.body));
+  }
+
+  /// Caption/title variants for a rough idea — grounded in the creator's
+  /// own best-performing past captions when they have enough post
+  /// history, generic otherwise (see CaptionVariants.personalized).
+  static Future<CaptionVariants> getCaptionVariants({
+    required String draft,
+    String niche = '',
+  }) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/caption-variants'),
+      headers: await _headers(),
+      body: jsonEncode({'draft': draft, 'niche': niche}),
+    );
+    if (res.statusCode != 200) {
+      String detail = 'Failed to generate captions (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+    return CaptionVariants.fromAiResponse(jsonDecode(res.body));
   }
 }
 
