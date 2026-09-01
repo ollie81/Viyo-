@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../../constants/supabase_constants.dart';
 import '../../models/post.dart';
@@ -177,6 +178,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   double get _deadAirRemoved =>
       (_selectedClip?['dead_air_removed_seconds'] as num?)?.toDouble() ?? 0.0;
 
+  String? get _quoteCardUrl => _selectedClip?['quote_card_url'] as String?;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -348,6 +351,27 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                             ),
                           ],
                         ),
+                      ),
+                    ],
+                    if (_quoteCardUrl != null) ...[
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Quote card',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: Image.network(_quoteCardUrl!, fit: BoxFit.cover),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => Share.share(_quoteCardUrl!),
+                        icon: const Icon(Icons.share_outlined, size: 16),
+                        label: const Text('Share Quote Card'),
                       ),
                     ],
                     const SizedBox(height: 16),
