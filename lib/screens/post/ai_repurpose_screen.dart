@@ -12,8 +12,9 @@ import '../../theme/app_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'video_coach_screen.dart';
 
-/// AI Repurposer — upload a longer video, get back one AI-selected
-/// highlight clip, auto-cropped to 9:16 with burned-in captions.
+/// AI Repurposer — upload a longer video, get back up to 3 ranked
+/// highlight clips (pick your favorite), each auto-cropped to 9:16 with
+/// burned-in captions and dead air trimmed out.
 ///
 /// Fix for "Broken pipe" error:
 ///   Previously the video was streamed directly to Railway via multipart,
@@ -41,6 +42,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   double _uploadProgress = 0;
   String? _error;
   Map<String, dynamic>? _result;
+  int _selectedClipIndex = 0;
   String? _videoId;
   bool _posting = false;
 
@@ -109,7 +111,10 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       );
 
       if (response.statusCode == 200) {
-        setState(() => _result = jsonDecode(response.body));
+        setState(() {
+          _result = jsonDecode(response.body);
+          _selectedClipIndex = 0;
+        });
       } else {
         final body = jsonDecode(response.body);
         throw Exception(body['detail'] ?? 'Server returned ${response.statusCode}');
@@ -128,12 +133,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   Future<void> _postToFeed() async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null || _result == null) return;
+    final clip = _selectedClip;
+    if (userId == null || clip == null) return;
 
     setState(() => _posting = true);
     try {
-      final videoUrl = _result!['processed_video_url'] as String;
-      final title = _result!['highlight']?['suggested_title'] as String? ?? '';
+      final videoUrl = clip['processed_video_url'] as String;
+      final title = clip['highlight']?['suggested_title'] as String? ?? '';
 
       await PostService.createPost(
         userId: userId,
@@ -163,8 +169,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   bool get _isBusy => _isUploading || _isProcessing;
 
+  List<dynamic> get _clips => (_result?['clips'] as List<dynamic>?) ?? const [];
+
+  Map<String, dynamic>? get _selectedClip =>
+      _selectedClipIndex < _clips.length ? _clips[_selectedClipIndex] as Map<String, dynamic> : null;
+
   double get _deadAirRemoved =>
-      (_result?['dead_air_removed_seconds'] as num?)?.toDouble() ?? 0.0;
+      (_selectedClip?['dead_air_removed_seconds'] as num?)?.toDouble() ?? 0.0;
 
   @override
   Widget build(BuildContext context) {
@@ -179,8 +190,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Upload a longer video — the AI finds the best highlight, '
-              'crops it to 9:16, and adds burned-in captions.',
+              'Upload a longer video — the AI finds up to 3 ranked highlight '
+              'clips, each cropped to 9:16 with burned-in captions and dead '
+              'air trimmed out.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 6),
@@ -242,8 +254,61 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
             ],
 
-            if (_result != null) ...[
+            if (_clips.isNotEmpty) ...[
               const SizedBox(height: 24),
+              if (_clips.length > 1) ...[
+                const Text(
+                  'Pick a clip — ranked best first',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 64,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _clips.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) {
+                      final clip = _clips[i] as Map<String, dynamic>;
+                      final score = (clip['highlight']?['score'] as num?)?.toInt() ?? 0;
+                      final selected = i == _selectedClipIndex;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedClipIndex = i),
+                        child: Container(
+                          width: 84,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: selected ? AppColors.primary.withOpacity(0.15) : AppColors.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selected ? AppColors.primary : AppColors.surfaceBorder,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Clip ${i + 1}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Score $score',
+                                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: AppTheme.card(borderColor: AppColors.primary.withOpacity(0.4)),
@@ -251,12 +316,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _result!['highlight']?['suggested_title'] ?? 'Clip ready',
+                      _selectedClip?['highlight']?['suggested_title'] ?? 'Clip ready',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _result!['highlight']?['reason'] ?? '',
+                      _selectedClip?['highlight']?['reason'] ?? '',
                       style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
                     if (_deadAirRemoved > 0.3) ...[
