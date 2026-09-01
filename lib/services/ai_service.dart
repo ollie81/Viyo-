@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
+import '../models/hook_feedback.dart';
 import '../models/post_feedback.dart';
 import 'supabase_service.dart';
 
@@ -117,6 +118,34 @@ class AiService {
       } catch (_) {}
       throw Exception(detail);
     }
+  }
+
+  /// Fast, narrow check on just the opening — the caption's first line,
+  /// or (with imageUrl) a video's first frame — not the whole post.
+  /// Meant for a quick pre-post check, not the full analyzePost review.
+  static Future<HookFeedback> analyzeHook({
+    required String hookText,
+    String niche = '',
+    String? imageUrl,
+  }) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/analyze-hook'),
+      headers: await _headers(),
+      body: jsonEncode({
+        'hook_text': hookText,
+        'niche': niche,
+        if (imageUrl != null) 'image_url': imageUrl,
+      }),
+    );
+    if (res.statusCode != 200) {
+      String detail = 'Failed to check hook (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+    return HookFeedback.fromAiResponse(jsonDecode(res.body));
   }
 
   /// The AI Creator Coach — called right after a post is created.

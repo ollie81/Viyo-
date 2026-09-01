@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../models/hook_feedback.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
 import '../../services/post_service.dart';
@@ -24,7 +25,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   File? _mediaFile;
   bool _posting = false;
   bool _improvingCaption = false;
+  bool _checkingHook = false;
+  HookFeedback? _hookResult;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Clear a stale verdict once the caption changes, so the app never
+    // shows hook feedback for text that no longer matches what's typed.
+    _caption.addListener(() {
+      if (_hookResult != null) setState(() => _hookResult = null);
+    });
+  }
 
   Future<void> _pickMedia(ImageSource source, {required bool video}) async {
     final picker = ImagePicker();
@@ -49,6 +62,34 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() => _error = 'Could not improve caption: $e');
     } finally {
       if (mounted) setState(() => _improvingCaption = false);
+    }
+  }
+
+  Future<void> _checkHook() async {
+    final hookText = _caption.text.trim();
+    if (hookText.isEmpty) return;
+    setState(() {
+      _checkingHook = true;
+      _hookResult = null;
+    });
+    try {
+      final result = await AiService.analyzeHook(hookText: hookText);
+      if (mounted) setState(() => _hookResult = result);
+    } catch (e) {
+      setState(() => _error = 'Could not check hook: $e');
+    } finally {
+      if (mounted) setState(() => _checkingHook = false);
+    }
+  }
+
+  Color _hookVerdictColor(String verdict) {
+    switch (verdict) {
+      case 'strong':
+        return AppColors.success;
+      case 'weak':
+        return AppColors.danger;
+      default:
+        return AppColors.coin;
     }
   }
 
@@ -228,20 +269,101 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               decoration: const InputDecoration(hintText: "What's on your mind, creator?"),
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _improvingCaption ? null : _improveCaption,
-                icon: _improvingCaption
-                    ? const SizedBox(
-                        height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome, size: 16, color: AppColors.secondary),
-                label: Text(
-                  _improvingCaption ? 'Improving...' : 'Improve with AI',
-                  style: const TextStyle(color: AppColors.secondary),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: _checkingHook ? null : _checkHook,
+                  icon: _checkingHook
+                      ? const SizedBox(
+                          height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.bolt, size: 16, color: AppColors.primary),
+                  label: Text(
+                    _checkingHook ? 'Checking...' : 'Check My Hook',
+                    style: const TextStyle(color: AppColors.primary),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _improvingCaption ? null : _improveCaption,
+                  icon: _improvingCaption
+                      ? const SizedBox(
+                          height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.auto_awesome, size: 16, color: AppColors.secondary),
+                  label: Text(
+                    _improvingCaption ? 'Improving...' : 'Improve with AI',
+                    style: const TextStyle(color: AppColors.secondary),
+                  ),
+                ),
+              ],
+            ),
+            if (_hookResult != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: AppTheme.card(
+                  borderColor: _hookVerdictColor(_hookResult!.verdict).withOpacity(0.4),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _hookVerdictColor(_hookResult!.verdict).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _hookResult!.verdict.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: _hookVerdictColor(_hookResult!.verdict),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _hookResult!.reason,
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    ),
+                    if (_hookResult!.rewrites.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Try instead:',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 6),
+                      ..._hookResult!.rewrites.map(
+                        (rewrite) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: InkWell(
+                            onTap: () => setState(() {
+                              _caption.text = rewrite;
+                              _hookResult = null;
+                            }),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceBorder.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(rewrite, style: const TextStyle(fontSize: 13)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
