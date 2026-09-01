@@ -4,6 +4,7 @@ import '../constants/supabase_constants.dart';
 import '../models/caption_variants.dart';
 import '../models/hook_feedback.dart';
 import '../models/post_feedback.dart';
+import '../models/trending_result.dart';
 import '../models/voice_check_result.dart';
 import '../models/weekly_report.dart';
 import 'supabase_service.dart';
@@ -237,6 +238,24 @@ class AiService {
       throw Exception(detail);
     }
     return VoiceCheckResult.fromJson(jsonDecode(res.body));
+  }
+
+  /// What's actually getting engagement right now among other creators
+  /// in this niche, on this app — the only "trending" signal available
+  /// without a TikTok/Instagram/YouTube integration.
+  static Future<TrendingResult> getTrending(String niche) async {
+    final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/trending')
+        .replace(queryParameters: {'niche': niche});
+    final res = await http.get(uri, headers: await _headers());
+    if (res.statusCode != 200) {
+      String detail = 'Failed to load trends (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+    return TrendingResult.fromJson(jsonDecode(res.body));
   }
 }
 
