@@ -7,6 +7,7 @@ import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/coin_badge.dart';
+import '../widgets/guest_gate.dart';
 import '../widgets/viyo_toast.dart';
 
 class StoreScreen extends StatefulWidget {
@@ -48,6 +49,7 @@ class _StoreScreenState extends State<StoreScreen> {
   Future<void> _purchasePremium() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    if (!await GuestGate.allow(context, action: 'buy Premium')) return;
     setState(() => _purchasingPremium = true);
     try {
       final result = await ProfileService.purchasePremium(userId: userId, cost: _premiumCost);
@@ -74,6 +76,7 @@ class _StoreScreenState extends State<StoreScreen> {
   Future<void> _purchase(AppBadge badge) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    if (!await GuestGate.allow(context, action: 'buy badges')) return;
     final result = await CoinService.purchaseBadge(userId: userId, badgeId: badge.id);
     if (result['success'] == true) {
       _showToast('Unlocked: ${badge.name}!');

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/ai_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'guest_gate.dart';
 
 /// A daily content-idea nudge on the Growth Dashboard. Reuses the
 /// existing /content-ideas endpoint rather than needing new backend
@@ -38,6 +40,13 @@ class _DailyIdeaCardState extends State<DailyIdeaCard> {
   }
 
   Future<void> _load({bool forceRefresh = false}) async {
+    // Guests never trigger the OpenAI call at all — not just blocked at
+    // the button, skipped entirely, since this fires automatically on
+    // dashboard load and AI features are account-gated.
+    if (SupabaseService.isGuest) {
+      setState(() => _loading = false);
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -99,7 +108,7 @@ class _DailyIdeaCardState extends State<DailyIdeaCard> {
                 ),
               ),
               const Spacer(),
-              if (!_loading)
+              if (!_loading && !SupabaseService.isGuest)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.refresh, size: 16, color: AppColors.textMuted),
@@ -109,7 +118,17 @@ class _DailyIdeaCardState extends State<DailyIdeaCard> {
             ],
           ),
           const SizedBox(height: 10),
-          if (_loading)
+          if (SupabaseService.isGuest)
+            GestureDetector(
+              onTap: () async {
+                if (await GuestGate.allow(context, action: 'get AI content ideas')) _load();
+              },
+              child: const Text(
+                'Create an account to unlock daily AI content ideas',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12, decoration: TextDecoration.underline),
+              ),
+            )
+          else if (_loading)
             const SizedBox(
               height: 40,
               child: Center(

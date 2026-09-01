@@ -7,6 +7,7 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/guest_gate.dart';
 import '../widgets/viyo_glass_bottom_nav.dart';
 import 'post/post_detail_screen.dart';
 import 'profile/profile_screen.dart';
@@ -72,6 +73,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    if (!await GuestGate.allow(context, action: 'like posts')) return;
 
     try {
       if (post.likedByMe) {

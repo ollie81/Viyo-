@@ -9,6 +9,7 @@ import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coin_badge.dart';
+import '../../widgets/guest_gate.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../wallet_screen.dart';
@@ -75,6 +76,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final myId = SupabaseService.currentUserId;
     final targetId = widget.userId;
     if (myId == null || targetId == null) return;
+    if (!await GuestGate.allow(context, action: 'follow creators')) return;
     if (_isFollowing) {
       await ProfileService.unfollow(myId, targetId);
     } else {
@@ -146,6 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _likePost(Post post) async {
+    if (!await GuestGate.allow(context, action: 'like posts')) return;
     try {
       await PostService.toggleLike(post);
       await _load();

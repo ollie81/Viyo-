@@ -4,6 +4,7 @@ import '../../models/post.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/guest_gate.dart';
 import '../../widgets/post_card.dart';
 
 class PostDetailScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final userId = SupabaseService.currentUserId;
     final content = _commentCtrl.text.trim();
     if (userId == null || content.isEmpty) return;
+    if (!await GuestGate.allow(context, action: 'comment')) return;
 
     setState(() => _sending = true);
     try {
@@ -52,6 +54,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _like() async {
+    if (!await GuestGate.allow(context, action: 'like posts')) return;
     try {
       await PostService.toggleLike(widget.post);
       await _load();
