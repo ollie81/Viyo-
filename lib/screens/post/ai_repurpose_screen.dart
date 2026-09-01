@@ -141,12 +141,14 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     try {
       final videoUrl = clip['processed_video_url'] as String;
       final title = clip['highlight']?['suggested_title'] as String? ?? '';
+      final thumbnailUrl = clip['thumbnail_url'] as String?;
 
       await PostService.createPost(
         userId: userId,
         type: PostType.video,
         caption: title,
         mediaUrl: videoUrl,
+        thumbnailUrl: thumbnailUrl,
         durationSeconds: 60,
       );
 
@@ -266,7 +268,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
-                  height: 64,
+                  height: 72,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _clips.length,
@@ -274,11 +276,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                     itemBuilder: (_, i) {
                       final clip = _clips[i] as Map<String, dynamic>;
                       final score = (clip['highlight']?['score'] as num?)?.toInt() ?? 0;
+                      final thumbUrl = clip['thumbnail_url'] as String?;
                       final selected = i == _selectedClipIndex;
                       return GestureDetector(
                         onTap: () => setState(() => _selectedClipIndex = i),
                         child: Container(
-                          width: 84,
+                          width: 108,
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             color: selected ? AppColors.primary.withOpacity(0.15) : AppColors.surface,
@@ -287,21 +290,49 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                               color: selected ? AppColors.primary : AppColors.surfaceBorder,
                             ),
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          child: Row(
                             children: [
-                              Text(
-                                'Clip ${i + 1}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: SizedBox(
+                                  width: 34,
+                                  height: 56,
+                                  child: thumbUrl != null
+                                      ? Image.network(
+                                          thumbUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: AppColors.surfaceBorder,
+                                            child: const Icon(Icons.movie_outlined, size: 14, color: AppColors.textMuted),
+                                          ),
+                                        )
+                                      : Container(
+                                          color: AppColors.surfaceBorder,
+                                          child: const Icon(Icons.movie_outlined, size: 14, color: AppColors.textMuted),
+                                        ),
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Score $score',
-                                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Clip ${i + 1}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: selected ? AppColors.primary : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Score $score',
+                                      style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
