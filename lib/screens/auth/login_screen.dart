@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../home/home_shell.dart';
 import 'signup_screen.dart';
@@ -19,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   String? _error;
   bool _showResend = false;
+  bool _continuingAsGuest = false;
 
   Future<void> _login() async {
     setState(() {
@@ -60,6 +62,42 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Reaching this screen at all means the app's automatic anonymous
+  /// sign-in (see main.dart's SplashScreen) already failed once — could be
+  /// a real problem (anonymous sign-ins disabled in the Supabase project)
+  /// or just a transient network blip. This gives a visible way to retry
+  /// it instead of silently stranding someone on a login wall with no
+  /// indication guest browsing was ever an option.
+  Future<void> _continueAsGuest() async {
+    setState(() {
+      _continuingAsGuest = true;
+      _error = null;
+    });
+    try {
+      final response = await AuthService.signInAnonymously();
+      final userId = response.user?.id;
+      if (userId == null) {
+        throw Exception('No session returned');
+      }
+
+      try {
+        await ProfileService.getProfile(userId);
+      } catch (_) {
+        await AuthService.createGuestProfile(userId);
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeShell()),
+        (_) => false,
+      );
+    } catch (e) {
+      setState(() => _error = 'Could not continue as guest: $e');
+    } finally {
+      if (mounted) setState(() => _continuingAsGuest = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,7 +123,28 @@ class _LoginScreenState extends State<LoginScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textSecondary),
               ),
-              const SizedBox(height: 36),
+              const SizedBox(height: 28),
+              OutlinedButton(
+                onPressed: _continuingAsGuest ? null : _continueAsGuest,
+                child: _continuingAsGuest
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Continue as Guest'),
+              ),
+              const SizedBox(height: 20),
+              const Row(
+                children: [
+                  Expanded(child: Divider(color: AppColors.surfaceBorder)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('or', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ),
+                  Expanded(child: Divider(color: AppColors.surfaceBorder)),
+                ],
+              ),
+              const SizedBox(height: 20),
               TextField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
