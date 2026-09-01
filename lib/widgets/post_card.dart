@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:share_plus/share_plus.dart';
 import '../models/post.dart';
@@ -152,8 +153,11 @@ class PostCard extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) =>
-                          Container(color: AppColors.surfaceBorder),
+                      placeholder: (_, __) => Shimmer.fromColors(
+                        baseColor: AppColors.surfaceBorder,
+                        highlightColor: AppColors.surface,
+                        child: Container(color: Colors.white),
+                      ),
                       errorWidget: (_, __, ___) => Container(
                         color: AppColors.surfaceBorder,
                         child: const Icon(
@@ -214,14 +218,7 @@ class PostCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
             child: Row(
               children: [
-                _actionButton(
-                  icon: post.likedByMe ? Icons.favorite : Icons.favorite_border,
-                  color: post.likedByMe
-                      ? AppColors.secondary
-                      : AppColors.textSecondary,
-                  label: '${post.likeCount}',
-                  onTap: onLike,
-                ),
+                _likeButton(),
                 const SizedBox(width: 18),
                 _actionButton(
                   icon: Icons.mode_comment_outlined,
@@ -259,6 +256,34 @@ class PostCard extends StatelessWidget {
     final m = seconds ~/ 60;
     final s = seconds % 60;
     return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  /// The like button gets its own widget (rather than going through
+  /// _actionButton) so the heart can "pop" on tap — the single most
+  /// frequent interaction in the app deserves feedback beyond a color swap.
+  Widget _likeButton() {
+    final color = post.likedByMe ? AppColors.secondary : AppColors.textSecondary;
+    return GestureDetector(
+      onTap: onLike,
+      child: Row(
+        children: [
+          TweenAnimationBuilder<double>(
+            key: ValueKey(post.likedByMe),
+            tween: Tween(begin: post.likedByMe ? 1.4 : 1.0, end: 1.0),
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+            child: Icon(
+              post.likedByMe ? Icons.favorite : Icons.favorite_border,
+              size: 20,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text('${post.likeCount}', style: TextStyle(color: color, fontSize: 13)),
+        ],
+      ),
+    );
   }
 
   Widget _actionButton({

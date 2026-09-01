@@ -2,6 +2,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../models/caption_variants.dart';
+import '../../models/hook_feedback.dart';
+import '../../models/voice_check_result.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
 import '../../services/post_service.dart';
@@ -24,7 +27,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   File? _mediaFile;
   bool _posting = false;
   bool _improvingCaption = false;
+  bool _checkingHook = false;
+  HookFeedback? _hookResult;
+  bool _generatingVariants = false;
+  CaptionVariants? _captionVariants;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Clear stale results once the caption changes, so the app never
+    // shows feedback/variants for text that no longer matches what's typed.
+    _caption.addListener(() {
+      if (_hookResult != null) setState(() => _hookResult = null);
+      if (_captionVariants != null) setState(() => _captionVariants = null);
+    });
+  }
 
   Future<void> _pickMedia(ImageSource source, {required bool video}) async {
     final picker = ImagePicker();
@@ -52,6 +70,112 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
+  Future<void> _checkHook() async {
+    final hookText = _caption.text.trim();
+    if (hookText.isEmpty) return;
+    setState(() {
+      _checkingHook = true;
+      _hookResult = null;
+    });
+    try {
+      final result = await AiService.analyzeHook(hookText: hookText);
+      if (mounted) setState(() => _hookResult = result);
+    } catch (e) {
+      setState(() => _error = 'Could not check hook: $e');
+    } finally {
+      if (mounted) setState(() => _checkingHook = false);
+    }
+  }
+
+  Future<void> _generateCaptionVariants() async {
+    final draft = _caption.text.trim();
+    if (draft.isEmpty) return;
+    setState(() {
+      _generatingVariants = true;
+      _captionVariants = null;
+    });
+    try {
+      String niche = '';
+      final userId = SupabaseService.currentUserId;
+      if (userId != null) {
+        final profile = await ProfileService.getProfile(userId);
+        niche = profile.niche;
+      }
+      final result = await AiService.getCaptionVariants(draft: draft, niche: niche);
+      if (mounted) setState(() => _captionVariants = result);
+    } catch (e) {
+      setState(() => _error = 'Could not generate captions: $e');
+    } finally {
+      if (mounted) setState(() => _generatingVariants = false);
+    }
+  }
+
+  Color _hookVerdictColor(String verdict) {
+    switch (verdict) {
+      case 'strong':
+        return AppColors.success;
+      case 'weak':
+        return AppColors.danger;
+      default:
+        return AppColors.coin;
+    }
+  }
+
+  /// Runs the voice-consistency check before posting and, if it flags
+  /// the draft as off-brand, lets the creator pick the suggested
+  /// rewrite or post their draft as-is. Returns false when the caption
+  /// was swapped for the rewrite — the creator can review it and press
+  /// Post again rather than it silently going out changed.
+  /// Never blocks posting on its own failure (no profile yet, rate
+  /// limited, backend hiccup) — this is a nudge, not a gate.
+  Future<bool> _checkVoiceBeforePosting(String caption) async {
+    if (caption.isEmpty) return true;
+    try {
+      final result = await AiService.checkVoice(caption);
+      if (!result.hasVoiceProfile || result.consistent != false) return true;
+      if (!mounted) return true;
+
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("This doesn't sound quite like you"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(result.reason ?? 'This reads differently from your usual posts.'),
+              if (result.suggestedRewrite != null) ...[
+                const SizedBox(height: 12),
+                const Text('Suggested rewrite:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                const SizedBox(height: 4),
+                Text(result.suggestedRewrite!, style: const TextStyle(fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('keep'),
+              child: const Text('Post as is'),
+            ),
+            if (result.suggestedRewrite != null)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('rewrite'),
+                child: const Text('Use rewrite'),
+              ),
+          ],
+        ),
+      );
+
+      if (choice == 'rewrite' && result.suggestedRewrite != null) {
+        setState(() => _caption.text = result.suggestedRewrite!);
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
   Future<void> _submit() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
@@ -68,6 +192,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _posting = true;
       _error = null;
     });
+
+    final shouldProceed = await _checkVoiceBeforePosting(_caption.text.trim());
+    if (!shouldProceed) {
+      if (mounted) setState(() => _posting = false);
+      return;
+    }
 
     try {
       String? mediaUrl;
@@ -228,20 +358,154 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               decoration: const InputDecoration(hintText: "What's on your mind, creator?"),
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _improvingCaption ? null : _improveCaption,
-                icon: _improvingCaption
-                    ? const SizedBox(
-                        height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_awesome, size: 16, color: AppColors.secondary),
-                label: Text(
-                  _improvingCaption ? 'Improving...' : 'Improve with AI',
-                  style: const TextStyle(color: AppColors.secondary),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 0,
+              children: [
+                TextButton.icon(
+                  onPressed: _checkingHook ? null : _checkHook,
+                  icon: _checkingHook
+                      ? const SizedBox(
+                          height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.bolt, size: 16, color: AppColors.primary),
+                  label: Text(
+                    _checkingHook ? 'Checking...' : 'Check My Hook',
+                    style: const TextStyle(color: AppColors.primary),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _generatingVariants ? null : _generateCaptionVariants,
+                  icon: _generatingVariants
+                      ? const SizedBox(
+                          height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.lightbulb_outline, size: 16, color: AppColors.coin),
+                  label: Text(
+                    _generatingVariants ? 'Generating...' : 'Caption Ideas',
+                    style: const TextStyle(color: AppColors.coin),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _improvingCaption ? null : _improveCaption,
+                  icon: _improvingCaption
+                      ? const SizedBox(
+                          height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.auto_awesome, size: 16, color: AppColors.secondary),
+                  label: Text(
+                    _improvingCaption ? 'Improving...' : 'Improve with AI',
+                    style: const TextStyle(color: AppColors.secondary),
+                  ),
+                ),
+              ],
+            ),
+            if (_captionVariants != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: AppTheme.card(borderColor: AppColors.coin.withOpacity(0.4)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _captionVariants!.personalized
+                          ? 'Based on what has worked for you before:'
+                          : 'A few options to try:',
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    ..._captionVariants!.variants.map(
+                      (variant) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: InkWell(
+                          onTap: () => setState(() {
+                            _caption.text = variant;
+                            _captionVariants = null;
+                          }),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceBorder.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(variant, style: const TextStyle(fontSize: 13)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+            ],
+            if (_hookResult != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: AppTheme.card(
+                  borderColor: _hookVerdictColor(_hookResult!.verdict).withOpacity(0.4),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _hookVerdictColor(_hookResult!.verdict).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _hookResult!.verdict.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: _hookVerdictColor(_hookResult!.verdict),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _hookResult!.reason,
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    ),
+                    if (_hookResult!.rewrites.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Try instead:',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 6),
+                      ..._hookResult!.rewrites.map(
+                        (rewrite) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: InkWell(
+                            onTap: () => setState(() {
+                              _caption.text = rewrite;
+                              _hookResult = null;
+                            }),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceBorder.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(rewrite, style: const TextStyle(fontSize: 13)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),

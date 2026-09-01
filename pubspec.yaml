@@ -26,6 +26,7 @@ dependencies:
 
   # State
   provider: ^6.1.2
+  shared_preferences: ^2.2.0
 
   # HTTP (for FastAPI AI backend)
   http: ^1.2.1

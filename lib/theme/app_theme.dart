@@ -20,6 +20,23 @@ class AppColors {
   static const textMuted = Colors.white38;
 }
 
+/// Reusable gradients for surfaces that should feel like a "hero" — the
+/// level card, the AI Coach nudge — instead of a flat AppColors.surface
+/// fill. Kept separate from AppColors so plain cards stay untouched.
+class AppGradients {
+  static const primary = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF17173A), Color(0xFF1B1440)],
+  );
+
+  static const coin = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFFDE68A), AppColors.coin],
+  );
+}
+
 class AppTheme {
   static ThemeData get dark {
     return ThemeData(
@@ -90,5 +107,28 @@ class AppTheme {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: borderColor ?? AppColors.surfaceBorder),
+      );
+
+  /// A card with a soft, colored glow — for the one or two surfaces per
+  /// screen that should draw the eye (a hero stat, the AI Coach nudge),
+  /// not for every card everywhere.
+  static BoxDecoration glowCard({
+    required Color glowColor,
+    Gradient? gradient,
+    double glowOpacity = 0.28,
+  }) =>
+      BoxDecoration(
+        color: gradient == null ? AppColors.surface : null,
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: glowColor.withOpacity(0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: glowColor.withOpacity(glowOpacity),
+            blurRadius: 24,
+            spreadRadius: -4,
+            offset: const Offset(0, 10),
+          ),
+        ],
       );
 }

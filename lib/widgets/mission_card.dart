@@ -72,11 +72,16 @@ class MissionCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: mission.progress,
-                    backgroundColor: Colors.white10,
-                    color: mission.claimed ? Colors.white24 : AppColors.primary,
-                    minHeight: 5,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: mission.progress),
+                    duration: const Duration(milliseconds: 700),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) => LinearProgressIndicator(
+                      value: value,
+                      backgroundColor: Colors.white10,
+                      color: mission.claimed ? Colors.white24 : AppColors.primary,
+                      minHeight: 5,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),

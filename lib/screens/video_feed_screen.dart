@@ -159,12 +159,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
               child: CircularProgressIndicator(color: AppColors.primary),
             )
           : _posts.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No videos yet',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                )
+              ? const _EmptyVideoState()
               : PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
@@ -449,16 +444,7 @@ class _VideoPageState extends State<_VideoPage> {
             top: false,
             child: Column(
               children: [
-                _ActionIcon(
-                  icon: _liked
-                      ? Icons.favorite
-                      : Icons.favorite_border,
-                  color: _liked
-                      ? AppColors.secondary
-                      : Colors.white,
-                  label: '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
-                  onTap: widget.onLike,
-                ),
+                _likeAction(post),
                 const SizedBox(height: 18),
                 _ActionIcon(
                   icon: Icons.mode_comment_outlined,
@@ -540,6 +526,36 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
+  /// Its own widget (rather than the generic _ActionIcon) so the heart can
+  /// "pop" on tap, matching the same feedback the feed's PostCard gives.
+  Widget _likeAction(Post post) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onLike,
+      child: Column(
+        children: [
+          TweenAnimationBuilder<double>(
+            key: ValueKey(_liked),
+            tween: Tween(begin: _liked ? 1.4 : 1.0, end: 1.0),
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+            child: Icon(
+              _liked ? Icons.favorite : Icons.favorite_border,
+              color: _liked ? AppColors.secondary : Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _videoError() {
     return const Column(
       mainAxisSize: MainAxisSize.min,
@@ -555,6 +571,35 @@ class _VideoPageState extends State<_VideoPage> {
           style: TextStyle(color: Colors.white70),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyVideoState extends StatelessWidget {
+  const _EmptyVideoState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 28),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No videos yet',
+            style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
     );
   }
 }

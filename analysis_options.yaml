@@ -9,6 +9,16 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Dead code: imports a `video_trimmer` package that was never added
+    # to pubspec.yaml, calls methods that don't exist even if it were,
+    # and isn't referenced from anywhere else in lib/. Looks like
+    # abandoned scaffolding for a feature that was never finished.
+    # Excluded here rather than guessed-at and "fixed" blind — finish it
+    # or delete it, whichever this is meant to be.
+    - "lib/screens/post/video_trim_screen.dart"
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
