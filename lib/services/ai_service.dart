@@ -4,6 +4,7 @@ import '../constants/supabase_constants.dart';
 import '../models/caption_variants.dart';
 import '../models/hook_feedback.dart';
 import '../models/post_feedback.dart';
+import '../models/weekly_report.dart';
 import 'supabase_service.dart';
 
 /// Talks to the Python FastAPI backend (see /backend). Every request
@@ -195,6 +196,25 @@ class AiService {
       throw Exception(detail);
     }
     return CaptionVariants.fromAiResponse(jsonDecode(res.body));
+  }
+
+  /// Rolls up this week's Coach scores and post engagement into a
+  /// short report card — computed stats plus a one-paragraph note in
+  /// the Coach's voice.
+  static Future<WeeklyReport> getWeeklyReport() async {
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/weekly-report'),
+      headers: await _headers(),
+    );
+    if (res.statusCode != 200) {
+      String detail = 'Failed to load weekly report (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+    return WeeklyReport.fromJson(jsonDecode(res.body));
   }
 }
 
