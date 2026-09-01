@@ -7,6 +7,7 @@ import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/coin_badge.dart';
+import '../widgets/daily_idea_card.dart';
 
 /// The Creator Growth Dashboard — one place to see performance,
 /// progress, level, achievements, and a nudge toward the AI Coach.
@@ -114,6 +115,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+
+            DailyIdeaCard(niche: p.niche),
             const SizedBox(height: 16),
 
             // Growth performance grid
