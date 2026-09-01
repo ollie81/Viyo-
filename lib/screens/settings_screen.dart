@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../services/ai_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/guest_gate.dart';
 import 'auth/login_screen.dart';
 import 'invite_screen.dart';
 import 'privacy_screen.dart';
@@ -17,6 +19,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _deleting = false;
 
   Future<void> _logout(BuildContext context) async {
+    // A guest's session IS their only account — there's no email/password
+    // to log back in with, so signing out throws away everything (coins,
+    // posts, profile) for good. A real account's "Log Out" is reversible
+    // (log back in any time) so it doesn't need this extra step.
+    if (SupabaseService.isGuest) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Log out as guest?'),
+          content: const Text(
+            "You're browsing as a guest — there's no account to log back into. "
+            'Logging out erases everything from this session for good.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Log Out', style: TextStyle(color: AppColors.danger)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+    }
+
     await AuthService.signOut();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -73,6 +100,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
+          if (SupabaseService.isGuest) ...[
+            _section([
+              _tile(
+                context,
+                icon: Icons.person_add_alt_1,
+                iconColor: AppColors.primary,
+                title: 'Create an Account',
+                onTap: () async {
+                  final upgraded = await GuestGate.allow(context, action: 'save your progress');
+                  if (upgraded && mounted) setState(() {});
+                },
+              ),
+            ]),
+            const SizedBox(height: 16),
+          ],
           _section([
             _tile(
               context,

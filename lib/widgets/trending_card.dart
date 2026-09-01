@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/trending_result.dart';
 import '../services/ai_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'guest_gate.dart';
 
 /// "What's working right now in your niche" — the only trend signal
 /// this app can honestly offer without a TikTok/Instagram/YouTube
@@ -41,6 +43,12 @@ class _TrendingCardState extends State<TrendingCard> {
       });
       return;
     }
+    // Guests never trigger the request at all — this fires automatically
+    // on dashboard load, and AI features are account-gated.
+    if (SupabaseService.isGuest) {
+      setState(() => _loading = false);
+      return;
+    }
     setState(() {
       _loading = true;
       _failed = false;
@@ -65,8 +73,11 @@ class _TrendingCardState extends State<TrendingCard> {
   Widget build(BuildContext context) {
     // Quietly disappears on failure, no niche, or too little data in
     // this niche yet — a "not enough data" card would just be noise
-    // for a niche with few creators posting.
-    if (_failed || (!_loading && _result?.hasData != true)) {
+    // for a niche with few creators posting. Guests are the one
+    // exception: still show the card shell so the upgrade teaser below
+    // has somewhere to appear, instead of vanishing along with real
+    // "no data" cases.
+    if (!SupabaseService.isGuest && (_failed || (!_loading && _result?.hasData != true))) {
       return const SizedBox.shrink();
     }
 
@@ -92,7 +103,17 @@ class _TrendingCardState extends State<TrendingCard> {
             ],
           ),
           const SizedBox(height: 12),
-          if (_loading)
+          if (SupabaseService.isGuest)
+            GestureDetector(
+              onTap: () async {
+                if (await GuestGate.allow(context, action: 'see trending ideas')) _load();
+              },
+              child: const Text(
+                'Create an account to see what\'s trending in your niche',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12, decoration: TextDecoration.underline),
+              ),
+            )
+          else if (_loading)
             const SizedBox(
               height: 40,
               child: Center(

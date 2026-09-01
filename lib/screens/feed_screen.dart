@@ -5,6 +5,7 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/guest_gate.dart';
 import '../widgets/post_card.dart';
 import 'notifications_screen.dart';
 import 'post/post_detail_screen.dart';
@@ -45,6 +46,7 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    if (!await GuestGate.allow(context, action: 'like posts')) return;
     if (post.likedByMe) {
       await PostService.unlikePost(userId, post.id);
     } else {

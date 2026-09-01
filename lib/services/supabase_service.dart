@@ -18,4 +18,9 @@ class SupabaseService {
   static String? get currentUserId => client.auth.currentUser?.id;
 
   static bool get isLoggedIn => currentUser != null;
+
+  /// True for a browsing session created via AuthService.signInAnonymously()
+  /// that hasn't added an email/password yet — gates the features that
+  /// require a real account (posting, coins, AI features, social actions).
+  static bool get isGuest => currentUser?.isAnonymous ?? false;
 }

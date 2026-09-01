@@ -10,6 +10,7 @@ import '../../models/post.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/guest_gate.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'video_coach_screen.dart';
 
@@ -61,6 +62,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   Future<void> _process() async {
     if (_selectedVideo == null) return;
+    if (!await GuestGate.allow(context, action: 'use the AI Repurposer')) return;
     setState(() {
       _isUploading = true;
       _uploadProgress = 0;
@@ -136,6 +138,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     final userId = SupabaseService.currentUserId;
     final clip = _selectedClip;
     if (userId == null || clip == null) return;
+    if (!await GuestGate.allow(context, action: 'post')) return;
 
     setState(() => _posting = true);
     try {

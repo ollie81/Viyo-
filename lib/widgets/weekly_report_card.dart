@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/weekly_report.dart';
 import '../services/ai_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'guest_gate.dart';
 
 /// The Growth Dashboard's "how is this week going overall?" card —
 /// rolls up Coach scores and post engagement for the last 7 days
@@ -26,6 +28,12 @@ class _WeeklyReportCardState extends State<WeeklyReportCard> {
   }
 
   Future<void> _load() async {
+    // Guests never trigger the request at all — this fires automatically
+    // on dashboard load, and AI features are account-gated.
+    if (SupabaseService.isGuest) {
+      setState(() => _loading = false);
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -101,7 +109,17 @@ class _WeeklyReportCardState extends State<WeeklyReportCard> {
             ],
           ),
           const SizedBox(height: 12),
-          if (_loading || _report == null)
+          if (SupabaseService.isGuest)
+            GestureDetector(
+              onTap: () async {
+                if (await GuestGate.allow(context, action: 'see your weekly report')) _load();
+              },
+              child: const Text(
+                'Create an account to track your weekly progress',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12, decoration: TextDecoration.underline),
+              ),
+            )
+          else if (_loading || _report == null)
             const SizedBox(
               height: 40,
               child: Center(

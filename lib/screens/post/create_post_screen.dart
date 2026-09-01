@@ -10,6 +10,7 @@ import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/guest_gate.dart';
 import 'coach_feedback_screen.dart';
 import 'ai_repurpose_screen.dart';
 
@@ -58,6 +59,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Future<void> _improveCaption() async {
     if (_caption.text.trim().isEmpty) return;
+    if (!await GuestGate.allow(context, action: 'use AI caption tools')) return;
     setState(() => _improvingCaption = true);
     try {
       final improved = await AiService.improveCaption(_caption.text.trim());
@@ -72,6 +74,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<void> _checkHook() async {
     final hookText = _caption.text.trim();
     if (hookText.isEmpty) return;
+    if (!await GuestGate.allow(context, action: 'use AI caption tools')) return;
     setState(() {
       _checkingHook = true;
       _hookResult = null;
@@ -89,6 +92,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<void> _generateCaptionVariants() async {
     final draft = _caption.text.trim();
     if (draft.isEmpty) return;
+    if (!await GuestGate.allow(context, action: 'use AI caption tools')) return;
     setState(() {
       _generatingVariants = true;
       _captionVariants = null;
@@ -186,6 +190,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() => _error = 'Write something first');
       return;
     }
+    if (!await GuestGate.allow(context, action: 'post')) return;
 
     setState(() {
       _posting = true;

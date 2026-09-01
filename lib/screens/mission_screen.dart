@@ -10,6 +10,7 @@ import '../services/coin_service.dart';
 import '../services/mission_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/guest_gate.dart';
 import '../widgets/mission_card.dart';
 import '../widgets/viyo_toast.dart';
 import '../utils/coin_format.dart';
@@ -68,6 +69,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
   Future<void> _checkin() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    if (!await GuestGate.allow(context, action: 'earn coins')) return;
     setState(() => _checkinBusy = true);
     try {
       final result = await CoinService.claimDailyCheckin(userId);
@@ -84,6 +86,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
   Future<void> _claim(Mission m) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null || m.userMissionId == null) return;
+    if (!await GuestGate.allow(context, action: 'earn coins')) return;
     final result = await MissionService.claimMission(
       userId: userId,
       userMissionId: m.userMissionId!,
