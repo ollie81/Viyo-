@@ -4,6 +4,7 @@ import '../constants/supabase_constants.dart';
 import '../models/caption_variants.dart';
 import '../models/hook_feedback.dart';
 import '../models/post_feedback.dart';
+import '../models/voice_check_result.dart';
 import '../models/weekly_report.dart';
 import 'supabase_service.dart';
 
@@ -215,6 +216,27 @@ class AiService {
       throw Exception(detail);
     }
     return WeeklyReport.fromJson(jsonDecode(res.body));
+  }
+
+  /// Checks whether a draft caption sounds consistent with this
+  /// creator's established voice (learned from their own past
+  /// captions), or reads off-brand. hasVoiceProfile is false when
+  /// there isn't enough post history yet for this to mean anything.
+  static Future<VoiceCheckResult> checkVoice(String draft) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/voice-check'),
+      headers: await _headers(),
+      body: jsonEncode({'draft': draft}),
+    );
+    if (res.statusCode != 200) {
+      String detail = 'Failed to check voice (${res.statusCode})';
+      try {
+        final data = jsonDecode(res.body);
+        detail = data['detail'] ?? detail;
+      } catch (_) {}
+      throw Exception(detail);
+    }
+    return VoiceCheckResult.fromJson(jsonDecode(res.body));
   }
 }
 

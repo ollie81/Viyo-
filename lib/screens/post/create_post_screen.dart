@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/caption_variants.dart';
 import '../../models/hook_feedback.dart';
+import '../../models/voice_check_result.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
 import '../../services/post_service.dart';
@@ -120,6 +121,61 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
+  /// Runs the voice-consistency check before posting and, if it flags
+  /// the draft as off-brand, lets the creator pick the suggested
+  /// rewrite or post their draft as-is. Returns false when the caption
+  /// was swapped for the rewrite — the creator can review it and press
+  /// Post again rather than it silently going out changed.
+  /// Never blocks posting on its own failure (no profile yet, rate
+  /// limited, backend hiccup) — this is a nudge, not a gate.
+  Future<bool> _checkVoiceBeforePosting(String caption) async {
+    if (caption.isEmpty) return true;
+    try {
+      final result = await AiService.checkVoice(caption);
+      if (!result.hasVoiceProfile || result.consistent != false) return true;
+      if (!mounted) return true;
+
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("This doesn't sound quite like you"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(result.reason ?? 'This reads differently from your usual posts.'),
+              if (result.suggestedRewrite != null) ...[
+                const SizedBox(height: 12),
+                const Text('Suggested rewrite:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                const SizedBox(height: 4),
+                Text(result.suggestedRewrite!, style: const TextStyle(fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('keep'),
+              child: const Text('Post as is'),
+            ),
+            if (result.suggestedRewrite != null)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('rewrite'),
+                child: const Text('Use rewrite'),
+              ),
+          ],
+        ),
+      );
+
+      if (choice == 'rewrite' && result.suggestedRewrite != null) {
+        setState(() => _caption.text = result.suggestedRewrite!);
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
   Future<void> _submit() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
@@ -136,6 +192,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _posting = true;
       _error = null;
     });
+
+    final shouldProceed = await _checkVoiceBeforePosting(_caption.text.trim());
+    if (!shouldProceed) {
+      if (mounted) setState(() => _posting = false);
+      return;
+    }
 
     try {
       String? mediaUrl;
