@@ -163,6 +163,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   bool get _isBusy => _isUploading || _isProcessing;
 
+  double get _deadAirRemoved =>
+      (_result?['dead_air_removed_seconds'] as num?)?.toDouble() ?? 0.0;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -256,6 +259,32 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       _result!['highlight']?['reason'] ?? '',
                       style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
+                    if (_deadAirRemoved > 0.3) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: AppColors.success.withOpacity(0.35)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.content_cut, size: 13, color: AppColors.success),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Trimmed ${_deadAirRemoved.toStringAsFixed(1)}s of dead air',
+                              style: const TextStyle(
+                                color: AppColors.success,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: _posting ? null : _postToFeed,
