@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/caption_variants.dart';
 import '../../models/hook_feedback.dart';
-import '../../models/voice_check_result.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
 import '../../services/post_service.dart';
