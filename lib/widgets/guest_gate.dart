@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../screens/auth/login_screen.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -55,10 +56,51 @@ class _UpgradeSheetState extends State<_UpgradeSheet> {
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
-      setState(() => _error = 'Could not create account: $e');
+      final alreadyRegistered = e.toString().toLowerCase().contains('already');
+      setState(() {
+        _error = alreadyRegistered
+            ? "That email already has an account — use \"Log in instead\" below rather than creating a new one."
+            : 'Could not create account: $e';
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// For someone who already has a real account — Supabase's anonymous
+  /// upgrade (updateUser) only ever registers a brand-new account tied to
+  /// THIS guest session's id, it can't attach a separate pre-existing
+  /// account. So logging into one is a different operation: end the guest
+  /// session and go to the normal login screen, replacing the whole
+  /// navigation stack since nothing behind this sheet is still valid
+  /// once the session changes.
+  Future<void> _logInToExistingAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log in to a different account?'),
+        content: const Text(
+          "This ends your current guest session — anything you've done as a "
+          'guest (coins, posts) is lost unless you create an account for it '
+          'first instead.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log In', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await AuthService.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -126,6 +168,13 @@ class _UpgradeSheetState extends State<_UpgradeSheet> {
             TextButton(
               onPressed: _loading ? null : () => Navigator.of(context).pop(false),
               child: const Text('Not now', style: TextStyle(color: AppColors.textMuted)),
+            ),
+            TextButton(
+              onPressed: _loading ? null : _logInToExistingAccount,
+              child: const Text(
+                'Already have an account? Log in instead',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
           ],
         ),
