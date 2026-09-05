@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/insufficient_coins_exception.dart';
 import '../../services/ai_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/insufficient_coins_sheet.dart';
 
 /// Persistent Coach conversation attached to one specific video.
 /// The backend stores the history in Supabase, so leaving the screen
@@ -99,6 +101,8 @@ class _VideoCoachScreenState extends State<VideoCoachScreen> {
         ];
       });
       _scrollToBottom();
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -155,6 +159,23 @@ class _VideoCoachScreenState extends State<VideoCoachScreen> {
               ),
             ),
 
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.monetization_on, size: 12, color: AppColors.coin),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${FeatureCoinCosts.coachMessage} per message',
+                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
           SafeArea(
             top: false,
             child: Padding(

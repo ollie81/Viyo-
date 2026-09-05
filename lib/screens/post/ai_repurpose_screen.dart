@@ -6,11 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../../constants/supabase_constants.dart';
+import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
+import '../../widgets/insufficient_coins_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'video_coach_screen.dart';
 
@@ -120,8 +122,18 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         });
       } else {
         final body = jsonDecode(response.body);
-        throw Exception(body['detail'] ?? 'Server returned ${response.statusCode}');
+        final detail = body['detail'];
+        if (response.statusCode == 402 && detail is Map) {
+          throw InsufficientCoinsException(
+            feature: detail['feature'] as String? ?? '',
+            balance: (detail['balance'] as num?)?.toInt() ?? 0,
+            needed: (detail['needed'] as num?)?.toInt() ?? 0,
+          );
+        }
+        throw Exception(detail ?? 'Server returned ${response.statusCode}');
       }
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
       setState(() => _error = 'Processing failed: $e');
     } finally {
@@ -254,7 +266,31 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                         Text(_statusLabel),
                       ],
                     )
-                  : const Text('Run AI Repurpose'),
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Run AI Repurpose'),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.monetization_on, size: 13, color: Colors.white),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${FeatureCoinCosts.repurpose}',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
             ),
 
             if (_error != null) ...[
