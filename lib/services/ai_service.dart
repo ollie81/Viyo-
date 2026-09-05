@@ -5,6 +5,7 @@ import '../models/caption_variants.dart';
 import '../models/hook_feedback.dart';
 import '../models/insufficient_coins_exception.dart';
 import '../models/post_feedback.dart';
+import '../models/post_insight.dart';
 import '../models/trending_result.dart';
 import '../models/voice_check_result.dart';
 import '../models/weekly_report.dart';
@@ -262,6 +263,23 @@ class AiService {
       throw Exception(detail);
     }
     return TrendingResult.fromJson(jsonDecode(res.body));
+  }
+
+  /// "Why This Worked" — a plain-language explanation of how one of the
+  /// creator's own posts performed, grounded in their real engagement
+  /// numbers. Only ever callable for a post the requester owns (the
+  /// backend enforces this too).
+  static Future<PostInsight> getPostInsight(String postId) async {
+    final res = await http.get(
+      Uri.parse(
+        '${AiBackendConstants.baseUrl}/api/v1/post-insight/${Uri.encodeComponent(postId)}',
+      ),
+      headers: await _headers(),
+    );
+    if (res.statusCode != 200) {
+      throw _errorFor(res, 'Failed to load insight');
+    }
+    return PostInsight.fromJson(jsonDecode(res.body));
   }
 }
 
