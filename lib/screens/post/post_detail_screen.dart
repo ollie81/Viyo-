@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
+import '../../models/post_insight.dart';
+import '../../services/ai_service.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
+import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/post_card.dart';
 
 class PostDetailScreen extends StatefulWidget {
@@ -20,6 +24,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   bool _loading = true;
   final _commentCtrl = TextEditingController();
   bool _sending = false;
+
+  PostInsight? _insight;
+  bool _loadingInsight = false;
+  String? _insightError;
+
+  bool get _isOwnPost => widget.post.userId == SupabaseService.currentUserId;
 
   @override
   void initState() {
@@ -53,6 +63,113 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
+  Future<void> _loadInsight() async {
+    setState(() {
+      _loadingInsight = true;
+      _insightError = null;
+    });
+    try {
+      final insight = await AiService.getPostInsight(widget.post.id);
+      if (mounted) setState(() => _insight = insight);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
+    } catch (e) {
+      if (mounted) setState(() => _insightError = 'Could not load insight: $e');
+    } finally {
+      if (mounted) setState(() => _loadingInsight = false);
+    }
+  }
+
+  Color _performanceColor(String? performance) {
+    switch (performance) {
+      case 'above':
+        return AppColors.success;
+      case 'below':
+        return AppColors.danger;
+      default:
+        return AppColors.coin;
+    }
+  }
+
+  String _performanceLabel(String? performance) {
+    switch (performance) {
+      case 'above':
+        return 'ABOVE YOUR AVERAGE';
+      case 'below':
+        return 'BELOW YOUR AVERAGE';
+      case 'about':
+        return 'ABOUT YOUR AVERAGE';
+      default:
+        return 'FIRST FEW POSTS';
+    }
+  }
+
+  Widget _whyThisWorkedSection() {
+    if (!_isOwnPost) return const SizedBox.shrink();
+
+    if (_insight != null) {
+      final insight = _insight!;
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: AppTheme.card(borderColor: _performanceColor(insight.performance).withOpacity(0.4)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.insights, size: 15, color: _performanceColor(insight.performance)),
+                const SizedBox(width: 6),
+                const Text('Why This Worked', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _performanceColor(insight.performance).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    _performanceLabel(insight.performance),
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: _performanceColor(insight.performance),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(insight.explanation, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4)),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _loadingInsight ? null : _loadInsight,
+            icon: _loadingInsight
+                ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.insights, size: 16),
+            label: _loadingInsight
+                ? const Text('Analyzing...')
+                : const _CoinButtonLabel(text: 'Why This Worked', cost: FeatureCoinCosts.postInsight),
+          ),
+          if (_insightError != null) ...[
+            const SizedBox(height: 6),
+            Text(_insightError!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _like() async {
     if (!await GuestGate.allow(context, action: 'like posts')) return;
     try {
@@ -78,6 +195,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               children: [
                 PostCard(post: widget.post, onLike: _like, onComment: () {}, enableMediaTap: false),
                 const SizedBox(height: 10),
+                _whyThisWorkedSection(),
                 const Text('Comments', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (_loading)
@@ -145,6 +263,40 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// A button label with a small coin-cost chip — matches the chip used
+/// on the AI buttons in create_post_screen.dart.
+class _CoinButtonLabel extends StatelessWidget {
+  final String text;
+  final int cost;
+  const _CoinButtonLabel({required this.text, required this.cost});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(text),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.coin.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.monetization_on, size: 11, color: AppColors.coin),
+              const SizedBox(width: 2),
+              Text('$cost', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.coin)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
