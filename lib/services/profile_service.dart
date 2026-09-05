@@ -44,6 +44,23 @@ class ProfileService {
         .limit(20);
   }
 
+  /// Populates the Discover tab before anyone types a search, instead of
+  /// a blank screen that only ever does something once you already know
+  /// who you're looking for. No ordering by recency/popularity here
+  /// deliberately — there's no engagement data denormalized onto profiles
+  /// to rank by, and guessing a column name that doesn't exist (e.g.
+  /// created_at) would just trade an empty screen for a crash.
+  static Future<List<Map<String, dynamic>>> getSuggestedCreators({
+    required String excludeUserId,
+    int limit = 30,
+  }) async {
+    return await _client
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, niche')
+        .neq('id', excludeUserId)
+        .limit(limit);
+  }
+
   static Future<int> getFollowerCount(String userId) async {
     final res = await _client
         .from('follows')
