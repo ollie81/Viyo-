@@ -6,6 +6,7 @@ import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/guest_gate.dart';
+import '../widgets/home_header_section.dart';
 import '../widgets/post_card.dart';
 import 'notifications_screen.dart';
 import 'post/post_detail_screen.dart';
@@ -127,9 +128,11 @@ class _FeedScreenState extends State<FeedScreen> {
               color: AppColors.primary,
               child: _posts.isEmpty
                   ? ListView(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
                       children: const [
+                        HomeHeaderSection(),
                         Padding(
-                          padding: EdgeInsets.only(top: 90),
+                          padding: EdgeInsets.only(top: 70),
                           child: Center(
                             child: _EmptyFeedState(),
                           ),
@@ -138,9 +141,10 @@ class _FeedScreenState extends State<FeedScreen> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-                      itemCount: _posts.length,
+                      itemCount: _posts.length + 1,
                       itemBuilder: (ctx, i) {
-                        final post = _posts[i];
+                        if (i == 0) return const HomeHeaderSection();
+                        final post = _posts[i - 1];
                         return PostCard(
                           post: post,
                           // Passing the logged-in userId lets PostCard show

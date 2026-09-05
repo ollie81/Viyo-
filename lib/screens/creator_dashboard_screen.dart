@@ -2,14 +2,19 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/creator_stats.dart';
+import '../models/leaderboard_entry.dart';
 import '../models/user_profile.dart';
+import '../services/leaderboard_service.dart';
 import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/coin_badge.dart';
 import '../widgets/daily_idea_card.dart';
+import '../widgets/daily_streak_card.dart';
+import '../widgets/engagement_digest_card.dart';
 import '../widgets/trending_card.dart';
 import '../widgets/weekly_report_card.dart';
+import 'leaderboard_screen.dart';
 
 /// The Creator Growth Dashboard — one place to see performance,
 /// progress, level, achievements, and a nudge toward the AI Coach.
@@ -25,6 +30,7 @@ class CreatorDashboardScreen extends StatefulWidget {
 class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   UserProfile? _profile;
   CreatorStats? _stats;
+  WeeklyLeaderboard? _leaderboard;
   bool _loading = true;
 
   @override
@@ -39,10 +45,19 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     setState(() => _loading = true);
     final profile = await ProfileService.getProfile(userId);
     final stats = await ProfileService.getCreatorStats(userId);
+    // Best-effort — the dashboard's core stats shouldn't fail to load
+    // just because the leaderboard teaser couldn't reach the backend.
+    WeeklyLeaderboard? leaderboard;
+    try {
+      leaderboard = await LeaderboardService.getWeeklyLeaderboard();
+    } catch (_) {
+      leaderboard = null;
+    }
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _stats = stats;
+      _leaderboard = leaderboard;
       _loading = false;
     });
   }
@@ -149,29 +164,20 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Streak
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: AppTheme.card(),
-              child: Row(
-                children: [
-                  const Icon(Icons.local_fire_department, color: AppColors.coin, size: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('${p.currentStreak}-day streak',
-                            style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text('Longest: ${p.longestStreak} days',
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Streak — actionable (check in right here), not just a number.
+            DailyStreakCard(profile: p, onCheckedIn: _load),
+            const SizedBox(height: 6),
+            Text('Longest streak: ${p.longestStreak} days',
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
             const SizedBox(height: 20),
+
+            EngagementDigestCard(userId: p.id),
+            const SizedBox(height: 16),
+
+            if (_leaderboard != null) ...[
+              _leaderboardTeaser(_leaderboard!),
+              const SizedBox(height: 20),
+            ],
 
             // AI Coach nudge — the differentiating feature, so it should
             // visually stand out rather than look like another stat card.
@@ -206,6 +212,40 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _leaderboardTeaser(WeeklyLeaderboard board) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: AppTheme.card(),
+        child: Row(
+          children: [
+            const Icon(Icons.emoji_events, color: AppColors.coin, size: 26),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Weekly Leaderboard', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  const SizedBox(height: 3),
+                  Text(
+                    board.myRank != null
+                        ? "You're #${board.myRank} this week · ${board.myCoinsEarned} coins earned"
+                        : 'Earn coins this week to get on the board',
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.textMuted),
           ],
         ),
       ),
