@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/profile_service.dart';
+import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import 'profile/profile_screen.dart';
 class SearchScreen extends StatefulWidget {
@@ -16,6 +17,34 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _loading = false;
   bool _hasQuery = false;
   Timer? _debounce;
+
+  List<Map<String, dynamic>> _suggested = [];
+  bool _loadingSuggested = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuggested();
+  }
+
+  Future<void> _loadSuggested() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) {
+      setState(() => _loadingSuggested = false);
+      return;
+    }
+    try {
+      final suggested = await ProfileService.getSuggestedCreators(excludeUserId: userId);
+      if (!mounted) return;
+      setState(() {
+        _suggested = suggested;
+        _loadingSuggested = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingSuggested = false);
+    }
+  }
 
   void _onChanged(String value) {
     final hasQuery = value.trim().isNotEmpty;
@@ -58,38 +87,80 @@ class _SearchScreenState extends State<SearchScreen> {
             const SizedBox(height: 16),
             Expanded(
               child: !_hasQuery
-                  ? const _SearchPrompt()
+                  ? _SuggestedList(loading: _loadingSuggested, creators: _suggested)
                   : _loading
                       ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                       : _results.isEmpty
                           ? const _NoResultsState()
                           : ListView.builder(
                               itemCount: _results.length,
-                              itemBuilder: (ctx, i) {
-                                final r = _results[i];
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: AppColors.surfaceBorder,
-                                    backgroundImage: r['avatar_url'] != null
-                                        ? NetworkImage(r['avatar_url'])
-                                        : null,
-                                    child: r['avatar_url'] == null
-                                        ? Text((r['display_name'] ?? '?')[0].toUpperCase())
-                                        : null,
-                                  ),
-                                  title: Text(r['display_name'] ?? ''),
-                                  subtitle: Text(
-                                      '@${r['username']}${r['niche'] != null && r['niche'] != '' ? ' · ${r['niche']}' : ''}',
-                                      style: const TextStyle(color: AppColors.textMuted)),
-                                  onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => ProfileScreen(userId: r['id'])),
-                                  ),
-                                );
-                              },
+                              itemBuilder: (ctx, i) => _CreatorTile(creator: _results[i]),
                             ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SuggestedList extends StatelessWidget {
+  final bool loading;
+  final List<Map<String, dynamic>> creators;
+
+  const _SuggestedList({required this.loading, required this.creators});
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (creators.isEmpty) {
+      return const _SearchPrompt();
+    }
+    return ListView(
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'SUGGESTED CREATORS',
+            style: TextStyle(
+              fontSize: 11,
+              letterSpacing: 1.2,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        ...creators.map((c) => _CreatorTile(creator: c)),
+      ],
+    );
+  }
+}
+
+class _CreatorTile extends StatelessWidget {
+  final Map<String, dynamic> creator;
+
+  const _CreatorTile({required this.creator});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: AppColors.surfaceBorder,
+        backgroundImage:
+            creator['avatar_url'] != null ? NetworkImage(creator['avatar_url']) : null,
+        child: creator['avatar_url'] == null
+            ? Text((creator['display_name'] ?? '?')[0].toUpperCase())
+            : null,
+      ),
+      title: Text(creator['display_name'] ?? ''),
+      subtitle: Text(
+        '@${creator['username']}${creator['niche'] != null && creator['niche'] != '' ? ' · ${creator['niche']}' : ''}',
+        style: const TextStyle(color: AppColors.textMuted),
+      ),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ProfileScreen(userId: creator['id'])),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/caption_variants.dart';
 import '../models/hook_feedback.dart';
+import '../models/insufficient_coins_exception.dart';
 import '../models/post_feedback.dart';
 import '../models/trending_result.dart';
 import '../models/voice_check_result.dart';
@@ -19,6 +20,26 @@ class AiService {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
     };
+  }
+
+  /// Builds the exception to throw for a non-200 response from a
+  /// coin-gated endpoint — an InsufficientCoinsException on a 402 from
+  /// coins.spend_on_feature (backend), a plain Exception with the
+  /// server's own detail message otherwise.
+  static Exception _errorFor(http.Response res, String fallback) {
+    try {
+      final data = jsonDecode(res.body);
+      final detail = data['detail'];
+      if (res.statusCode == 402 && detail is Map) {
+        return InsufficientCoinsException(
+          feature: detail['feature'] as String? ?? '',
+          balance: (detail['balance'] as num?)?.toInt() ?? 0,
+          needed: (detail['needed'] as num?)?.toInt() ?? 0,
+        );
+      }
+      if (detail is String) return Exception(detail);
+    } catch (_) {}
+    return Exception('$fallback (${res.statusCode})');
   }
 
   static Future<List<String>> getContentIdeas(String niche) async {
@@ -41,7 +62,7 @@ class AiService {
       body: jsonEncode({'caption': caption}),
     );
     if (res.statusCode != 200) {
-      throw Exception('Failed to improve caption (${res.statusCode})');
+      throw _errorFor(res, 'Failed to improve caption');
     }
     final data = jsonDecode(res.body);
     return data['improved_caption'];
@@ -95,12 +116,7 @@ class AiService {
     );
 
     if (res.statusCode != 200) {
-      String detail = 'Coach request failed (${res.statusCode})';
-      try {
-        final data = jsonDecode(res.body);
-        detail = data['detail'] ?? detail;
-      } catch (_) {}
-      throw Exception(detail);
+      throw _errorFor(res, 'Coach request failed');
     }
 
     return Map<String, dynamic>.from(jsonDecode(res.body));
@@ -142,12 +158,7 @@ class AiService {
       }),
     );
     if (res.statusCode != 200) {
-      String detail = 'Failed to check hook (${res.statusCode})';
-      try {
-        final data = jsonDecode(res.body);
-        detail = data['detail'] ?? detail;
-      } catch (_) {}
-      throw Exception(detail);
+      throw _errorFor(res, 'Failed to check hook');
     }
     return HookFeedback.fromAiResponse(jsonDecode(res.body));
   }
@@ -190,12 +201,7 @@ class AiService {
       body: jsonEncode({'draft': draft, 'niche': niche}),
     );
     if (res.statusCode != 200) {
-      String detail = 'Failed to generate captions (${res.statusCode})';
-      try {
-        final data = jsonDecode(res.body);
-        detail = data['detail'] ?? detail;
-      } catch (_) {}
-      throw Exception(detail);
+      throw _errorFor(res, 'Failed to generate captions');
     }
     return CaptionVariants.fromAiResponse(jsonDecode(res.body));
   }

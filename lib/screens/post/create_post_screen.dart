@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/caption_variants.dart';
 import '../../models/hook_feedback.dart';
+import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
 import '../../services/post_service.dart';
@@ -11,6 +12,7 @@ import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
+import '../../widgets/insufficient_coins_sheet.dart';
 import 'coach_feedback_screen.dart';
 import 'ai_repurpose_screen.dart';
 
@@ -64,6 +66,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       final improved = await AiService.improveCaption(_caption.text.trim());
       setState(() => _caption.text = improved);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
       setState(() => _error = 'Could not improve caption: $e');
     } finally {
@@ -82,6 +86,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       final result = await AiService.analyzeHook(hookText: hookText);
       if (mounted) setState(() => _hookResult = result);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
       setState(() => _error = 'Could not check hook: $e');
     } finally {
@@ -106,6 +112,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
       final result = await AiService.getCaptionVariants(draft: draft, niche: niche);
       if (mounted) setState(() => _captionVariants = result);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
       setState(() => _error = 'Could not generate captions: $e');
     } finally {
@@ -373,10 +381,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ? const SizedBox(
                           height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.bolt, size: 16, color: AppColors.primary),
-                  label: Text(
-                    _checkingHook ? 'Checking...' : 'Check My Hook',
-                    style: const TextStyle(color: AppColors.primary),
-                  ),
+                  label: _checkingHook
+                      ? const Text('Checking...', style: TextStyle(color: AppColors.primary))
+                      : _CoinLabel(text: 'Check My Hook', cost: FeatureCoinCosts.hookCheck, color: AppColors.primary),
                 ),
                 TextButton.icon(
                   onPressed: _generatingVariants ? null : _generateCaptionVariants,
@@ -384,10 +391,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ? const SizedBox(
                           height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.lightbulb_outline, size: 16, color: AppColors.coin),
-                  label: Text(
-                    _generatingVariants ? 'Generating...' : 'Caption Ideas',
-                    style: const TextStyle(color: AppColors.coin),
-                  ),
+                  label: _generatingVariants
+                      ? const Text('Generating...', style: TextStyle(color: AppColors.coin))
+                      : _CoinLabel(text: 'Caption Ideas', cost: FeatureCoinCosts.captionVariants, color: AppColors.coin),
                 ),
                 TextButton.icon(
                   onPressed: _improvingCaption ? null : _improveCaption,
@@ -395,10 +401,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ? const SizedBox(
                           height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.auto_awesome, size: 16, color: AppColors.secondary),
-                  label: Text(
-                    _improvingCaption ? 'Improving...' : 'Improve with AI',
-                    style: const TextStyle(color: AppColors.secondary),
-                  ),
+                  label: _improvingCaption
+                      ? const Text('Improving...', style: TextStyle(color: AppColors.secondary))
+                      : _CoinLabel(text: 'Improve with AI', cost: FeatureCoinCosts.improveCaption, color: AppColors.secondary),
                 ),
               ],
             ),
@@ -552,6 +557,41 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A button label showing its coin cost — same coin chip everywhere one
+/// of these AI tools is offered, so the price is never a surprise.
+class _CoinLabel extends StatelessWidget {
+  final String text;
+  final int cost;
+  final Color color;
+  const _CoinLabel({required this.text, required this.cost, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(text, style: TextStyle(color: color)),
+        const SizedBox(width: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.monetization_on, size: 10, color: color),
+              const SizedBox(width: 2),
+              Text('$cost', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
