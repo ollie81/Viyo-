@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/home_header_section.dart';
 import '../widgets/post_card.dart';
+import 'ai_hub_screen.dart';
 import 'notifications_screen.dart';
 import 'post/post_detail_screen.dart';
 import 'profile/profile_screen.dart';
@@ -106,6 +107,13 @@ class _FeedScreenState extends State<FeedScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome, color: AppColors.secondary),
+            tooltip: 'AI Tools',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AiHubScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.play_circle_outline),
             tooltip: 'Shorts',
