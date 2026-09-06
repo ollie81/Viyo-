@@ -1,5 +1,6 @@
 import '../models/user_profile.dart';
 import '../models/creator_stats.dart';
+import 'discover_spotlight_service.dart';
 import 'supabase_service.dart';
 
 class ProfileService {
@@ -46,19 +47,44 @@ class ProfileService {
 
   /// Populates the Discover tab before anyone types a search, instead of
   /// a blank screen that only ever does something once you already know
-  /// who you're looking for. No ordering by recency/popularity here
-  /// deliberately — there's no engagement data denormalized onto profiles
-  /// to rank by, and guessing a column name that doesn't exist (e.g.
-  /// created_at) would just trade an empty screen for a crash.
+  /// who you're looking for. Beyond that there's still no engagement
+  /// data denormalized onto profiles to rank by (guessing a column that
+  /// doesn't exist would just trade an empty screen for a crash) — the
+  /// one exception is Discover Spotlight (see DiscoverSpotlightService),
+  /// a paid, self-expiring placement boost, which pulls spotlighted
+  /// creators to the front; everyone else keeps the original query order.
   static Future<List<Map<String, dynamic>>> getSuggestedCreators({
     required String excludeUserId,
     int limit = 30,
   }) async {
-    return await _client
+    // Fetch a larger candidate pool than `limit` so a spotlighted
+    // creator who wouldn't otherwise land in the first `limit` rows
+    // still gets pulled to the front instead of being missed entirely.
+    final candidates = await _client
         .from('profiles')
         .select('id, username, display_name, avatar_url, niche')
         .neq('id', excludeUserId)
-        .limit(limit);
+        .limit(limit * 4);
+    final pool = List<Map<String, dynamic>>.from(candidates);
+
+    List<String> spotlightedIds = const [];
+    try {
+      spotlightedIds = await DiscoverSpotlightService.getActiveSpotlightIds();
+    } catch (_) {
+      // Spotlight ordering is a nice-to-have — an unranked list beats
+      // failing Discover entirely over this.
+    }
+
+    if (spotlightedIds.isEmpty) return pool.take(limit).toList();
+
+    final spotlightedSet = spotlightedIds.toSet();
+    final byId = {for (final c in pool) c['id'] as String: c};
+    final spotlightedFirst = [
+      for (final id in spotlightedIds)
+        if (byId.containsKey(id)) byId[id]!,
+    ];
+    final rest = pool.where((c) => !spotlightedSet.contains(c['id'])).toList();
+    return [...spotlightedFirst, ...rest].take(limit).toList();
   }
 
   static Future<int> getFollowerCount(String userId) async {

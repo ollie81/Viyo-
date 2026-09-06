@@ -29,4 +29,5 @@ class FeatureCoinCosts {
   static const repurpose = 40;
   static const postInsight = 5;
   static const boostPost = 30;
+  static const spotlight = 25;
 }
