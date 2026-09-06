@@ -49,12 +49,19 @@ class _FeedScreenState extends State<FeedScreen> {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
     if (!await GuestGate.allow(context, action: 'like posts')) return;
-    if (post.likedByMe) {
-      await PostService.unlikePost(userId, post.id);
-    } else {
-      await PostService.likePost(userId, post.id);
+    try {
+      if (post.likedByMe) {
+        await PostService.unlikePost(userId, post.id);
+      } else {
+        await PostService.likePost(userId, post.id);
+      }
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update like: $e')),
+      );
     }
-    await _load();
   }
 
   Future<void> _share(Post post) async {

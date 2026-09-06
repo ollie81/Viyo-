@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:dio/dio.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../constants/supabase_constants.dart';
@@ -380,74 +381,54 @@ class PostService {
     await _client.from('posts').delete().eq('id', post.id);
   }
 
-  /// Bypasses the old `like_post` Postgres RPC, which crashed server-side
-  /// (`column "post_id" of relation "notifications" does not exist`)
-  /// trying to insert a notification row against a column that was
-  /// never actually on that table — confirmed against
-  /// NotificationService's own working queries, which only ever
-  /// reference id/user_id/actor_id/type/message/is_read/created_at.
-  /// Likely why every like silently failed. Reimplemented directly,
-  /// same pattern as boost_post/spotlight elsewhere in this app: don't
-  /// trust an opaque RPC you can't inspect, do the steps yourself
-  /// against columns already verified in use.
-  static Future<void> likePost(String userId, String postId) async {
+  static Future<Map<String, String>> _interactionHeaders() async {
+    final token = _client.auth.currentSession?.accessToken;
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  static String? _errorDetail(http.Response res) {
     try {
-      await _client.from('likes').insert({'user_id': userId, 'post_id': postId});
-    } on PostgrestException catch (e) {
-      // Unique-violation — already liked (e.g. a stale double-tap).
-      // Nothing left to do; the count is already right.
-      if (e.code == '23505') return;
-      rethrow;
+      final data = jsonDecode(res.body);
+      final detail = data is Map ? data['detail'] : null;
+      return detail is String ? detail : null;
+    } catch (_) {
+      return null;
     }
+  }
 
-    // Compare-and-swap increment instead of a blind +1 write, so two
-    // concurrent likes on the same post can't race and drop a count —
-    // same tradeoff already used server-side for coin balances.
-    final current = await _client.from('posts').select('like_count').eq('id', postId).single();
-    final currentCount = (current['like_count'] as num?)?.toInt() ?? 0;
-    await _client
-        .from('posts')
-        .update({'like_count': currentCount + 1})
-        .eq('id', postId)
-        .eq('like_count', currentCount);
-
-    AnalyticsService.track('post_liked', properties: {'post_id': postId});
-
-    // Best-effort notification — never let this fail the like itself.
-    try {
-      final post = await _client.from('posts').select('user_id').eq('id', postId).single();
-      final postOwnerId = post['user_id'] as String?;
-      if (postOwnerId != null && postOwnerId != userId) {
-        final actor = await _client
-            .from('profiles')
-            .select('display_name, username')
-            .eq('id', userId)
-            .maybeSingle();
-        final actorName = actor?['display_name'] ?? actor?['username'] ?? 'Someone';
-        await _client.from('notifications').insert({
-          'user_id': postOwnerId,
-          'actor_id': userId,
-          'type': 'like',
-          'message': '$actorName liked your post',
-        });
-      }
-    } catch (_) {}
+  /// Routed through the Python backend's service-role client rather than
+  /// a direct client insert/update. The `likes` row itself saves fine
+  /// either way (RLS lets you insert your own row regardless of whose
+  /// post it's under) — the problem was bumping `posts.like_count` on
+  /// someone else's post: Supabase RLS on `posts` only lets the *owner*
+  /// update their own row, so that UPDATE silently matched zero rows for
+  /// anyone who wasn't the post's author. The like appeared to do
+  /// nothing (or throw) for exactly the case reported: liking/commenting
+  /// on someone else's content while your own posts worked fine. This
+  /// is the same "don't trust what RLS/an RPC does, do it through the
+  /// admin client instead" fix already used for boost_post/spotlight.
+  static Future<void> likePost(String userId, String postId) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/like'),
+      headers: await _interactionHeaders(),
+    );
+    if (res.statusCode == 200) {
+      AnalyticsService.track('post_liked', properties: {'post_id': postId});
+      return;
+    }
+    throw Exception(_errorDetail(res) ?? 'Failed to like post (${res.statusCode})');
   }
 
   static Future<void> unlikePost(String userId, String postId) async {
-    await _client.from('likes').delete().eq('user_id', userId).eq('post_id', postId);
-
-    // Same compare-and-swap approach as likePost, and for the same
-    // reason: one less opaque RPC this app depends on without being
-    // able to see what it actually does.
-    final current = await _client.from('posts').select('like_count').eq('id', postId).single();
-    final currentCount = (current['like_count'] as num?)?.toInt() ?? 0;
-    if (currentCount <= 0) return;
-    await _client
-        .from('posts')
-        .update({'like_count': currentCount - 1})
-        .eq('id', postId)
-        .eq('like_count', currentCount);
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/unlike'),
+      headers: await _interactionHeaders(),
+    );
+    if (res.statusCode == 200) return;
+    throw Exception(_errorDetail(res) ?? 'Failed to unlike post (${res.statusCode})');
   }
 
   static Future<void> toggleLike(Post post) async {
@@ -475,22 +456,35 @@ class PostService {
     return comments.where((c) => !hidden.contains(c['user_id'])).toList();
   }
 
+  /// Same fix as likePost/unlikePost — the raw comment insert went
+  /// through the backend's admin client, not a direct client insert,
+  /// since whatever RLS policy allows commenting on your own posts but
+  /// blocked it on someone else's isn't visible from this codebase.
   static Future<Map<String, dynamic>> addComment({
     required String postId,
     required String userId,
     required String content,
   }) async {
-    final comment = await _client
-        .from('comments')
-        .insert({'post_id': postId, 'user_id': userId, 'content': content})
-        .select()
-        .single();
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/comments'),
+      headers: await _interactionHeaders(),
+      body: jsonEncode({'content': content}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Failed to add comment (${res.statusCode})');
+    }
+    final comment = jsonDecode(res.body) as Map<String, dynamic>;
 
-    await _client.rpc('award_comment', params: {
-      'p_user_id': userId,
-      'p_post_id': postId,
-      'p_comment_length': content.trim().length,
-    });
+    // Coin award is a separate, already-working RPC (SECURITY DEFINER,
+    // so it was never subject to the RLS gap above) — best-effort so a
+    // hiccup here doesn't erase a comment that already saved.
+    try {
+      await _client.rpc('award_comment', params: {
+        'p_user_id': userId,
+        'p_post_id': postId,
+        'p_comment_length': content.trim().length,
+      });
+    } catch (_) {}
 
     AnalyticsService.track('comment_added', properties: {'post_id': postId});
 

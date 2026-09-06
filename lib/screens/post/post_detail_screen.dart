@@ -63,6 +63,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       await PostService.addComment(postId: widget.post.id, userId: userId, content: content);
       _commentCtrl.clear();
       await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not post comment: $e')),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
