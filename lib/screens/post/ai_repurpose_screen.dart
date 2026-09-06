@@ -16,7 +16,7 @@ import '../../widgets/insufficient_coins_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'video_coach_screen.dart';
 
-/// AI Repurposer — upload a longer video, get back up to 3 ranked
+/// AI Repurposer — upload a longer video, get back up to 5 ranked
 /// highlight clips (pick your favorite), each auto-cropped to 9:16 with
 /// burned-in captions and dead air trimmed out.
 ///
@@ -32,6 +32,15 @@ import 'video_coach_screen.dart';
 ///   That was a backend bug (PyJWT 2.x requires algorithms= even with
 ///   verify_signature=False). Fixed in repurpose.py — no Flutter change
 ///   needed; the token was always correct on this side.
+///
+/// Fix for the processing call itself timing out on long videos:
+///   /api/v1/repurpose now returns a job_id immediately instead of
+///   blocking until every clip is rendered — with up to 5 clips per
+///   video, the full pipeline (transcription + N renders + N thumbnail
+///   picks) can take several minutes, longer than Railway will hold a
+///   single request open. This screen now polls GET
+///   /api/v1/repurpose/{job_id} until the job is done or failed instead
+///   of waiting on one long HTTP call.
 class AiRepurposeScreen extends StatefulWidget {
   const AiRepurposeScreen({super.key});
 
@@ -101,13 +110,16 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         _isProcessing = true;
       });
 
-      // Step 2: Send the storage URL to the Railway backend.
-      // Railway now only handles a small JSON body — no timeout risk.
+      // Step 2: Start the repurpose job. This returns almost immediately
+      // with a job_id — the actual transcription + rendering happens on
+      // the server in the background, so this call is never at risk of
+      // Railway's request-handling timeout no matter how long a video
+      // takes to process.
       final token = SupabaseService.client.auth.currentSession?.accessToken;
-      final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
+      final startUri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
 
-      final response = await http.post(
-        uri,
+      final startResponse = await http.post(
+        startUri,
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
@@ -115,23 +127,65 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         body: jsonEncode({'video_url': videoUrl}),
       );
 
-      if (response.statusCode == 200) {
-        setState(() {
-          _result = jsonDecode(response.body);
-          _selectedClipIndex = 0;
-        });
-      } else {
-        final body = jsonDecode(response.body);
+      if (startResponse.statusCode != 200) {
+        final body = jsonDecode(startResponse.body);
         final detail = body['detail'];
-        if (response.statusCode == 402 && detail is Map) {
+        if (startResponse.statusCode == 402 && detail is Map) {
           throw InsufficientCoinsException(
             feature: detail['feature'] as String? ?? '',
             balance: (detail['balance'] as num?)?.toInt() ?? 0,
             needed: (detail['needed'] as num?)?.toInt() ?? 0,
           );
         }
-        throw Exception(detail ?? 'Server returned ${response.statusCode}');
+        throw Exception(detail ?? 'Server returned ${startResponse.statusCode}');
       }
+
+      final jobId = jsonDecode(startResponse.body)['job_id'] as String;
+
+      // Step 3: Poll for the result instead of holding one HTTP
+      // connection open — Whisper transcription plus up to 5 clip
+      // renders can take several minutes on a long video.
+      final statusUri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId');
+      const pollInterval = Duration(seconds: 4);
+      const maxAttempts = 120; // ~8 minutes, generous for the longest allowed video
+
+      Map<String, dynamic>? finalResult;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        await Future.delayed(pollInterval);
+        if (!mounted) return;
+
+        final statusResponse = await http.get(
+          statusUri,
+          headers: {if (token != null) 'Authorization': 'Bearer $token'},
+        );
+        if (statusResponse.statusCode != 200) {
+          final body = jsonDecode(statusResponse.body);
+          throw Exception(body['detail'] ?? 'Server returned ${statusResponse.statusCode}');
+        }
+
+        final statusBody = jsonDecode(statusResponse.body);
+        final status = statusBody['status'] as String?;
+        if (status == 'done') {
+          finalResult = statusBody['result'] as Map<String, dynamic>?;
+          break;
+        }
+        if (status == 'failed') {
+          throw Exception(statusBody['error'] ?? 'Processing failed');
+        }
+        // status == 'processing' — keep polling.
+      }
+
+      if (finalResult == null) {
+        throw Exception(
+          "Still processing after several minutes — this can happen on long videos. "
+          "Check back in a bit; your clips may still finish.",
+        );
+      }
+
+      setState(() {
+        _result = finalResult;
+        _selectedClipIndex = 0;
+      });
     } on InsufficientCoinsException catch (e) {
       if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
@@ -181,7 +235,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   String get _statusLabel {
     if (_isUploading) return 'Uploading video...';
-    if (_isProcessing) return 'Processing (this can take a minute)...';
+    if (_isProcessing) return 'Processing (can take a few minutes)...';
     return 'Run AI Repurpose';
   }
 
