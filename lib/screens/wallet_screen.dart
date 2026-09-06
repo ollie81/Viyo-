@@ -9,6 +9,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/coin_format.dart';
 import '../widgets/viyo_toast.dart';
+import 'wallet/buy_coins_screen.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -119,6 +120,24 @@ class _WalletScreenState extends State<WalletScreen> {
                             Text(
                               'Streak: ${_profile?.currentStreak ?? 0} days',
                               style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  final purchased = await Navigator.of(context).push<bool>(
+                                    MaterialPageRoute(builder: (_) => const BuyCoinsScreen()),
+                                  );
+                                  if (purchased == true) _load();
+                                },
+                                icon: const Icon(Icons.add_circle_outline, size: 18),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.coin,
+                                  foregroundColor: AppColors.background,
+                                ),
+                                label: const Text('Buy Coins'),
+                              ),
                             ),
                           ],
                         ),
