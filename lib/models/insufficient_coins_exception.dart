@@ -28,4 +28,5 @@ class FeatureCoinCosts {
   static const coachMessage = 10;
   static const repurpose = 40;
   static const postInsight = 5;
+  static const boostPost = 30;
 }
