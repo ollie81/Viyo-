@@ -4,6 +4,7 @@ import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../models/post_insight.dart';
 import '../../services/ai_service.dart';
+import '../../services/post_boost_service.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -28,6 +29,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   PostInsight? _insight;
   bool _loadingInsight = false;
   String? _insightError;
+
+  late bool _isBoosted = widget.post.isBoosted;
+  bool _boosting = false;
+  String? _boostError;
 
   bool get _isOwnPost => widget.post.userId == SupabaseService.currentUserId;
 
@@ -78,6 +83,70 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     } finally {
       if (mounted) setState(() => _loadingInsight = false);
     }
+  }
+
+  Future<void> _boostPost() async {
+    if (_boosting || _isBoosted) return;
+    setState(() {
+      _boosting = true;
+      _boostError = null;
+    });
+    try {
+      await PostBoostService.boostPost(widget.post.id);
+      if (mounted) setState(() => _isBoosted = true);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
+    } catch (e) {
+      if (mounted) setState(() => _boostError = 'Could not boost post: $e');
+    } finally {
+      if (mounted) setState(() => _boosting = false);
+    }
+  }
+
+  Widget _boostSection() {
+    if (!_isOwnPost) return const SizedBox.shrink();
+
+    if (_isBoosted) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.4)),
+        child: Row(
+          children: [
+            const Icon(Icons.trending_up, size: 16, color: AppColors.secondary),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'This post is boosted — it ranks higher in the home feed while it stays fresh.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _boosting ? null : _boostPost,
+            icon: _boosting
+                ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.trending_up, size: 16, color: AppColors.secondary),
+            label: _boosting
+                ? const Text('Boosting...')
+                : const _CoinButtonLabel(text: 'Boost This Post', cost: FeatureCoinCosts.boostPost),
+          ),
+          if (_boostError != null) ...[
+            const SizedBox(height: 6),
+            Text(_boostError!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+          ],
+        ],
+      ),
+    );
   }
 
   Color _performanceColor(String? performance) {
@@ -195,6 +264,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               children: [
                 PostCard(post: widget.post, onLike: _like, onComment: () {}, enableMediaTap: false),
                 const SizedBox(height: 10),
+                _boostSection(),
                 _whyThisWorkedSection(),
                 const Text('Comments', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),

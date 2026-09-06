@@ -25,6 +25,13 @@ class PostService {
   // everything else just because you follow that person.
   static const double _followBoostMultiplier = 3.0;
 
+  // A paid boost (see boostPost below) — stronger than the follow boost
+  // since it's a deliberate coin spend, not just an implicit signal.
+  // No expiry timestamp needed: is_boosted just stays true, and
+  // _hotScore's own age/engagement decay is what keeps an old boosted
+  // post from dominating the feed forever.
+  static const double _boostMultiplier = 4.0;
+
   /// Reddit-style "hot" score: recent + engaged beats merely recent.
   /// A post with zero engagement yet is ranked by recency alone (so a
   /// brand-new post still gets a fair first look — the classic
@@ -39,8 +46,9 @@ class PostService {
   }
 
   /// Home feed, ranked instead of just newest-first: a lightweight "hot"
-  /// score (recency decayed by engagement, see _hotScore) with a boost
-  /// for creators the viewer already follows. Pinned posts still always
+  /// score (recency decayed by engagement, see _hotScore) with boosts for
+  /// creators the viewer already follows and for posts the owner paid
+  /// coins to boost (see boostPost below). Pinned posts still always
   /// lead, unchanged from before.
   ///
   /// This re-ranks a bounded recent pool client-side rather than doing a
@@ -73,8 +81,10 @@ class PostService {
     }
 
     double rankScore(Post p) {
-      final score = _hotScore(p);
-      return followedIds.contains(p.userId) ? score * _followBoostMultiplier : score;
+      var score = _hotScore(p);
+      if (p.isBoosted) score *= _boostMultiplier;
+      if (followedIds.contains(p.userId)) score *= _followBoostMultiplier;
+      return score;
     }
 
     final pinned = posts.where((p) => p.isPinned).toList();
@@ -124,20 +134,6 @@ class PostService {
 
   static Future<void> setPinned(String postId, bool isPinned) async {
     await _client.from('posts').update({'is_pinned': isPinned}).eq('id', postId);
-  }
-
-  /// Spends coins to boost a post's visibility. Server-enforced via the
-  /// `boost_post` RPC so the balance check/deduction can't be bypassed.
-  static Future<Map<String, dynamic>> boostPost({
-    required String userId,
-    required String postId,
-    required double cost,
-  }) async {
-    return await _client.rpc('boost_post', params: {
-      'p_user_id': userId,
-      'p_post_id': postId,
-      'p_cost': cost,
-    });
   }
 
   /// Video-only feed for the full-screen Shorts-style player.
