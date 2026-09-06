@@ -7,6 +7,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/post_feedback.dart';
+import 'analytics_service.dart';
 import 'moderation_service.dart';
 import 'supabase_service.dart';
 
@@ -296,6 +297,8 @@ class PostService {
       'p_post_type': type.name,
     });
 
+    AnalyticsService.track('post_created', properties: {'post_type': type.name});
+
     return Post.fromJson(inserted);
   }
 
@@ -350,6 +353,8 @@ class PostService {
         .update({'like_count': currentCount + 1})
         .eq('id', postId)
         .eq('like_count', currentCount);
+
+    AnalyticsService.track('post_liked', properties: {'post_id': postId});
 
     // Best-effort notification — never let this fail the like itself.
     try {
@@ -429,6 +434,8 @@ class PostService {
       'p_post_id': postId,
       'p_comment_length': content.trim().length,
     });
+
+    AnalyticsService.track('comment_added', properties: {'post_id': postId});
 
     return comment;
   }

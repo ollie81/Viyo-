@@ -1,5 +1,6 @@
 import '../models/user_profile.dart';
 import '../models/creator_stats.dart';
+import 'analytics_service.dart';
 import 'discover_spotlight_service.dart';
 import 'moderation_service.dart';
 import 'supabase_service.dart';
@@ -122,10 +123,12 @@ class ProfileService {
   }
 
   static Future<Map<String, dynamic>> follow(String followerId, String followingId) async {
-    return await _client.rpc('follow_user', params: {
+    final result = await _client.rpc('follow_user', params: {
       'p_follower_id': followerId,
       'p_following_id': followingId,
     });
+    AnalyticsService.track('user_followed', properties: {'followed_id': followingId});
+    return result;
   }
 
   static Future<void> unfollow(String followerId, String followingId) async {

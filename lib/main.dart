@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import 'constants/supabase_constants.dart';
+import 'services/analytics_service.dart';
 import 'services/auth_service.dart';
 import 'services/supabase_service.dart';
 import 'services/profile_service.dart';
@@ -17,7 +20,17 @@ Future<void> main() async {
     ),
   );
   await SupabaseService.init();
-  runApp(const ViyoApp());
+
+  // SentryFlutter.init no-ops when SentryConstants.dsn is blank (see its
+  // definition) — safe to always call, crash reporting just stays off
+  // until a real DSN is filled in.
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = SentryConstants.dsn;
+      options.tracesSampleRate = 0.2;
+    },
+    appRunner: () => runApp(const ViyoApp()),
+  );
 }
 
 class ViyoApp extends StatelessWidget {
@@ -95,6 +108,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (SupabaseService.isGuest) {
         try {
           await AuthService.createGuestProfile(userId);
+          AnalyticsService.track('signup', properties: {'is_guest': true});
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const HomeShell()),
