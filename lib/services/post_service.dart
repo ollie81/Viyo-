@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:dio/dio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../constants/supabase_constants.dart';
@@ -45,6 +46,32 @@ class PostService {
     return engagement / pow(ageHours + 2, 1.5);
   }
 
+  /// Stamps the real "did I like this" state onto each post. Every feed
+  /// query previously just selected `*` from `posts` and relied on
+  /// Post.fromJson's `liked_by_me` field — but nothing ever actually
+  /// computed or returned that column, so it silently defaulted to
+  /// false on every single fetch. That's the root of "my like
+  /// disappears after I move to the next video": the like itself may
+  /// have saved fine, but every subsequent feed reload re-fetched posts
+  /// with likedByMe hard-wired to false, resetting the heart icon.
+  static Future<List<Post>> _withLikedByMe(List<Post> posts) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null || posts.isEmpty) return posts;
+    try {
+      final liked = await _client
+          .from('likes')
+          .select('post_id')
+          .eq('user_id', userId)
+          .inFilter('post_id', posts.map((p) => p.id).toList());
+      final likedIds = (liked as List).map((r) => r['post_id'] as String).toSet();
+      return posts.map((p) => p.copyWith(likedByMe: likedIds.contains(p.id))).toList();
+    } catch (_) {
+      // Best-effort — a failed lookup here should mean hearts don't
+      // reflect reality, not that the whole feed fails to load.
+      return posts;
+    }
+  }
+
   /// Home feed, ranked instead of just newest-first: a lightweight "hot"
   /// score (recency decayed by engagement, see _hotScore) with boosts for
   /// creators the viewer already follows and for posts the owner paid
@@ -63,7 +90,7 @@ class PostService {
         .eq('is_archived', false)
         .order('created_at', ascending: false)
         .limit(_feedRankingPoolSize);
-    final posts = (data as List).map((e) => Post.fromJson(e)).toList();
+    final posts = await _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
 
     Set<String> followedIds = {};
     final userId = SupabaseService.currentUserId;
@@ -107,7 +134,7 @@ class PostService {
         .eq('user_id', userId)
         .order('is_pinned', ascending: false)
         .order('created_at', ascending: false);
-    return (data as List).map((e) => Post.fromJson(e)).toList();
+    return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
   }
 
   /// A profile's posts as seen by *anyone else* — hides private and
@@ -121,7 +148,7 @@ class PostService {
         .eq('is_archived', false)
         .order('is_pinned', ascending: false)
         .order('created_at', ascending: false);
-    return (data as List).map((e) => Post.fromJson(e)).toList();
+    return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
   }
 
   static Future<void> setPrivate(String postId, bool isPrivate) async {
@@ -144,7 +171,7 @@ class PostService {
         .eq('post_type', 'video')
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
-    return (data as List).map((e) => Post.fromJson(e)).toList();
+    return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
   }
 
   static Future<String> uploadMedia(File file, String userId) async {
@@ -282,16 +309,72 @@ class PostService {
     await _client.from('posts').delete().eq('id', post.id);
   }
 
-  static Future<Map<String, dynamic>> likePost(String userId, String postId) async {
-    return await _client.rpc('like_post', params: {
-      'p_user_id': userId,
-      'p_post_id': postId,
-    });
+  /// Bypasses the old `like_post` Postgres RPC, which crashed server-side
+  /// (`column "post_id" of relation "notifications" does not exist`)
+  /// trying to insert a notification row against a column that was
+  /// never actually on that table — confirmed against
+  /// NotificationService's own working queries, which only ever
+  /// reference id/user_id/actor_id/type/message/is_read/created_at.
+  /// Likely why every like silently failed. Reimplemented directly,
+  /// same pattern as boost_post/spotlight elsewhere in this app: don't
+  /// trust an opaque RPC you can't inspect, do the steps yourself
+  /// against columns already verified in use.
+  static Future<void> likePost(String userId, String postId) async {
+    try {
+      await _client.from('likes').insert({'user_id': userId, 'post_id': postId});
+    } on PostgrestException catch (e) {
+      // Unique-violation — already liked (e.g. a stale double-tap).
+      // Nothing left to do; the count is already right.
+      if (e.code == '23505') return;
+      rethrow;
+    }
+
+    // Compare-and-swap increment instead of a blind +1 write, so two
+    // concurrent likes on the same post can't race and drop a count —
+    // same tradeoff already used server-side for coin balances.
+    final current = await _client.from('posts').select('like_count').eq('id', postId).single();
+    final currentCount = (current['like_count'] as num?)?.toInt() ?? 0;
+    await _client
+        .from('posts')
+        .update({'like_count': currentCount + 1})
+        .eq('id', postId)
+        .eq('like_count', currentCount);
+
+    // Best-effort notification — never let this fail the like itself.
+    try {
+      final post = await _client.from('posts').select('user_id').eq('id', postId).single();
+      final postOwnerId = post['user_id'] as String?;
+      if (postOwnerId != null && postOwnerId != userId) {
+        final actor = await _client
+            .from('profiles')
+            .select('display_name, username')
+            .eq('id', userId)
+            .maybeSingle();
+        final actorName = actor?['display_name'] ?? actor?['username'] ?? 'Someone';
+        await _client.from('notifications').insert({
+          'user_id': postOwnerId,
+          'actor_id': userId,
+          'type': 'like',
+          'message': '$actorName liked your post',
+        });
+      }
+    } catch (_) {}
   }
 
   static Future<void> unlikePost(String userId, String postId) async {
     await _client.from('likes').delete().eq('user_id', userId).eq('post_id', postId);
-    await _client.rpc('decrement_like_count', params: {'p_post_id': postId});
+
+    // Same compare-and-swap approach as likePost, and for the same
+    // reason: one less opaque RPC this app depends on without being
+    // able to see what it actually does.
+    final current = await _client.from('posts').select('like_count').eq('id', postId).single();
+    final currentCount = (current['like_count'] as num?)?.toInt() ?? 0;
+    if (currentCount <= 0) return;
+    await _client
+        .from('posts')
+        .update({'like_count': currentCount - 1})
+        .eq('id', postId)
+        .eq('like_count', currentCount);
   }
 
   static Future<void> toggleLike(Post post) async {
