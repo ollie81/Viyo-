@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
@@ -10,20 +11,80 @@ import 'supabase_service.dart';
 class PostService {
   static final _client = SupabaseService.client;
 
-  /// Home feed: posts from followed users + some recommended (simplified:
-  /// most recent posts overall, since a real recommender is out of scope
-  /// for v1). Swap the query for a `following` filter once you want a
-  /// strict "following only" feed.
+  // How many of the most recent posts to pull back and rank client-side.
+  // At Viyo's current scale this comfortably covers the whole table, so
+  // this is effectively "rank everything" — cheap because it's one query
+  // and no server-side compute, not because it's a small sample. Revisit
+  // (DB-side ranking, or a real recommender) once post volume outgrows
+  // fetching this many rows on every feed load.
+  static const int _feedRankingPoolSize = 150;
+
+  // A followed creator's posts are boosted, not guaranteed top — the
+  // multiplier still decays with the post's own age/engagement via
+  // _hotScore, so an old followed post doesn't permanently outrank
+  // everything else just because you follow that person.
+  static const double _followBoostMultiplier = 3.0;
+
+  /// Reddit-style "hot" score: recent + engaged beats merely recent.
+  /// A post with zero engagement yet is ranked by recency alone (so a
+  /// brand-new post still gets a fair first look — the classic
+  /// hot-ranking cold-start problem, worth avoiding on an app whose whole
+  /// pitch is helping new creators get seen) rather than scoring 0 and
+  /// sinking behind every older post that has even a single like.
+  static double _hotScore(Post post) {
+    final ageHours = DateTime.now().difference(post.createdAt).inMinutes / 60.0;
+    final engagement = post.likeCount + post.commentCount * 2;
+    if (engagement <= 0) return 1 / (ageHours + 1);
+    return engagement / pow(ageHours + 2, 1.5);
+  }
+
+  /// Home feed, ranked instead of just newest-first: a lightweight "hot"
+  /// score (recency decayed by engagement, see _hotScore) with a boost
+  /// for creators the viewer already follows. Pinned posts still always
+  /// lead, unchanged from before.
+  ///
+  /// This re-ranks a bounded recent pool client-side rather than doing a
+  /// true DB-side paginated query — fine at Viyo's current scale (see
+  /// _feedRankingPoolSize) and avoids needing a new Postgres function or
+  /// materialized ranking column for a first pass.
   static Future<List<Post>> getFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
         .from('posts')
         .select('*, profiles(username, display_name, avatar_url)')
         .eq('is_private', false)
         .eq('is_archived', false)
-        .order('is_pinned', ascending: false)
         .order('created_at', ascending: false)
-        .range(offset, offset + limit - 1);
-    return (data as List).map((e) => Post.fromJson(e)).toList();
+        .limit(_feedRankingPoolSize);
+    final posts = (data as List).map((e) => Post.fromJson(e)).toList();
+
+    Set<String> followedIds = {};
+    final userId = SupabaseService.currentUserId;
+    if (userId != null) {
+      try {
+        final follows = await _client
+            .from('follows')
+            .select('following_id')
+            .eq('follower_id', userId);
+        followedIds = (follows as List).map((f) => f['following_id'] as String).toSet();
+      } catch (_) {
+        // Follow-boost is a nice-to-have — falling back to plain hot
+        // ranking beats failing the whole feed load over this.
+      }
+    }
+
+    double rankScore(Post p) {
+      final score = _hotScore(p);
+      return followedIds.contains(p.userId) ? score * _followBoostMultiplier : score;
+    }
+
+    final pinned = posts.where((p) => p.isPinned).toList();
+    final rest = posts.where((p) => !p.isPinned).toList()
+      ..sort((a, b) => rankScore(b).compareTo(rankScore(a)));
+
+    final ranked = [...pinned, ...rest];
+    final start = offset.clamp(0, ranked.length);
+    final end = (offset + limit).clamp(0, ranked.length);
+    return ranked.sublist(start, end);
   }
 
   /// A profile's posts as seen by the *owner* — includes private/archived
