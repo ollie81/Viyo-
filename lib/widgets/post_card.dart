@@ -4,7 +4,10 @@ import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:share_plus/share_plus.dart';
 import '../models/post.dart';
+import '../services/moderation_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'report_sheet.dart';
 import '../screens/post/post_detail_screen.dart';
 
 class PostCard extends StatelessWidget {
@@ -101,32 +104,71 @@ class PostCard extends StatelessWidget {
                         style: TextStyle(fontSize: 9, color: AppColors.secondary),
                       ),
                     ),
-                  // Only the post owner sees the delete option.
-                  // The ownership check here is a UX convenience; the real
-                  // enforcement is Supabase RLS on the posts table.
-                  if (currentUserId != null && currentUserId == post.userId)
-                    PopupMenuButton<String>(
+                  Builder(builder: (context) {
+                    final myId = currentUserId ?? SupabaseService.currentUserId;
+                    if (myId == null) return const SizedBox.shrink();
+                    final isOwner = myId == post.userId;
+
+                    // The ownership check here is a UX convenience; the
+                    // real enforcement is Supabase RLS on the posts table.
+                    return PopupMenuButton<String>(
                       icon: const Icon(
                         Icons.more_vert,
                         color: AppColors.textSecondary,
                         size: 20,
                       ),
-                      onSelected: (value) {
-                        if (value == 'delete') onDelete?.call();
+                      onSelected: (value) async {
+                        if (value == 'delete') {
+                          onDelete?.call();
+                        } else if (value == 'report') {
+                          await showReportSheet(context, targetType: 'post', targetId: post.id);
+                        } else if (value == 'block') {
+                          await ModerationService.blockUser(myId, post.userId);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(
+                              "Blocked @${post.authorUsername ?? 'user'}. Pull to refresh to stop seeing their posts.",
+                            ),
+                          ));
+                        }
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-                              SizedBox(width: 8),
-                              Text('Delete post'),
+                      itemBuilder: (_) => isOwner
+                          ? const [
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Delete post'),
+                                  ],
+                                ),
+                              ),
+                            ]
+                          : const [
+                              PopupMenuItem(
+                                value: 'report',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.flag_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Report post'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'block',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.block, color: Colors.redAccent, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Block user'),
+                                  ],
+                                ),
+                              ),
                             ],
-                          ),
-                        ),
-                      ],
-                    ),
+                    );
+                  }),
                 ],
               ),
             ),

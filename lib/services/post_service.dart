@@ -7,6 +7,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/post_feedback.dart';
+import 'moderation_service.dart';
 import 'supabase_service.dart';
 
 class PostService {
@@ -90,11 +91,15 @@ class PostService {
         .eq('is_archived', false)
         .order('created_at', ascending: false)
         .limit(_feedRankingPoolSize);
-    final posts = await _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
+    var posts = await _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
 
     Set<String> followedIds = {};
     final userId = SupabaseService.currentUserId;
     if (userId != null) {
+      final hidden = await ModerationService.getHiddenUserIds(userId);
+      if (hidden.isNotEmpty) {
+        posts = posts.where((p) => !hidden.contains(p.userId)).toList();
+      }
       try {
         final follows = await _client
             .from('follows')
@@ -171,7 +176,13 @@ class PostService {
         .eq('post_type', 'video')
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
-    return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
+    final posts = await _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
+
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return posts;
+    final hidden = await ModerationService.getHiddenUserIds(userId);
+    if (hidden.isEmpty) return posts;
+    return posts.where((p) => !hidden.contains(p.userId)).toList();
   }
 
   static Future<String> uploadMedia(File file, String userId) async {
@@ -388,11 +399,18 @@ class PostService {
   }
 
   static Future<List<Map<String, dynamic>>> getComments(String postId) async {
-    return await _client
+    final data = await _client
         .from('comments')
         .select('*, profiles(username, display_name, avatar_url)')
         .eq('post_id', postId)
         .order('created_at');
+    final comments = (data as List).cast<Map<String, dynamic>>();
+
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return comments;
+    final hidden = await ModerationService.getHiddenUserIds(userId);
+    if (hidden.isEmpty) return comments;
+    return comments.where((c) => !hidden.contains(c['user_id'])).toList();
   }
 
   static Future<Map<String, dynamic>> addComment({

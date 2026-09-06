@@ -1,6 +1,7 @@
 import '../models/user_profile.dart';
 import '../models/creator_stats.dart';
 import 'discover_spotlight_service.dart';
+import 'moderation_service.dart';
 import 'supabase_service.dart';
 
 class ProfileService {
@@ -65,7 +66,12 @@ class ProfileService {
         .select('id, username, display_name, avatar_url, niche')
         .neq('id', excludeUserId)
         .limit(limit * 4);
-    final pool = List<Map<String, dynamic>>.from(candidates);
+    var pool = List<Map<String, dynamic>>.from(candidates);
+
+    final hidden = await ModerationService.getHiddenUserIds(excludeUserId);
+    if (hidden.isNotEmpty) {
+      pool = pool.where((c) => !hidden.contains(c['id'])).toList();
+    }
 
     List<String> spotlightedIds = const [];
     try {
