@@ -8,6 +8,7 @@ import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/post_feedback.dart';
 import 'analytics_service.dart';
+import 'discover_spotlight_service.dart';
 import 'moderation_service.dart';
 import 'supabase_service.dart';
 
@@ -34,6 +35,16 @@ class PostService {
   // _hotScore's own age/engagement decay is what keeps an old boosted
   // post from dominating the feed forever.
   static const double _boostMultiplier = 4.0;
+
+  // How many candidate posts to pull back for the Discover grid before
+  // ranking and trimming to what's actually shown — same "rank a
+  // bounded pool client-side" tradeoff as the home feed.
+  static const int _discoverPoolSize = 120;
+
+  // Discover Spotlight (see DiscoverSpotlightService) already boosts a
+  // creator's place in the suggested-creators list; this extends the
+  // same purchase to the post grid so the coin spend does more.
+  static const double _discoverSpotlightMultiplier = 2.5;
 
   /// Reddit-style "hot" score: recent + engaged beats merely recent.
   /// A post with zero engagement yet is ranked by recency alone (so a
@@ -184,6 +195,52 @@ class PostService {
     final hidden = await ModerationService.getHiddenUserIds(userId);
     if (hidden.isEmpty) return posts;
     return posts.where((p) => !hidden.contains(p.userId)).toList();
+  }
+
+  /// The Discover tab's post grid — trending photo/video posts, ranked
+  /// the same way as the home feed (_hotScore + a post-level boost
+  /// multiplier) plus a creator-level multiplier for anyone currently
+  /// spotlighted, so a Discover Spotlight purchase visibly pays off on
+  /// the surface it's named after, not just the suggested-creators list.
+  /// Unlike the home feed there's no follow-boost here — the whole
+  /// point of Discover is surfacing things the viewer doesn't already
+  /// follow.
+  static Future<List<Post>> getDiscoverPosts({int limit = 40}) async {
+    final data = await _client
+        .from('posts')
+        .select('*, profiles(username, display_name, avatar_url)')
+        .eq('is_private', false)
+        .eq('is_archived', false)
+        .not('media_url', 'is', null)
+        .order('created_at', ascending: false)
+        .limit(_discoverPoolSize);
+    var posts = await _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
+
+    final userId = SupabaseService.currentUserId;
+    if (userId != null) {
+      final hidden = await ModerationService.getHiddenUserIds(userId);
+      if (hidden.isNotEmpty) {
+        posts = posts.where((p) => !hidden.contains(p.userId)).toList();
+      }
+    }
+
+    Set<String> spotlightedIds = {};
+    try {
+      spotlightedIds = (await DiscoverSpotlightService.getActiveSpotlightIds()).toSet();
+    } catch (_) {
+      // Spotlight ordering is a nice-to-have — plain hot ranking beats
+      // failing the whole grid over this.
+    }
+
+    double rankScore(Post p) {
+      var score = _hotScore(p);
+      if (p.isBoosted) score *= _boostMultiplier;
+      if (spotlightedIds.contains(p.userId)) score *= _discoverSpotlightMultiplier;
+      return score;
+    }
+
+    posts.sort((a, b) => rankScore(b).compareTo(rankScore(a)));
+    return posts.take(limit).toList();
   }
 
   static Future<String> uploadMedia(File file, String userId) async {
