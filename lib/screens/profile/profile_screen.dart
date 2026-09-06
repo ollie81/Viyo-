@@ -2,14 +2,17 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../models/user_profile.dart';
+import '../../services/discover_spotlight_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coin_badge.dart';
 import '../../widgets/guest_gate.dart';
+import '../../widgets/insufficient_coins_sheet.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../wallet_screen.dart';
@@ -33,6 +36,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isFollowing = false;
   bool _loading = true;
   int _tab = 0;
+
+  bool _isSpotlighted = false;
+  bool _spotlighting = false;
+  String? _spotlightError;
 
   bool get _isOwnProfile =>
       widget.userId == null || widget.userId == SupabaseService.currentUserId;
@@ -61,6 +68,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       followingMe = await ProfileService.isFollowing(myId, targetId);
     }
 
+    var isSpotlighted = false;
+    if (_isOwnProfile) {
+      try {
+        final spotlighted = await DiscoverSpotlightService.getActiveSpotlightIds();
+        isSpotlighted = spotlighted.contains(targetId);
+      } catch (_) {
+        // Best-effort — the profile screen shouldn't fail to load over this.
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _profile = profile;
@@ -68,8 +85,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _followers = followers;
       _following = following;
       _isFollowing = followingMe;
+      _isSpotlighted = isSpotlighted;
       _loading = false;
     });
+  }
+
+  Future<void> _spotlightMe() async {
+    if (_spotlighting || _isSpotlighted) return;
+    setState(() {
+      _spotlighting = true;
+      _spotlightError = null;
+    });
+    try {
+      await DiscoverSpotlightService.spotlightMe();
+      if (mounted) setState(() => _isSpotlighted = true);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
+    } catch (e) {
+      if (mounted) setState(() => _spotlightError = 'Could not spotlight: $e');
+    } finally {
+      if (mounted) setState(() => _spotlighting = false);
+    }
+  }
+
+  Widget _spotlightSection() {
+    if (_isSpotlighted) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.4)),
+        child: const Row(
+          children: [
+            Icon(Icons.wb_incandescent_outlined, size: 16, color: AppColors.secondary),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "You're spotlighted — showing near the top of Discover for the next 24 hours.",
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _spotlighting ? null : _spotlightMe,
+          icon: _spotlighting
+              ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.wb_incandescent_outlined, size: 16, color: AppColors.secondary),
+          label: _spotlighting
+              ? const Text('Spotlighting...')
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Get Discover Spotlight'),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.coin.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.monetization_on, size: 11, color: AppColors.coin),
+                          const SizedBox(width: 2),
+                          Text(
+                            '${FeatureCoinCosts.spotlight}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.coin),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+        if (_spotlightError != null) ...[
+          const SizedBox(height: 6),
+          Text(_spotlightError!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+        ],
+      ],
+    );
   }
 
   Future<void> _toggleFollow() async {
@@ -384,6 +484,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
+                    if (_isOwnProfile) ...[
+                      const SizedBox(height: 10),
+                      _spotlightSection(),
+                    ],
                     const SizedBox(height: 16),
                     Row(
                       children: [
