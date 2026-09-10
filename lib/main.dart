@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'constants/supabase_constants.dart';
 import 'services/analytics_service.dart';
 import 'services/auth_service.dart';
+import 'services/push_notification_service.dart';
 import 'services/supabase_service.dart';
 import 'services/profile_service.dart';
 import 'theme/app_theme.dart';
@@ -41,6 +43,7 @@ class ViyoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Viyo',
       debugShowCheckedModeBanner: false,
+      navigatorKey: PushNotificationService.navigatorKey,
       theme: AppTheme.dark,
       home: const SplashScreen(),
     );
@@ -94,6 +97,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // Have a session — but is there a profile row yet?
     try {
       await ProfileService.getProfile(userId);
+      unawaited(PushNotificationService.init(userId));
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeShell()),
@@ -109,6 +113,7 @@ class _SplashScreenState extends State<SplashScreen> {
         try {
           await AuthService.createGuestProfile(userId);
           AnalyticsService.track('signup', properties: {'is_guest': true});
+          unawaited(PushNotificationService.init(userId));
           if (!mounted) return;
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const HomeShell()),
