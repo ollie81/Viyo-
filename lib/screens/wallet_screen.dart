@@ -57,7 +57,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _sendGift() async {
     final userId = SupabaseService.currentUserId;
     final handle = _giftHandleCtrl.text.trim().replaceFirst('@', '');
-    final amount = double.tryParse(_giftAmountCtrl.text) ?? 0;
+    final amount = double.tryParse(_giftAmountCtrl.text)?.round() ?? 0;
     if (userId == null || handle.isEmpty || amount < 10) {
       _showToast('Enter a username and at least 10 coins');
       return;
@@ -70,18 +70,16 @@ class _WalletScreenState extends State<WalletScreen> {
         _showToast('User @$handle not found');
         return;
       }
-      final result = await CoinService.giftCoins(
+      await CoinService.giftCoins(
         senderId: userId,
         receiverId: receiver.id,
         amount: amount,
       );
-      if (result['success'] == true) {
-        _showToast('Gifted $amount coins to @$handle 💜');
-        _giftHandleCtrl.clear();
-        _load();
-      } else {
-        _showToast(result['message'] ?? 'Gift failed');
-      }
+      _showToast('Gifted $amount coins to @$handle 💜');
+      _giftHandleCtrl.clear();
+      _load();
+    } catch (e) {
+      _showToast('$e');
     } finally {
       if (mounted) setState(() => _gifting = false);
     }
