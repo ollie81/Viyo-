@@ -272,13 +272,17 @@ class PostService {
   /// can show a percentage instead of a plain spinner. Uses dio directly
   /// against Supabase Storage's REST endpoint since supabase_flutter's
   /// convenience `.upload()` doesn't expose progress callbacks.
+  /// Pass [storagePath] to control where the file lands — the AI
+  /// Repurposer needs to know the exact path, since it doubles as the
+  /// id tying a Coach conversation to that specific upload.
   static Future<String> uploadMediaWithProgress(
     File file,
     String userId, {
     void Function(double progress)? onProgress,
+    String? storagePath,
   }) async {
     final ext = file.path.split('.').last;
-    final path = '$userId/${const Uuid().v4()}.$ext';
+    final path = storagePath ?? '$userId/${const Uuid().v4()}.$ext';
     final bytes = await file.readAsBytes();
     final token = _client.auth.currentSession?.accessToken;
 

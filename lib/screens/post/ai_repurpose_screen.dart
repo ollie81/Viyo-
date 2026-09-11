@@ -14,7 +14,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../widgets/upload_progress_card.dart';
 import 'video_coach_screen.dart';
 
 /// AI Repurposer — upload a longer video, get back up to 5 ranked
@@ -54,6 +54,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   bool _isUploading = false;
   bool _isProcessing = false;
   double _uploadProgress = 0;
+  int _uploadTotalBytes = 0;
   String? _error;
   Map<String, dynamic>? _result;
   int _selectedClipIndex = 0;
@@ -91,17 +92,19 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       final ext = _selectedVideo!.path.split('.').last.toLowerCase();
       final storagePath = '$userId/${const Uuid().v4()}.$ext';
 
-      await SupabaseService.client.storage
-          .from(SupabaseConstants.postsBucket)
-          .upload(
-            storagePath,
-            _selectedVideo!,
-            fileOptions: FileOptions(upsert: false),
-          );
+      _uploadTotalBytes = await _selectedVideo!.length();
 
-      final videoUrl = SupabaseService.client.storage
-          .from(SupabaseConstants.postsBucket)
-          .getPublicUrl(storagePath);
+      // Uses the progress-reporting upload rather than the plain
+      // storage .upload(), which reports nothing — that's why the
+      // percentage never moved off zero before.
+      final videoUrl = await PostService.uploadMediaWithProgress(
+        _selectedVideo!,
+        userId,
+        storagePath: storagePath,
+        onProgress: (p) {
+          if (mounted) setState(() => _uploadProgress = p);
+        },
+      );
 
       // This stable ID ties the Coach history to this exact uploaded video.
       _videoId = storagePath;
@@ -354,6 +357,15 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       ),
               ),
             ),
+            if (_isBusy) ...[
+              const SizedBox(height: 16),
+              UploadProgressCard(
+                uploading: _isUploading,
+                progress: _uploadProgress,
+                totalBytes: _uploadTotalBytes,
+              ),
+            ],
+
             const SizedBox(height: 16),
 
             ElevatedButton(
