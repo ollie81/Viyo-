@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../constants/supabase_constants.dart';
 import '../models/user_profile.dart';
 import '../models/creator_stats.dart';
+import 'analytics_service.dart';
 import 'discover_spotlight_service.dart';
+import 'moderation_service.dart';
 import 'supabase_service.dart';
 
 class ProfileService {
@@ -65,7 +71,12 @@ class ProfileService {
         .select('id, username, display_name, avatar_url, niche')
         .neq('id', excludeUserId)
         .limit(limit * 4);
-    final pool = List<Map<String, dynamic>>.from(candidates);
+    var pool = List<Map<String, dynamic>>.from(candidates);
+
+    final hidden = await ModerationService.getHiddenUserIds(excludeUserId);
+    if (hidden.isNotEmpty) {
+      pool = pool.where((c) => !hidden.contains(c['id'])).toList();
+    }
 
     List<String> spotlightedIds = const [];
     try {
@@ -116,10 +127,33 @@ class ProfileService {
   }
 
   static Future<Map<String, dynamic>> follow(String followerId, String followingId) async {
-    return await _client.rpc('follow_user', params: {
+    final result = await _client.rpc('follow_user', params: {
       'p_follower_id': followerId,
       'p_following_id': followingId,
     });
+    AnalyticsService.track('user_followed', properties: {'followed_id': followingId});
+    unawaited(_notifyFollow(followingId));
+    return result;
+  }
+
+  /// Push notification for the new follower — the in-app notification
+  /// row is already created by follow_user above (unlike gifting/likes/
+  /// comments, a `follows` insert never touches a row someone else
+  /// owns, so there's no evidence that RPC has the same RLS bug found
+  /// elsewhere). Best-effort and fire-and-forget: a failed push should
+  /// never surface as a failed follow.
+  static Future<void> _notifyFollow(String followedId) async {
+    try {
+      final token = _client.auth.currentSession?.accessToken;
+      await http.post(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/notify/follow'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'followed_id': followedId}),
+      );
+    } catch (_) {}
   }
 
   static Future<void> unfollow(String followerId, String followingId) async {

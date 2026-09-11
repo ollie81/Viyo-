@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/caption_variants.dart';
+import '../models/coach_video_context.dart';
 import '../models/hook_feedback.dart';
 import '../models/insufficient_coins_exception.dart';
 import '../models/post_feedback.dart';
@@ -105,6 +106,7 @@ class AiService {
     required String videoId,
     required String message,
     int videoVersion = 1,
+    CoachVideoContext? videoContext,
   }) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coach/message'),
@@ -113,6 +115,8 @@ class AiService {
         'video_id': videoId,
         'message': message,
         'video_version': videoVersion,
+        if (videoContext != null && !videoContext.isEmpty)
+          'video_context': videoContext.toJson(),
       }),
     );
 
@@ -121,6 +125,81 @@ class AiService {
     }
 
     return Map<String, dynamic>.from(jsonDecode(res.body));
+  }
+
+  /// Same turn as [sendCoachMessage], streamed token by token.
+  ///
+  /// A coach that sits silent for eight seconds and then dumps a
+  /// paragraph reads as broken; one that starts talking immediately
+  /// reads as alive. The backend charges, stores and refunds identically
+  /// either way — only the delivery differs — so a caller that can't
+  /// stream can always fall back to [sendCoachMessage].
+  static Stream<CoachStreamEvent> streamCoachMessage({
+    required String videoId,
+    required String message,
+    int videoVersion = 1,
+    CoachVideoContext? videoContext,
+  }) async* {
+    final request = http.Request(
+      'POST',
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coach/message/stream'),
+    )
+      ..headers.addAll(await _headers())
+      ..body = jsonEncode({
+        'video_id': videoId,
+        'message': message,
+        'video_version': videoVersion,
+        if (videoContext != null && !videoContext.isEmpty)
+          'video_context': videoContext.toJson(),
+      });
+
+    final client = http.Client();
+    try {
+      final response = await client.send(request);
+
+      // Errors that happen before generation starts — no coins, no
+      // balance, bad token — arrive as an ordinary status code, so
+      // they're surfaced exactly like the non-streaming call's are.
+      if (response.statusCode != 200) {
+        final body = await response.stream.bytesToString();
+        throw _errorFor(
+          http.Response(body, response.statusCode),
+          'Coach request failed',
+        );
+      }
+
+      // SSE frames are separated by a blank line, and a single network
+      // packet can carry a partial frame or several at once — so buffer
+      // and only parse up to the last complete separator.
+      var buffer = '';
+      await for (final chunk
+          in response.stream.transform(const Utf8Decoder(allowMalformed: true))) {
+        buffer += chunk;
+
+        while (true) {
+          final split = buffer.indexOf('\n\n');
+          if (split == -1) break;
+
+          final frame = buffer.substring(0, split);
+          buffer = buffer.substring(split + 2);
+
+          for (final line in const LineSplitter().convert(frame)) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              yield CoachStreamEvent.fromJson(
+                jsonDecode(line.substring(6)) as Map<String, dynamic>,
+              );
+            } catch (_) {
+              // A frame we can't parse is a frame we skip — never a
+              // reason to drop the rest of an answer the creator paid
+              // coins for.
+            }
+          }
+        }
+      }
+    } finally {
+      client.close();
+    }
   }
 
   /// Permanently deletes the creator's account: coach history, posts,

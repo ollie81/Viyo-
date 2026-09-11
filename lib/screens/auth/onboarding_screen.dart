@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../services/analytics_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/push_notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../home/home_shell.dart';
 
@@ -55,6 +58,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ? null
             : _referralCode.text.trim(),
       );
+
+      AnalyticsService.track('signup', properties: {'is_guest': false});
+      unawaited(PushNotificationService.init(widget.userId));
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

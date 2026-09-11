@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Required to show push notifications on Android 13+ (API 33+);
+         firebase_messaging's requestPermission() prompts for this at
+         runtime. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     
     <application
         android:label="viyo"

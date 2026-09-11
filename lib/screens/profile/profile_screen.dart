@@ -6,6 +6,7 @@ import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../models/user_profile.dart';
 import '../../services/discover_spotlight_service.dart';
+import '../../services/moderation_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
@@ -13,6 +14,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/coin_badge.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
+import '../../widgets/report_sheet.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../wallet_screen.dart';
@@ -41,6 +43,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _spotlighting = false;
   String? _spotlightError;
 
+  bool _isBlocked = false;
+
   bool get _isOwnProfile =>
       widget.userId == null || widget.userId == SupabaseService.currentUserId;
 
@@ -63,9 +67,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final following = await ProfileService.getFollowingCount(targetId);
 
     var followingMe = false;
+    var blocked = false;
     final myId = SupabaseService.currentUserId;
     if (!_isOwnProfile && myId != null) {
       followingMe = await ProfileService.isFollowing(myId, targetId);
+      try {
+        blocked = await ModerationService.isBlocked(myId, targetId);
+      } catch (_) {
+        // Best-effort — the profile screen shouldn't fail to load over this.
+      }
     }
 
     var isSpotlighted = false;
@@ -86,8 +96,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _following = following;
       _isFollowing = followingMe;
       _isSpotlighted = isSpotlighted;
+      _isBlocked = blocked;
       _loading = false;
     });
+  }
+
+  Future<void> _toggleBlock() async {
+    final myId = SupabaseService.currentUserId;
+    final targetId = widget.userId;
+    if (myId == null || targetId == null) return;
+
+    if (_isBlocked) {
+      await ModerationService.unblockUser(myId, targetId);
+      if (mounted) setState(() => _isBlocked = false);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Block @${_profile?.username ?? 'user'}?'),
+        content: const Text(
+          "You won't see their posts in your feed or Discover, and they won't see yours.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Block')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await ModerationService.blockUser(myId, targetId);
+    if (mounted) setState(() => _isBlocked = true);
   }
 
   Future<void> _spotlightMe() async {
@@ -303,11 +344,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
             )
-          else
+          else ...[
             IconButton(
               icon: const Icon(Icons.ios_share_outlined),
               onPressed: _shareProfile,
             ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) async {
+                if (value == 'report') {
+                  await showReportSheet(context, targetType: 'user', targetId: p.id);
+                } else if (value == 'block' || value == 'unblock') {
+                  await _toggleBlock();
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'report',
+                  child: Row(
+                    children: [
+                      Icon(Icons.flag_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Report user'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _isBlocked ? 'unblock' : 'block',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.block, color: Colors.redAccent, size: 18),
+                      const SizedBox(width: 8),
+                      Text(_isBlocked ? 'Unblock user' : 'Block user'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
       body: RefreshIndicator(

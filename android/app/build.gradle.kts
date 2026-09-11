@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.viyo"
+    namespace = "com.viyo.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,8 +20,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.viyo"
+        applicationId = "com.viyo.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -35,10 +34,24 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+// Push notifications (firebase_messaging) need this applied, but the
+// plugin fails the build outright if google-services.json isn't
+// present yet — so only apply it once that file actually exists.
+// Drop your Firebase project's google-services.json into this
+// directory (android/app/) to activate push notifications; nothing
+// else needs to change.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

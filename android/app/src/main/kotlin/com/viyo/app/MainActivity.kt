@@ -1,4 +1,4 @@
-package com.example.viyo
+package com.viyo.app
 
 import io.flutter.embedding.android.FlutterActivity
 

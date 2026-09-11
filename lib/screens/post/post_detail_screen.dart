@@ -11,6 +11,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/post_card.dart';
+import 'video_coach_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final Post post;
@@ -63,6 +64,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       await PostService.addComment(postId: widget.post.id, userId: userId, content: content);
       _commentCtrl.clear();
       await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not post comment: $e')),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -239,6 +245,30 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
+  /// Opens the Coach on this post.
+  ///
+  /// Only shown to the post's owner, and deliberately from here rather
+  /// than only from the AI repurposer: given a real post id the backend
+  /// loads the caption, the live engagement numbers and what viewers
+  /// actually commented, so the Coach can answer "why did this flop?"
+  /// from the post itself instead of guessing.
+  Widget _askCoachButton() {
+    if (!_isOwnPost) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: OutlinedButton.icon(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => VideoCoachScreen(videoId: widget.post.id),
+          ),
+        ),
+        icon: const Icon(Icons.auto_awesome, size: 16),
+        label: const Text('Ask your Coach about this post'),
+      ),
+    );
+  }
+
   Future<void> _like() async {
     if (!await GuestGate.allow(context, action: 'like posts')) return;
     try {
@@ -266,6 +296,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 const SizedBox(height: 10),
                 _boostSection(),
                 _whyThisWorkedSection(),
+                _askCoachButton(),
                 const Text('Comments', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 if (_loading)

@@ -19,3 +19,11 @@ class AiBackendConstants {
   // For local testing on an Android emulator, use:
   // static const String baseUrl = 'http://10.0.2.2:8000';
 }
+
+/// Crash/error reporting (see main.dart). Leave blank to run with
+/// crash reporting disabled — SentryFlutter.init() no-ops on an empty
+/// DSN rather than failing, so this is safe to ship unset.
+/// Get a DSN free at sentry.io -> Create Project -> Flutter.
+class SentryConstants {
+  static const String dsn = '';
+}

@@ -9,6 +9,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/coin_format.dart';
 import '../widgets/viyo_toast.dart';
+import 'wallet/buy_coins_screen.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -56,7 +57,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _sendGift() async {
     final userId = SupabaseService.currentUserId;
     final handle = _giftHandleCtrl.text.trim().replaceFirst('@', '');
-    final amount = double.tryParse(_giftAmountCtrl.text) ?? 0;
+    final amount = double.tryParse(_giftAmountCtrl.text)?.round() ?? 0;
     if (userId == null || handle.isEmpty || amount < 10) {
       _showToast('Enter a username and at least 10 coins');
       return;
@@ -69,18 +70,16 @@ class _WalletScreenState extends State<WalletScreen> {
         _showToast('User @$handle not found');
         return;
       }
-      final result = await CoinService.giftCoins(
+      await CoinService.giftCoins(
         senderId: userId,
         receiverId: receiver.id,
         amount: amount,
       );
-      if (result['success'] == true) {
-        _showToast('Gifted $amount coins to @$handle 💜');
-        _giftHandleCtrl.clear();
-        _load();
-      } else {
-        _showToast(result['message'] ?? 'Gift failed');
-      }
+      _showToast('Gifted $amount coins to @$handle 💜');
+      _giftHandleCtrl.clear();
+      _load();
+    } catch (e) {
+      _showToast('$e');
     } finally {
       if (mounted) setState(() => _gifting = false);
     }
@@ -119,6 +118,24 @@ class _WalletScreenState extends State<WalletScreen> {
                             Text(
                               'Streak: ${_profile?.currentStreak ?? 0} days',
                               style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  final purchased = await Navigator.of(context).push<bool>(
+                                    MaterialPageRoute(builder: (_) => const BuyCoinsScreen()),
+                                  );
+                                  if (purchased == true) _load();
+                                },
+                                icon: const Icon(Icons.add_circle_outline, size: 18),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.coin,
+                                  foregroundColor: AppColors.background,
+                                ),
+                                label: const Text('Buy Coins'),
+                              ),
                             ),
                           ],
                         ),

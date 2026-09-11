@@ -13,6 +13,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
+import '../../widgets/upload_progress_card.dart';
 import 'coach_feedback_screen.dart';
 import 'ai_repurpose_screen.dart';
 
@@ -28,6 +29,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final _caption = TextEditingController();
   File? _mediaFile;
   bool _posting = false;
+  bool _uploading = false;
+  double _uploadProgress = 0;
+  int _uploadTotalBytes = 0;
   bool _improvingCaption = false;
   bool _checkingHook = false;
   HookFeedback? _hookResult;
@@ -207,7 +211,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     final shouldProceed = await _checkVoiceBeforePosting(_caption.text.trim());
     if (!shouldProceed) {
-      if (mounted) setState(() => _posting = false);
+      if (mounted) setState(() { _posting = false; _uploading = false; });
       return;
     }
 
@@ -216,7 +220,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       String? thumbnailUrl;
 
       if (_mediaFile != null) {
-        mediaUrl = await PostService.uploadMedia(_mediaFile!, userId);
+        _uploadTotalBytes = await _mediaFile!.length();
+        if (mounted) {
+          setState(() {
+            _uploading = true;
+            _uploadProgress = 0;
+          });
+        }
+        // Progress-reporting upload rather than the plain one, so the
+        // card below can show a real percentage instead of a spinner
+        // that says nothing on a large video.
+        mediaUrl = await PostService.uploadMediaWithProgress(
+          _mediaFile!,
+          userId,
+          onProgress: (p) {
+            if (mounted) setState(() => _uploadProgress = p);
+          },
+        );
+        if (mounted) setState(() => _uploading = false);
         if (_type == PostType.video) {
           thumbnailUrl = await PostService.generateAndUploadVideoThumbnail(_mediaFile!, userId);
         }
@@ -260,7 +281,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     } catch (e) {
       setState(() => _error = 'Failed to post. Please try again.');
     } finally {
-      if (mounted) setState(() => _posting = false);
+      if (mounted) setState(() { _posting = false; _uploading = false; });
     }
   }
 
@@ -518,6 +539,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ],
+            if (_uploading) ...[
+              const SizedBox(height: 12),
+              UploadProgressCard(
+                uploading: true,
+                progress: _uploadProgress,
+                totalBytes: _uploadTotalBytes,
+              ),
             ],
             const SizedBox(height: 12),
             ElevatedButton(

@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'push_notification_service.dart';
 import 'supabase_service.dart';
 
 class AuthService {
@@ -18,7 +19,15 @@ class AuthService {
     return _client.auth.signInWithPassword(email: email, password: password);
   }
 
-  static Future<void> signOut() => _client.auth.signOut();
+  /// Unregisters this device's push token first, while the session
+  /// that owns it (RLS: auth.uid() = user_id) is still valid — doing
+  /// it after signOut() would just fail silently, leaving the next
+  /// person who signs in on this device receiving the previous user's
+  /// pushes until they happen to re-register.
+  static Future<void> signOut() async {
+    await PushNotificationService.unregister();
+    await _client.auth.signOut();
+  }
 
   /// Creates a browsing-only session with no email/password — lets someone
   /// open the app and look around with zero signup friction. Supabase

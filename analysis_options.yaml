@@ -18,6 +18,13 @@ analyzer:
     # Excluded here rather than guessed-at and "fixed" blind — finish it
     # or delete it, whichever this is meant to be.
     - "lib/screens/post/video_trim_screen.dart"
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 linter:
   # The lint rules applied to this project can be customized in the

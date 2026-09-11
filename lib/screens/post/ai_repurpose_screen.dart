@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../../constants/supabase_constants.dart';
+import '../../models/coach_video_context.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/post_service.dart';
@@ -13,7 +15,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../widgets/upload_progress_card.dart';
 import 'video_coach_screen.dart';
 
 /// AI Repurposer — upload a longer video, get back up to 5 ranked
@@ -53,6 +55,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   bool _isUploading = false;
   bool _isProcessing = false;
   double _uploadProgress = 0;
+  int _uploadTotalBytes = 0;
   String? _error;
   Map<String, dynamic>? _result;
   int _selectedClipIndex = 0;
@@ -90,17 +93,19 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       final ext = _selectedVideo!.path.split('.').last.toLowerCase();
       final storagePath = '$userId/${const Uuid().v4()}.$ext';
 
-      await SupabaseService.client.storage
-          .from(SupabaseConstants.postsBucket)
-          .upload(
-            storagePath,
-            _selectedVideo!,
-            fileOptions: FileOptions(upsert: false),
-          );
+      _uploadTotalBytes = await _selectedVideo!.length();
 
-      final videoUrl = SupabaseService.client.storage
-          .from(SupabaseConstants.postsBucket)
-          .getPublicUrl(storagePath);
+      // Uses the progress-reporting upload rather than the plain
+      // storage .upload(), which reports nothing — that's why the
+      // percentage never moved off zero before.
+      final videoUrl = await PostService.uploadMediaWithProgress(
+        _selectedVideo!,
+        userId,
+        storagePath: storagePath,
+        onProgress: (p) {
+          if (mounted) setState(() => _uploadProgress = p);
+        },
+      );
 
       // This stable ID ties the Coach history to this exact uploaded video.
       _videoId = storagePath;
@@ -209,16 +214,31 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     setState(() => _posting = true);
     try {
       final videoUrl = clip['processed_video_url'] as String;
-      final title = clip['highlight']?['suggested_title'] as String? ?? '';
+      final highlight = clip['highlight'] as Map<String, dynamic>?;
       final thumbnailUrl = clip['thumbnail_url'] as String?;
+
+      // Prefer the generated ready-to-post caption over the short
+      // title — the title is a label for picking between clips, the
+      // caption is what's actually written to be posted.
+      final caption = (highlight?['caption'] as String?)?.trim();
+      final title = (highlight?['suggested_title'] as String?)?.trim() ?? '';
+      final hashtags = ((highlight?['hashtags'] as List<dynamic>?) ?? const [])
+          .map((t) => '#$t')
+          .join(' ');
+      final body = [
+        (caption != null && caption.isNotEmpty) ? caption : title,
+        if (hashtags.isNotEmpty) hashtags,
+      ].where((s) => s.isNotEmpty).join('\n\n');
 
       await PostService.createPost(
         userId: userId,
         type: PostType.video,
-        caption: title,
+        caption: body,
         mediaUrl: videoUrl,
         thumbnailUrl: thumbnailUrl,
-        durationSeconds: 60,
+        // Clips are variable length now (12-60s), so the real duration
+        // has to come from the highlight rather than a hardcoded 60.
+        durationSeconds: _selectedClipDurationSeconds,
       );
 
       if (!mounted) return;
@@ -250,6 +270,65 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       (_selectedClip?['dead_air_removed_seconds'] as num?)?.toDouble() ?? 0.0;
 
   String? get _quoteCardUrl => _selectedClip?['quote_card_url'] as String?;
+
+  Map<String, dynamic>? get _feedback => _result?['feedback'] as Map<String, dynamic>?;
+
+  String get _hookLine =>
+      (_selectedClip?['highlight']?['hook_line'] as String?)?.trim() ?? '';
+
+  String get _clipCaption =>
+      (_selectedClip?['highlight']?['caption'] as String?)?.trim() ?? '';
+
+  List<String> get _clipHashtags =>
+      ((_selectedClip?['highlight']?['hashtags'] as List<dynamic>?) ?? const [])
+          .map((t) => t.toString())
+          .toList();
+
+  /// Everything the analyzer measured about this video, packaged for the
+  /// AI Coach.
+  ///
+  /// The Coach receives a storage path as its video_id, which matches no
+  /// row in `posts` — so without this it has nothing to read and answers
+  /// with generic advice about a video it has never seen. This is the
+  /// transcript, the hook, the caption and the critique it just produced
+  /// on this exact clip.
+  CoachVideoContext get _coachContext => CoachVideoContext(
+        transcript: (_result?['transcript'] as String?) ?? '',
+        durationSeconds: _selectedClipDurationSeconds > 0
+            ? _selectedClipDurationSeconds.toDouble()
+            : null,
+        hookLine: _hookLine,
+        caption: _clipCaption,
+        hashtags: _clipHashtags,
+        verdict: (_feedback?['verdict'] as String?)?.trim() ?? '',
+        issues: ((_feedback?['issues'] as List<dynamic>?) ?? const [])
+            .map((i) => i.toString())
+            .toList(),
+        strengths: ((_feedback?['strengths'] as List<dynamic>?) ?? const [])
+            .map((i) => i.toString())
+            .toList(),
+        footageScore: (_feedback?['score'] as num?)?.toInt(),
+        wordsPerMinute: (_feedback?['words_per_minute'] as num?)?.toDouble(),
+        silencePercent: (_feedback?['silence_percent'] as num?)?.toDouble(),
+      );
+
+  /// Clip length after dead-air trimming, which is what actually got
+  /// rendered — clips are no longer a fixed 60 seconds.
+  int get _selectedClipDurationSeconds {
+    final highlight = _selectedClip?['highlight'] as Map<String, dynamic>?;
+    final start = (highlight?['start_time'] as num?)?.toDouble();
+    final end = (highlight?['end_time'] as num?)?.toDouble();
+    if (start == null || end == null || end <= start) return 0;
+    return (end - start - _deadAirRemoved).round().clamp(1, 600);
+  }
+
+  Future<void> _copy(String label, String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label copied')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -307,6 +386,15 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       ),
               ),
             ),
+            if (_isBusy) ...[
+              const SizedBox(height: 16),
+              UploadProgressCard(
+                uploading: _isUploading,
+                progress: _uploadProgress,
+                totalBytes: _uploadTotalBytes,
+              ),
+            ],
+
             const SizedBox(height: 16),
 
             ElevatedButton(
@@ -350,6 +438,11 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             if (_error != null) ...[
               const SizedBox(height: 14),
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ],
+
+            if (_feedback != null) ...[
+              const SizedBox(height: 24),
+              _VideoFeedbackCard(feedback: _feedback!),
             ],
 
             if (_clips.isNotEmpty) ...[
@@ -451,6 +544,137 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       _selectedClip?['highlight']?['reason'] ?? '',
                       style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
+                    if (_hookLine.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(11),
+                        decoration: BoxDecoration(
+                          color: AppColors.coin.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.coin.withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.bolt, size: 13, color: AppColors.coin),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'HOOK — FIRST 2 SECONDS',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    letterSpacing: 0.8,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.coin.withOpacity(0.95),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '"$_hookLine"',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                height: 1.35,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Burned across the top of the clip so it lands before anyone scrolls.',
+                              style: TextStyle(fontSize: 10.5, color: AppColors.textMuted, height: 1.3),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_clipCaption.isNotEmpty || _clipHashtags.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          const Text(
+                            'READY TO POST',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              letterSpacing: 0.8,
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => _copy(
+                              'Caption',
+                              [
+                                _clipCaption,
+                                if (_clipHashtags.isNotEmpty)
+                                  _clipHashtags.map((t) => '#$t').join(' '),
+                              ].where((s) => s.isNotEmpty).join('\n\n'),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.copy_rounded, size: 13, color: AppColors.primary),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Copy',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(11),
+                        decoration: BoxDecoration(
+                          color: AppColors.background.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.surfaceBorder),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_clipCaption.isNotEmpty)
+                              Text(
+                                _clipCaption,
+                                style: const TextStyle(fontSize: 12.5, height: 1.4),
+                              ),
+                            if (_clipHashtags.isNotEmpty) ...[
+                              if (_clipCaption.isNotEmpty) const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: _clipHashtags
+                                    .map((tag) => Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withOpacity(0.12),
+                                            borderRadius: BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            '#$tag',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.primary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ))
+                                    .toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                     if (_deadAirRemoved > 0.3) ...[
                       const SizedBox(height: 10),
                       Container(
@@ -501,7 +725,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: _posting ? null : _postToFeed,
-                      child: Text(_posting ? 'Posting...' : 'Post This Clip to My Feed'),
+                      child: Text(
+                        _posting
+                            ? 'Posting...'
+                            : _selectedClipDurationSeconds > 0
+                                ? 'Post This ${_selectedClipDurationSeconds}s Clip to My Feed'
+                                : 'Post This Clip to My Feed',
+                      ),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
@@ -512,6 +742,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                                 MaterialPageRoute(
                                   builder: (_) => VideoCoachScreen(
                                     videoId: _videoId!,
+                                    videoContext: _coachContext,
                                   ),
                                 ),
                               );
@@ -526,6 +757,234 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// An honest read on the SOURCE footage, not the clips cut from it.
+///
+/// Every other tool in this space quietly returns weak clips when the
+/// footage is weak, leaving the creator guessing why nothing lands.
+/// The numbers along the bottom are measured server-side (see
+/// viyo_ai's _measure_video_signals), so the critique cites evidence
+/// instead of asking anyone to trust a vibe.
+class _VideoFeedbackCard extends StatelessWidget {
+  final Map<String, dynamic> feedback;
+
+  const _VideoFeedbackCard({required this.feedback});
+
+  int get _score => (feedback['score'] as num?)?.toInt() ?? 0;
+
+  String get _verdict => (feedback['verdict'] as String?)?.trim() ?? '';
+
+  List<String> get _issues =>
+      ((feedback['issues'] as List<dynamic>?) ?? const [])
+          .map((e) => e.toString())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+  List<String> get _strengths =>
+      ((feedback['strengths'] as List<dynamic>?) ?? const [])
+          .map((e) => e.toString())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+  Color get _scoreColor {
+    if (_score >= 70) return AppColors.success;
+    if (_score >= 45) return AppColors.coin;
+    return AppColors.danger;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wpm = (feedback['words_per_minute'] as num?)?.toDouble() ?? 0;
+    final silence = (feedback['silence_percent'] as num?)?.toDouble() ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.card(borderColor: _scoreColor.withOpacity(0.35)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.insights_rounded, size: 17, color: _scoreColor),
+              const SizedBox(width: 7),
+              const Expanded(
+                child: Text(
+                  'Your footage, honestly',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _scoreColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: _scoreColor.withOpacity(0.4)),
+                ),
+                child: Text(
+                  '$_score/100',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: _scoreColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_verdict.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              _verdict,
+              style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
+          ],
+          if (_issues.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Text(
+              'FIX NEXT TIME',
+              style: TextStyle(
+                fontSize: 9.5,
+                letterSpacing: 0.8,
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 7),
+            ..._issues.map((issue) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(Icons.arrow_right_rounded,
+                            size: 16, color: AppColors.danger),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          issue,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            height: 1.35,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+          if (_strengths.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'KEEP DOING',
+              style: TextStyle(
+                fontSize: 9.5,
+                letterSpacing: 0.8,
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 7),
+            ..._strengths.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(Icons.check_rounded,
+                            size: 14, color: AppColors.success),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          s,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            height: 1.35,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+          if (wpm > 0 || silence > 0) ...[
+            const SizedBox(height: 12),
+            const Divider(color: AppColors.surfaceBorder, height: 1),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (wpm > 0)
+                  Expanded(
+                    child: _Metric(
+                      label: 'Speaking pace',
+                      value: '${wpm.round()} wpm',
+                      // Short-form delivery generally lands between 150
+                      // and 190 words per minute.
+                      good: wpm >= 150 && wpm <= 190,
+                    ),
+                  ),
+                if (silence > 0)
+                  Expanded(
+                    child: _Metric(
+                      label: 'Dead air',
+                      value: '${silence.round()}%',
+                      good: silence <= 20,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Metric extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool good;
+
+  const _Metric({required this.label, required this.value, required this.good});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 9,
+            letterSpacing: 0.6,
+            color: AppColors.textMuted,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 5),
+            Icon(
+              good ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+              size: 13,
+              color: good ? AppColors.success : AppColors.coin,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
