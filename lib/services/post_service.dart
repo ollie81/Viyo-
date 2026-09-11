@@ -403,6 +403,49 @@ class PostService {
     }
   }
 
+  /// Retries once when a POST fails before any response comes back —
+  /// dropped connection, DNS hiccup, TLS reset — instead of surfacing
+  /// "try again" and making the user do this by hand.
+  ///
+  /// Confirmed in the wild right after a backend redeploy: Railway
+  /// swaps the running container out from under any connection the app
+  /// still had pooled, and the next request on that stale connection
+  /// dies with a raw transport error (`ConnectionTerminated` from the
+  /// underlying HTTP/2 client) instead of an HTTP status.
+  ///
+  /// Like/unlike are provably safe to retry — the backend's insert is
+  /// unique-constrained (a duplicate like is a no-op) and unlike floors
+  /// at zero. A comment is not: if the connection died after the
+  /// server had already saved it but before the response arrived, a
+  /// retry could post it twice. That case is a narrow window (the
+  /// request round-trip, not the time until the user notices) and it's
+  /// no worse than what already happens today when someone manually
+  /// retries a failed comment by hand, which this replaces.
+  static bool _isConnectionFailure(Object e) =>
+      e is http.ClientException ||
+      e is SocketException ||
+      e is TlsException ||
+      // Covers the http2 package's TransportException/ConnectionException,
+      // without a direct dependency on that package's types — matched by
+      // name since http's own Android/iOS engines can surface it as a
+      // plain Object rather than a typed exception.
+      e.runtimeType.toString().contains('Connection');
+
+  static Future<http.Response> _postWithRetry(
+    Uri uri, {
+    required Map<String, String> headers,
+    String? body,
+  }) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await http.post(uri, headers: headers, body: body);
+      } catch (e) {
+        if (attempt > 0 || !_isConnectionFailure(e)) rethrow;
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+    }
+  }
+
   /// Routed through the Python backend's service-role client rather than
   /// a direct client insert/update. The `likes` row itself saves fine
   /// either way (RLS lets you insert your own row regardless of whose
@@ -415,7 +458,7 @@ class PostService {
   /// is the same "don't trust what RLS/an RPC does, do it through the
   /// admin client instead" fix already used for boost_post/spotlight.
   static Future<void> likePost(String userId, String postId) async {
-    final res = await http.post(
+    final res = await _postWithRetry(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/like'),
       headers: await _interactionHeaders(),
     );
@@ -427,7 +470,7 @@ class PostService {
   }
 
   static Future<void> unlikePost(String userId, String postId) async {
-    final res = await http.post(
+    final res = await _postWithRetry(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/unlike'),
       headers: await _interactionHeaders(),
     );
@@ -469,7 +512,7 @@ class PostService {
     required String userId,
     required String content,
   }) async {
-    final res = await http.post(
+    final res = await _postWithRetry(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/comments'),
       headers: await _interactionHeaders(),
       body: jsonEncode({'content': content}),
