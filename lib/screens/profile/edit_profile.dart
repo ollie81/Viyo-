@@ -44,20 +44,61 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  /// Uploads the picked photo and returns its public URL.
+  ///
+  /// Profile pictures were silently impossible: the `avatars` bucket was
+  /// never created in Supabase, so every upload failed against a bucket
+  /// that isn't there. Probing it returns the same "Bucket not found"
+  /// response as a name that was never used at all, while `posts-media`
+  /// answers normally.
+  ///
+  /// So this tries `avatars` first — it's the right home, and running
+  /// avatars_bucket.sql makes it work — and falls back to a folder
+  /// inside the posts bucket, which demonstrably exists. The fallback
+  /// path keeps the same "<user_id>/..." shape the posts bucket's
+  /// policy already allows, so it needs no new policy either. Net
+  /// effect: photos work now, and quietly move to the proper bucket the
+  /// moment it exists.
   Future<String?> _uploadAvatarIfNeeded() async {
     if (_pickedAvatar == null) return null;
     setState(() => _uploadingAvatar = true);
+
+    final client = SupabaseService.client;
+    final ext = _pickedAvatar!.path.split('.').last;
+
+    // Cache-busting name: the same URL with new bytes behind it would
+    // keep showing the old photo out of Flutter's image cache.
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+
+    final attempts = <MapEntry<String, String>>[
+      MapEntry(
+        SupabaseConstants.avatarsBucket,
+        '${widget.profile.id}/avatar_$stamp.$ext',
+      ),
+      MapEntry(
+        SupabaseConstants.postsBucket,
+        '${widget.profile.id}/avatar_$stamp.$ext',
+      ),
+    ];
+
+    Object? lastError;
+
     try {
-      final client = SupabaseService.client;
-      final ext = _pickedAvatar!.path.split('.').last;
-      final path = '${widget.profile.id}/avatar.$ext';
-      await client.storage
-          .from(SupabaseConstants.avatarsBucket)
-          .upload(path, _pickedAvatar!, fileOptions: FileOptions(upsert: true));
-      return client.storage.from(SupabaseConstants.avatarsBucket).getPublicUrl(path);
-    } catch (e) {
+      for (final attempt in attempts) {
+        try {
+          await client.storage.from(attempt.key).upload(
+                attempt.value,
+                _pickedAvatar!,
+                fileOptions: const FileOptions(upsert: true),
+              );
+          return client.storage.from(attempt.key).getPublicUrl(attempt.value);
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
       setState(() => _error =
-          'Could not upload photo: $e\n(Check that the "avatars" bucket exists and is set to Public in Supabase Storage.)');
+          'Could not upload photo: $lastError\n(Tried both the "avatars" and "${SupabaseConstants.postsBucket}" buckets.)');
       return null;
     } finally {
       if (mounted) setState(() => _uploadingAvatar = false);
