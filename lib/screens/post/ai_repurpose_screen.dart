@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../../constants/supabase_constants.dart';
+import '../../models/coach_video_context.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/post_service.dart';
@@ -282,6 +283,34 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       ((_selectedClip?['highlight']?['hashtags'] as List<dynamic>?) ?? const [])
           .map((t) => t.toString())
           .toList();
+
+  /// Everything the analyzer measured about this video, packaged for the
+  /// AI Coach.
+  ///
+  /// The Coach receives a storage path as its video_id, which matches no
+  /// row in `posts` — so without this it has nothing to read and answers
+  /// with generic advice about a video it has never seen. This is the
+  /// transcript, the hook, the caption and the critique it just produced
+  /// on this exact clip.
+  CoachVideoContext get _coachContext => CoachVideoContext(
+        transcript: (_result?['transcript'] as String?) ?? '',
+        durationSeconds: _selectedClipDurationSeconds > 0
+            ? _selectedClipDurationSeconds.toDouble()
+            : null,
+        hookLine: _hookLine,
+        caption: _clipCaption,
+        hashtags: _clipHashtags,
+        verdict: (_feedback?['verdict'] as String?)?.trim() ?? '',
+        issues: ((_feedback?['issues'] as List<dynamic>?) ?? const [])
+            .map((i) => i.toString())
+            .toList(),
+        strengths: ((_feedback?['strengths'] as List<dynamic>?) ?? const [])
+            .map((i) => i.toString())
+            .toList(),
+        footageScore: (_feedback?['score'] as num?)?.toInt(),
+        wordsPerMinute: (_feedback?['words_per_minute'] as num?)?.toDouble(),
+        silencePercent: (_feedback?['silence_percent'] as num?)?.toDouble(),
+      );
 
   /// Clip length after dead-air trimming, which is what actually got
   /// rendered — clips are no longer a fixed 60 seconds.
@@ -713,6 +742,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                                 MaterialPageRoute(
                                   builder: (_) => VideoCoachScreen(
                                     videoId: _videoId!,
+                                    videoContext: _coachContext,
                                   ),
                                 ),
                               );
