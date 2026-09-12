@@ -269,6 +269,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   double get _deadAirRemoved =>
       (_selectedClip?['dead_air_removed_seconds'] as num?)?.toDouble() ?? 0.0;
 
+  double get _fillerWordsRemovedSeconds =>
+      (_selectedClip?['filler_words_removed_seconds'] as num?)?.toDouble() ?? 0.0;
+
+  int get _fillerWordsRemovedCount =>
+      (_selectedClip?['filler_words_removed_count'] as num?)?.toInt() ?? 0;
+
   String? get _quoteCardUrl => _selectedClip?['quote_card_url'] as String?;
 
   Map<String, dynamic>? get _feedback => _result?['feedback'] as Map<String, dynamic>?;
@@ -312,14 +318,16 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         silencePercent: (_feedback?['silence_percent'] as num?)?.toDouble(),
       );
 
-  /// Clip length after dead-air trimming, which is what actually got
-  /// rendered — clips are no longer a fixed 60 seconds.
+  /// Clip length after dead-air AND filler-word trimming — both are cut
+  /// from the render now, so both have to come off the reported length
+  /// or this understates how much shorter the actual clip is.
   int get _selectedClipDurationSeconds {
     final highlight = _selectedClip?['highlight'] as Map<String, dynamic>?;
     final start = (highlight?['start_time'] as num?)?.toDouble();
     final end = (highlight?['end_time'] as num?)?.toDouble();
     if (start == null || end == null || end <= start) return 0;
-    return (end - start - _deadAirRemoved).round().clamp(1, 600);
+    final trimmed = _deadAirRemoved + _fillerWordsRemovedSeconds;
+    return (end - start - trimmed).round().clamp(1, 600);
   }
 
   Future<void> _copy(String label, String text) async {
@@ -675,30 +683,25 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                         ),
                       ),
                     ],
-                    if (_deadAirRemoved > 0.3) ...[
+                    if (_deadAirRemoved > 0.3 || _fillerWordsRemovedCount > 0) ...[
                       const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: AppColors.success.withOpacity(0.35)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.content_cut, size: 13, color: AppColors.success),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Trimmed ${_deadAirRemoved.toStringAsFixed(1)}s of dead air',
-                              style: const TextStyle(
-                                color: AppColors.success,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (_deadAirRemoved > 0.3)
+                            _TrimPill(
+                              icon: Icons.content_cut,
+                              label: 'Trimmed ${_deadAirRemoved.toStringAsFixed(1)}s of dead air',
                             ),
-                          ],
-                        ),
+                          if (_fillerWordsRemovedCount > 0)
+                            _TrimPill(
+                              icon: Icons.record_voice_over_outlined,
+                              label: _fillerWordsRemovedCount == 1
+                                  ? 'Removed 1 filler word ("um", "uh"...)'
+                                  : 'Removed $_fillerWordsRemovedCount filler words',
+                            ),
+                        ],
                       ),
                     ],
                     if (_quoteCardUrl != null) ...[
@@ -985,6 +988,44 @@ class _Metric extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// One "what got trimmed" pill — dead air and filler words are reported
+/// as separate lines (see the fields on RepurposeClipResult) since
+/// they're different edits with different causes, but they share the
+/// exact same look so the pair reads as one family of info.
+class _TrimPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _TrimPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.success.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.success.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.success),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.success,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
