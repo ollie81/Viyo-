@@ -9,6 +9,7 @@ import '../../services/discover_spotlight_service.dart';
 import '../../services/moderation_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/messaging_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coin_badge.dart';
@@ -19,6 +20,7 @@ import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../wallet_screen.dart';
 import 'edit_profile.dart';
+import '../messages/chat_screen.dart';
 import '../post/viyo_post_viewer.dart';
 import '../post/post_detail_screen.dart';
 
@@ -232,6 +234,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Share.share(
       "Check out @${p.username} on Viyo — ${p.bio.isEmpty ? 'creator profile' : p.bio}",
     );
+  }
+
+  Future<void> _messageUser(UserProfile p) async {
+    if (!await GuestGate.allow(context, action: 'message creators')) return;
+    if (!mounted) return;
+
+    // A dialog rather than a full loading screen — starting a
+    // conversation is one request and should feel instant, not like a
+    // navigation.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final conversation = await MessagingService.startConversation(p.id);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close the loading dialog
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            conversationId: conversation.id,
+            otherUserId: p.id,
+            otherName: p.displayName.isNotEmpty ? p.displayName : p.username,
+            otherAvatarUrl: p.avatarUrl,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
+    }
   }
 
   List<Post> get _visiblePosts {
@@ -523,6 +561,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                         ),
                         const SizedBox(width: 8),
+                        if (!_isOwnProfile) ...[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => _messageUser(p),
+                              child: const Text('Message'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         Expanded(
                           child: OutlinedButton(
                             onPressed: _shareProfile,

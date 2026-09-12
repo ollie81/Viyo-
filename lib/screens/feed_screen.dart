@@ -10,6 +10,7 @@ import '../widgets/home_header_section.dart';
 import '../widgets/post_card.dart';
 import 'ai_hub_screen.dart';
 import 'notifications_screen.dart';
+import 'messages/conversations_screen.dart';
 import 'post/post_detail_screen.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
@@ -126,6 +127,13 @@ class _FeedScreenState extends State<FeedScreen> {
             tooltip: 'Shorts',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const VideoFeedScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'Messages',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ConversationsScreen()),
             ),
           ),
           IconButton(
