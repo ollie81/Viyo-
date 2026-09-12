@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
+import 'admin/moderation_review_screen.dart';
 import 'auth/login_screen.dart';
 import 'invite_screen.dart';
 import 'privacy_screen.dart';
@@ -96,7 +97,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Settings')),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        // Long-press to reach the moderation review screen — not a
+        // real access control (the admin key it asks for next is),
+        // just enough that a regular user never stumbles into it.
+        title: GestureDetector(
+          onLongPress: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ModerationReviewScreen()),
+          ),
+          child: const Text('Settings'),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
