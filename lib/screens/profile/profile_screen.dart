@@ -50,6 +50,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool get _isOwnProfile =>
       widget.userId == null || widget.userId == SupabaseService.currentUserId;
 
+  // Views aren't tracked per-profile anywhere server-side — this is just
+  // the sum of view_count across the posts already loaded for this
+  // profile, the same total a creator would get by adding up every
+  // post's own view count by hand.
+  int get _totalViews => _posts.fold(0, (sum, p) => sum + p.viewCount);
+
   @override
   void initState() {
     super.initState();
@@ -476,6 +482,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               _stat('${_posts.length}', 'Posts'),
+                              _stat('$_totalViews', 'Views'),
                               _stat('$_followers', 'Followers'),
                               _stat('$_following', 'Following'),
                             ],

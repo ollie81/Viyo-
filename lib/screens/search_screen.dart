@@ -9,7 +9,7 @@ import '../services/post_service.dart';
 import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
-import 'post/post_detail_screen.dart';
+import '../widgets/comments_sheet.dart';
 import 'post/viyo_post_viewer.dart';
 import 'profile/profile_screen.dart';
 
@@ -124,9 +124,13 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _commentPostById(String postId) async {
     final match = _discoverPosts.where((p) => p.id == postId);
     if (match.isEmpty) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PostDetailScreen(post: match.first)),
-    );
+    // A bottom sheet, not a full navigation — same fix as the video
+    // feed: ViyoPostViewer's video/photo page has no way to know it's
+    // been covered by a full-screen route pushed on top of it (the
+    // PageView here never changes pages either), so a MaterialPageRoute
+    // left it stuck playing invisibly underneath. showCommentsSheet is a
+    // translucent overlay, so the page underneath stays visible instead.
+    await showCommentsSheet(context, match.first);
   }
 
   Future<void> _sharePostById(String postId) async {
