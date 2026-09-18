@@ -62,6 +62,17 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   String? _videoId;
   bool _posting = false;
 
+  // Optional — only used server-side when the video has no usable
+  // speech (silent, or music/ambient audio with nothing to
+  // transcribe). A normal video with speech ignores this entirely.
+  final _promptController = TextEditingController();
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    super.dispose();
+  }
+
   Future<void> _pickVideo() async {
     setState(() => _error = null);
     final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
@@ -129,7 +140,11 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'video_url': videoUrl}),
+        body: jsonEncode({
+          'video_url': videoUrl,
+          if (_promptController.text.trim().isNotEmpty)
+            'creative_prompt': _promptController.text.trim(),
+        }),
       );
 
       if (startResponse.statusCode != 200) {
@@ -404,6 +419,32 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             ],
 
             const SizedBox(height: 16),
+
+            // Optional — only matters for a silent video or one with
+            // just music/ambient sound, where there's no speech for the
+            // AI to find highlights in. Any video with real speech in it
+            // ignores this completely, so it stays out of the way rather
+            // than gating the flow.
+            const Text(
+              'No dialogue, or just music? (optional)',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _promptController,
+              enabled: !_isBusy,
+              minLines: 2,
+              maxLines: 4,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                hintText: "Describe what you want the clip to look like, e.g. "
+                    "\"a slow-motion sunset walk on the beach\"",
+                hintStyle: TextStyle(fontSize: 12.5),
+              ),
+              style: const TextStyle(fontSize: 13),
+            ),
+
+            const SizedBox(height: 4),
 
             ElevatedButton(
               onPressed: (_selectedVideo == null || _isBusy) ? null : _process,
