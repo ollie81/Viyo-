@@ -21,6 +21,7 @@ class Post {
   final int? durationSeconds;
   final int likeCount;
   final int commentCount;
+  final int viewCount;
   final bool isBoosted;
   final bool isPrivate;
   final bool isArchived;
@@ -44,6 +45,7 @@ class Post {
     this.durationSeconds,
     this.likeCount = 0,
     this.commentCount = 0,
+    this.viewCount = 0,
     this.isBoosted = false,
     this.isPrivate = false,
     this.isArchived = false,
@@ -65,6 +67,7 @@ class Post {
         durationSeconds: json['duration_seconds'],
         likeCount: json['like_count'] ?? 0,
         commentCount: json['comment_count'] ?? 0,
+        viewCount: json['view_count'] ?? 0,
         isBoosted: json['is_boosted'] ?? false,
         isPrivate: json['is_private'] ?? false,
         isArchived: json['is_archived'] ?? false,
@@ -85,6 +88,7 @@ class Post {
     int? durationSeconds,
     int? likeCount,
     int? commentCount,
+    int? viewCount,
     bool? isBoosted,
     bool? isPrivate,
     bool? isArchived,
@@ -105,6 +109,7 @@ class Post {
       durationSeconds: durationSeconds ?? this.durationSeconds,
       likeCount: likeCount ?? this.likeCount,
       commentCount: commentCount ?? this.commentCount,
+      viewCount: viewCount ?? this.viewCount,
       isBoosted: isBoosted ?? this.isBoosted,
       isPrivate: isPrivate ?? this.isPrivate,
       isArchived: isArchived ?? this.isArchived,

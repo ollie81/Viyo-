@@ -41,6 +41,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   void initState() {
     super.initState();
     _load();
+    PostService.recordView(widget.post.id);
   }
 
   Future<void> _load() async {

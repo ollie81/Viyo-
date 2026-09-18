@@ -262,6 +262,11 @@ class PostCard extends StatelessWidget {
               children: [
                 _likeButton(),
                 const SizedBox(width: 18),
+                _statDisplay(
+                  icon: Icons.visibility_outlined,
+                  label: '${post.viewCount}',
+                ),
+                const SizedBox(width: 18),
                 _actionButton(
                   icon: Icons.mode_comment_outlined,
                   color: AppColors.textSecondary,
@@ -343,6 +348,18 @@ class PostCard extends StatelessWidget {
           Text(label, style: TextStyle(color: color, fontSize: 13)),
         ],
       ),
+    );
+  }
+
+  /// A plain stat, not a control — views aren't something you tap,
+  /// unlike everything else in this row.
+  Widget _statDisplay({required IconData icon, required String label}) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: AppColors.textSecondary),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+      ],
     );
   }
 }
