@@ -478,6 +478,22 @@ class PostService {
     throw Exception(_errorDetail(res) ?? 'Failed to unlike post (${res.statusCode})');
   }
 
+  /// Fire-and-forget — a missed view never blocks or interrupts
+  /// playback, and there's nothing meaningful to show the user if it
+  /// fails. Callers dedup per app session (see video_feed_screen.dart);
+  /// this makes no attempt to dedup itself.
+  static Future<void> recordView(String postId) async {
+    try {
+      await http.post(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/view'),
+        headers: await _interactionHeaders(),
+      );
+    } catch (_) {
+      // Best-effort — view counts are a rough engagement signal, not
+      // something worth retrying or surfacing.
+    }
+  }
+
   static Future<void> toggleLike(Post post) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;

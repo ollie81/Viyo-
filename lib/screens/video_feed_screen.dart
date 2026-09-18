@@ -7,9 +7,9 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/comments_sheet.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/viyo_glass_bottom_nav.dart';
-import 'post/post_detail_screen.dart';
 import 'profile/profile_screen.dart';
 import 'mission_screen.dart';
 import 'post/create_post_screen.dart';
@@ -31,6 +31,13 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   List<Post> _posts = [];
   bool _loading = true;
   int _currentIndex = 0;
+
+  // One view recorded per post per time this screen is alive — a post
+  // scrolled past and back into view again doesn't recount, but a
+  // fresh screen (relaunching the app, reopening the feed) does. Lives
+  // here rather than on _VideoPage's own state since that widget is
+  // torn down and rebuilt as the PageView recycles pages.
+  final Set<String> _viewedPostIds = {};
 
   @override
   void initState() {
@@ -95,10 +102,18 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     }
   }
 
+  void _recordView(Post post) {
+    if (!_viewedPostIds.add(post.id)) return; // already counted this session
+    PostService.recordView(post.id);
+  }
+
   void _openComments(Post post) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
-    );
+    // A bottom sheet, not a full navigation — the video keeps playing
+    // and visible behind it, matching what commenting looks like on
+    // every other short-form feed. A full-screen route here previously
+    // left the video mounted and still playing underneath, invisible,
+    // since the PageView itself never changed pages.
+    showCommentsSheet(context, post);
   }
 
   Future<void> _share(Post post) async {
@@ -177,6 +192,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                       onComment: () => _openComments(post),
                       onShare: () => _share(post),
                       onOpenProfile: () => _openProfile(post),
+                      onBecameActive: () => _recordView(post),
                     );
                   },
                 ),
@@ -196,6 +212,7 @@ class _VideoPage extends StatefulWidget {
   final VoidCallback onComment;
   final VoidCallback onShare;
   final VoidCallback onOpenProfile;
+  final VoidCallback onBecameActive;
 
   const _VideoPage({
     super.key,
@@ -205,6 +222,7 @@ class _VideoPage extends StatefulWidget {
     required this.onComment,
     required this.onShare,
     required this.onOpenProfile,
+    required this.onBecameActive,
   });
 
   @override
@@ -222,6 +240,7 @@ class _VideoPageState extends State<_VideoPage> {
     super.initState();
     _liked = widget.post.likedByMe;
     _initialize();
+    if (widget.isActive) widget.onBecameActive();
   }
 
   Future<void> _initialize() async {
@@ -266,6 +285,10 @@ class _VideoPageState extends State<_VideoPage> {
     if (widget.post.id == oldWidget.post.id &&
         widget.post.likedByMe != oldWidget.post.likedByMe) {
       _liked = widget.post.likedByMe;
+    }
+
+    if (widget.isActive && !oldWidget.isActive) {
+      widget.onBecameActive();
     }
 
     final c = _controller;
@@ -447,6 +470,13 @@ class _VideoPageState extends State<_VideoPage> {
             child: Column(
               children: [
                 _likeAction(post),
+                const SizedBox(height: 18),
+                _ActionIcon(
+                  icon: Icons.visibility_outlined,
+                  color: Colors.white,
+                  label: '${post.viewCount}',
+                  onTap: null,
+                ),
                 const SizedBox(height: 18),
                 _ActionIcon(
                   icon: Icons.mode_comment_outlined,
