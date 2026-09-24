@@ -12,6 +12,7 @@ import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comments_sheet.dart';
+import '../widgets/series_poster_card.dart';
 import 'post/series_detail_screen.dart';
 import 'post/viyo_post_viewer.dart';
 import 'profile/profile_screen.dart';
@@ -202,7 +203,12 @@ class _SearchScreenState extends State<SearchScreen> {
                         trendingDramas: _trendingDramas,
                         newSeries: _newSeries,
                         onOpenDrama: (post) => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => VideoFeedScreen(initialPostId: post.id)),
+                          MaterialPageRoute(
+                            builder: (_) => VideoFeedScreen(
+                              initialPostId: post.id,
+                              seriesId: post.seriesId,
+                            ),
+                          ),
                         ),
                         onOpenSeries: (series) => Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series)),
@@ -278,14 +284,17 @@ class _DiscoverBody extends StatelessWidget {
         if (!loadingDramas && newSeries.isNotEmpty) ...[
           const _SectionLabel('NEW SERIES', icon: Icons.auto_awesome, color: AppColors.secondary),
           SizedBox(
-            height: 168,
+            height: 210,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: newSeries.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (ctx, i) => _NewSeriesCard(
-                series: newSeries[i],
-                onTap: () => onOpenSeries(newSeries[i]),
+              itemBuilder: (ctx, i) => SizedBox(
+                width: 126,
+                child: SeriesPosterCard(
+                  series: newSeries[i],
+                  onTap: () => onOpenSeries(newSeries[i]),
+                ),
               ),
             ),
           ),
@@ -361,60 +370,6 @@ class _SectionLabel extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// A newly started series — cover, title, creator, episode count.
-class _NewSeriesCard extends StatelessWidget {
-  final Series series;
-  final VoidCallback onTap;
-  const _NewSeriesCard({required this.series, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 126,
-        decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.3)),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 9 / 11,
-              child: series.coverImageUrl != null
-                  ? CachedNetworkImage(imageUrl: series.coverImageUrl!, fit: BoxFit.cover)
-                  : Container(
-                      color: AppColors.surfaceBorder,
-                      child: const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 26),
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    series.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '@${series.authorUsername ?? 'creator'}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -31,6 +31,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   final _newSeriesTitle = TextEditingController();
   final _newSeriesDescription = TextEditingController();
   final _newSeriesPrice = TextEditingController(text: '20');
+  String _newSeriesGenre = kDefaultDramaGenre;
 
   List<Series> _mySeries = [];
   bool _loadingSeries = true;
@@ -142,6 +143,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
           title: _newSeriesTitle.text.trim(),
           description: _newSeriesDescription.text.trim(),
           coinPricePerEpisode: price.clamp(1, 100000),
+          genre: _newSeriesGenre,
         );
       } else {
         series = _selectedSeries!;
@@ -161,6 +163,14 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       );
       if (mounted) setState(() => _uploading = false);
       final thumbnailUrl = await PostService.generateAndUploadVideoThumbnail(_video!, userId);
+
+      // A brand-new series has no poster art yet (createSeries above ran
+      // before this episode's video/thumbnail existed) — the episode's
+      // own thumbnail is the only art available at this point, so it
+      // doubles as the series cover until the creator sets a real one.
+      if (_creatingNewSeries && series.coverImageUrl == null && thumbnailUrl != null) {
+        await SeriesService.setCoverImage(series.id, thumbnailUrl);
+      }
 
       final episodeNumber = _creatingNewSeries ? 1 : _nextEpisodeNumber;
       await PostService.createPost(
@@ -293,6 +303,18 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                     prefixIcon: Icon(Icons.monetization_on_outlined, color: AppColors.coin, size: 18),
                   ),
                 ),
+                const SizedBox(height: 12),
+                const Text('GENRE', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: kDramaGenres.map((g) => _GenreChip(
+                        label: g,
+                        selected: _newSeriesGenre == g,
+                        onTap: busy ? null : () => setState(() => _newSeriesGenre = g),
+                      )).toList(),
+                ),
                 const SizedBox(height: 6),
                 const Text(
                   'This episode will be Episode 1. The first $kFreeEpisodeCount episodes of every series are free to watch.',
@@ -375,6 +397,36 @@ class _SeriesChip extends StatelessWidget {
             const SizedBox(width: 6),
             Text('${series.episodeCount} ep', style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GenreChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  const _GenreChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.secondary.withOpacity(0.18) : AppColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? AppColors.secondary : AppColors.surfaceBorder),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: selected ? AppColors.secondary : AppColors.textSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+          ),
         ),
       ),
     );

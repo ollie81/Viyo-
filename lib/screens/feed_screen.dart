@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/post.dart';
+import '../models/series.dart';
 import '../services/post_service.dart';
+import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/drama_sort_toggle.dart';
+import '../widgets/genre_chip_row.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/home_header_section.dart';
 import '../widgets/post_card.dart';
+import '../widgets/series_poster_card.dart';
 import 'ai_hub_screen.dart';
 import 'notifications_screen.dart';
 import 'messages/conversations_screen.dart';
 import 'post/post_detail_screen.dart';
+import 'post/series_detail_screen.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
 
@@ -36,10 +42,17 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   bool _loading = true;
   String? _error;
 
+  List<Series> _allSeries = [];
+  bool _loadingSeries = true;
+  String? _seriesError;
+  String _selectedGenre = GenreChipRow.all;
+  DramaSort _selectedSort = DramaSort.newest;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadSeries();
   }
 
   @override
@@ -83,7 +96,30 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   List<Post> get _videoPosts =>
       _forYouPosts.where((p) => p.postType == PostType.video).toList();
 
-  List<Post> get _aiDramaPosts => _forYouPosts.where((p) => p.isEpisode).toList();
+  Future<void> _loadSeries() async {
+    setState(() { _loadingSeries = true; _seriesError = null; });
+    try {
+      final genre = _selectedGenre == GenreChipRow.all ? null : _selectedGenre;
+      final series = await SeriesService.getAllSeries(genre: genre, sort: _selectedSort);
+      if (!mounted) return;
+      setState(() { _allSeries = series; _loadingSeries = false; });
+    } catch (e) {
+      debugPrint('getAllSeries failed: $e');
+      if (mounted) setState(() { _loadingSeries = false; _seriesError = '$e'; });
+    }
+  }
+
+  void _selectGenre(String genre) {
+    if (genre == _selectedGenre) return;
+    setState(() => _selectedGenre = genre);
+    _loadSeries();
+  }
+
+  void _selectSort(DramaSort sort) {
+    if (sort == _selectedSort) return;
+    setState(() => _selectedSort = sort);
+    _loadSeries();
+  }
 
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
@@ -159,6 +195,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
                 MaterialPageRoute(
                   builder: (_) => VideoFeedScreen(
                     initialPostId: post.id,
+                    seriesId: post.isEpisode ? post.seriesId : null,
                   ),
                 ),
               )
@@ -267,17 +304,17 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
               icon: Icons.videocam_outlined,
             ),
           ),
-          _FeedTabBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            posts: _aiDramaPosts,
-            onRefresh: _load,
-            cardBuilder: _buildCard,
-            emptyState: const _EmptyFeedState(
-              title: 'No Dramas yet',
-              subtitle: 'Upload one from the + button to start a series.',
-              icon: Icons.auto_awesome,
+          _DramaGridTab(
+            loading: _loadingSeries,
+            error: _seriesError,
+            series: _allSeries,
+            selectedGenre: _selectedGenre,
+            onSelectGenre: _selectGenre,
+            selectedSort: _selectedSort,
+            onSelectSort: _selectSort,
+            onRefresh: _loadSeries,
+            onOpenSeries: (s) => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: s)),
             ),
           ),
           _FeedTabBody(
@@ -360,6 +397,98 @@ class _FeedTabBody extends StatelessWidget {
                 return cardBuilder(posts[i]);
               },
             ),
+    );
+  }
+}
+
+/// The Dramas tab's body: a genre filter row above a 2-column poster
+/// grid of series (not individual episode posts — a series is what a
+/// viewer actually browses for, same as any drama-catalog app). Tapping
+/// a poster opens SeriesDetailScreen for that show's full episode list.
+class _DramaGridTab extends StatelessWidget {
+  final bool loading;
+  final String? error;
+  final List<Series> series;
+  final String selectedGenre;
+  final ValueChanged<String> onSelectGenre;
+  final DramaSort selectedSort;
+  final ValueChanged<DramaSort> onSelectSort;
+  final Future<void> Function() onRefresh;
+  final void Function(Series) onOpenSeries;
+
+  const _DramaGridTab({
+    required this.loading,
+    this.error,
+    required this.series,
+    required this.selectedGenre,
+    required this.onSelectGenre,
+    required this.selectedSort,
+    required this.onSelectSort,
+    required this.onRefresh,
+    required this.onOpenSeries,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final failedToLoad = !loading && series.isEmpty && error != null;
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      color: AppColors.primary,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            sliver: SliverToBoxAdapter(
+              child: DramaSortToggle(selected: selectedSort, onSelect: onSelectSort),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            sliver: SliverToBoxAdapter(
+              child: GenreChipRow(selected: selectedGenre, onSelect: onSelectGenre),
+            ),
+          ),
+          if (loading)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator(color: AppColors.secondary)),
+            )
+          else if (failedToLoad)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: _FeedLoadError(message: error!, onRetry: onRefresh)),
+            )
+          else if (series.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: _EmptyFeedState(
+                  title: 'No Dramas yet',
+                  subtitle: 'Upload one from the + button to start a series.',
+                  icon: Icons.auto_awesome,
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 0.6,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, i) => SeriesPosterCard(series: series[i], onTap: () => onOpenSeries(series[i])),
+                  childCount: series.length,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

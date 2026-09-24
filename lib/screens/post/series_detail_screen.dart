@@ -10,12 +10,10 @@ import '../video_feed_screen.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
 /// showing its lock state at a glance. Tapping an episode opens it in
-/// VideoFeedScreen, the same screen every other video in the app opens
-/// in (and the only screen with the unlock paywall) — this deliberately
-/// doesn't build a separate series-scoped player; swiping past an
-/// episode opened from here lands in the normal video feed, the same
-/// tradeoff every other "open this one video" tap in the app already
-/// makes (see post_card.dart's onOpenMedia).
+/// VideoFeedScreen scoped to this series (seriesId) — swiping past it
+/// moves through this series' remaining episodes in order, and playback
+/// auto-advances into the next one when the current one finishes,
+/// instead of backing out to pick the next episode by hand.
 class SeriesDetailScreen extends StatefulWidget {
   final Series series;
   const SeriesDetailScreen({super.key, required this.series});
@@ -79,7 +77,10 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                           locked: isEpisodeLocked(ep, viewerId: viewerId),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => VideoFeedScreen(initialPostId: ep.id),
+                              builder: (_) => VideoFeedScreen(
+                                initialPostId: ep.id,
+                                seriesId: series.id,
+                              ),
                             ),
                           ),
                         )),
