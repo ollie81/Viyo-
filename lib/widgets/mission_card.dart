@@ -55,14 +55,24 @@ class MissionCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  mission.title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: mission.claimed
-                        ? AppColors.textSecondary
-                        : AppColors.textPrimary,
-                  ),
+                Row(
+                  children: [
+                    if (mission.code.startsWith('ai_drama_')) ...[
+                      const Icon(Icons.auto_awesome, size: 13, color: AppColors.secondary),
+                      const SizedBox(width: 5),
+                    ],
+                    Expanded(
+                      child: Text(
+                        mission.title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: mission.claimed
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(

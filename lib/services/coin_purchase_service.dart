@@ -45,6 +45,17 @@ class PurchaseIntent {
   });
 }
 
+/// Result of starting a Paystack or Flutterwave purchase — a hosted
+/// checkout URL to open in a browser, since neither has an in-app
+/// payment sheet the way Stripe does.
+class HostedCheckout {
+  final String url;
+  final String reference;
+  final int coins;
+
+  HostedCheckout({required this.url, required this.reference, required this.coins});
+}
+
 /// Buying coins with real money, via Stripe. Coins are only ever
 /// credited by the backend's webhook once Stripe confirms the charge —
 /// this client only ever starts checkout and presents Stripe's Payment
@@ -93,5 +104,44 @@ class CoinPurchaseService {
       amountUsdCents: (data['amount_usd_cents'] as num).toInt(),
       coins: (data['coins'] as num).toInt(),
     );
+  }
+
+  static Future<HostedCheckout> initializePaystack(String packageId) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/purchase/paystack/initialize'),
+      headers: await _headers(),
+      body: jsonEncode({'package_id': packageId}),
+    );
+    if (res.statusCode != 200) throw Exception(_errorFrom(res, 'Paystack'));
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return HostedCheckout(
+      url: data['authorization_url'] as String,
+      reference: data['reference'] as String,
+      coins: (data['coins'] as num).toInt(),
+    );
+  }
+
+  static Future<HostedCheckout> initializeFlutterwave(String packageId) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/purchase/flutterwave/initialize'),
+      headers: await _headers(),
+      body: jsonEncode({'package_id': packageId}),
+    );
+    if (res.statusCode != 200) throw Exception(_errorFrom(res, 'Flutterwave'));
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return HostedCheckout(
+      url: data['payment_link'] as String,
+      reference: data['tx_ref'] as String,
+      coins: (data['coins'] as num).toInt(),
+    );
+  }
+
+  static String _errorFrom(http.Response res, String provider) {
+    try {
+      final data = jsonDecode(res.body);
+      final detail = data is Map ? data['detail'] : null;
+      if (detail is String) return detail;
+    } catch (_) {}
+    return 'Failed to start $provider payment (${res.statusCode})';
   }
 }

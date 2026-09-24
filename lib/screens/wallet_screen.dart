@@ -6,6 +6,7 @@ import '../models/user_profile.dart';
 import '../services/coin_service.dart';
 import '../services/profile_service.dart';
 import '../services/supabase_service.dart';
+import '../services/wallet_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/coin_format.dart';
 import '../widgets/viyo_toast.dart';
@@ -21,7 +22,9 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen> {
   UserProfile? _profile;
   List<CoinTransaction> _transactions = [];
+  WalletEarnings _earnings = WalletEarnings.empty();
   bool _loading = true;
+  bool _withdrawing = false;
   final _giftHandleCtrl = TextEditingController();
   final _giftAmountCtrl = TextEditingController(text: '50');
   bool _gifting = false;
@@ -39,12 +42,29 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() => _loading = true);
     final profile = await ProfileService.getProfile(userId);
     final txs = await CoinService.getTransactions(userId);
+    // Best-effort — a creator with no AI Short Drama earnings yet
+    // (or a backend hiccup) shouldn't block the rest of the wallet.
+    final earnings = await WalletService.getEarnings().catchError((_) => WalletEarnings.empty());
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _transactions = txs;
+      _earnings = earnings;
       _loading = false;
     });
+  }
+
+  Future<void> _requestWithdrawal() async {
+    setState(() => _withdrawing = true);
+    try {
+      final coins = await WalletService.requestWithdrawal();
+      _showToast('Withdrawal requested for $coins coins 💸');
+      _load();
+    } catch (e) {
+      _showToast('$e');
+    } finally {
+      if (mounted) setState(() => _withdrawing = false);
+    }
   }
 
   void _showToast(String msg) {
@@ -140,6 +160,14 @@ class _WalletScreenState extends State<WalletScreen> {
                           ],
                         ),
                       ),
+                      if (_earnings.lifetimeCoins > 0) ...[
+                        const SizedBox(height: 14),
+                        _EarningsCard(
+                          earnings: _earnings,
+                          withdrawing: _withdrawing,
+                          onWithdraw: _requestWithdrawal,
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -239,6 +267,85 @@ class _WalletScreenState extends State<WalletScreen> {
                 if (_toast != null) ViyoToast(message: _toast!),
               ],
             ),
+    );
+  }
+}
+
+/// Earnings from AI Short Drama episode unlocks — a separate balance
+/// from the coins above, since these are real money owed to the
+/// creator (65% of every locked-episode unlock) rather than in-app
+/// currency they can spend, so "withdraw" means something different
+/// here than "buy coins" does above it.
+class _EarningsCard extends StatelessWidget {
+  final WalletEarnings earnings;
+  final bool withdrawing;
+  final VoidCallback onWithdraw;
+
+  const _EarningsCard({
+    required this.earnings,
+    required this.withdrawing,
+    required this.onWithdraw,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canWithdraw = earnings.availableCoins >= earnings.minWithdrawalCoins;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.35)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, size: 15, color: AppColors.secondary),
+              const SizedBox(width: 6),
+              const Text('AI Short Drama earnings', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _EarningsStat(label: 'Available', value: earnings.availableCoins, color: AppColors.success)),
+              Expanded(child: _EarningsStat(label: 'Pending', value: earnings.pendingWithdrawalCoins, color: AppColors.coin)),
+              Expanded(child: _EarningsStat(label: 'Lifetime', value: earnings.lifetimeCoins, color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: (!canWithdraw || withdrawing) ? null : onWithdraw,
+              child: Text(
+                withdrawing
+                    ? 'Requesting...'
+                    : canWithdraw
+                        ? 'Request Withdrawal'
+                        : 'Min. ${earnings.minWithdrawalCoins} coins to withdraw',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EarningsStat extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+  const _EarningsStat({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(formatCoins(value), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+      ],
     );
   }
 }

@@ -28,12 +28,30 @@ class Post {
   final bool isPinned;
   final DateTime createdAt;
 
+  // AI Short Drama support. seriesId set at all is what makes this
+  // post an episode rather than a plain photo/video — there is
+  // deliberately no separate is_ai_drama flag (see the SQL migration).
+  final String? seriesId;
+  final int? episodeNumber;
+  // Populated client-side after a join with `series` — not stored on
+  // posts itself, same as the author fields below.
+  final String? seriesTitle;
+  final int? seriesCoinPrice;
+
   // Populated client-side after a join with `profiles` — not stored in the
   // posts table itself.
   final String? authorUsername;
   final String? authorDisplayName;
   final String? authorAvatarUrl;
   final bool likedByMe;
+
+  // Populated client-side from a separate episode_unlocks query (see
+  // SeriesService.withUnlockState) — never trust a client-set value of
+  // this for anything that gates real access; the paywall check re-runs
+  // server-side in episodes.py regardless of what this says.
+  final bool unlockedByMe;
+
+  bool get isEpisode => seriesId != null;
 
   Post({
     required this.id,
@@ -51,10 +69,15 @@ class Post {
     this.isArchived = false,
     this.isPinned = false,
     required this.createdAt,
+    this.seriesId,
+    this.episodeNumber,
+    this.seriesTitle,
+    this.seriesCoinPrice,
     this.authorUsername,
     this.authorDisplayName,
     this.authorAvatarUrl,
     this.likedByMe = false,
+    this.unlockedByMe = false,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -73,10 +96,15 @@ class Post {
         isArchived: json['is_archived'] ?? false,
         isPinned: json['is_pinned'] ?? false,
         createdAt: DateTime.parse(json['created_at']),
+        seriesId: json['series_id'],
+        episodeNumber: json['episode_number'],
+        seriesTitle: json['series']?['title'],
+        seriesCoinPrice: json['series']?['coin_price_per_episode'],
         authorUsername: json['profiles']?['username'],
         authorDisplayName: json['profiles']?['display_name'],
         authorAvatarUrl: json['profiles']?['avatar_url'],
         likedByMe: json['liked_by_me'] ?? false,
+        unlockedByMe: json['unlocked_by_me'] ?? false,
       );
   Post copyWith({
     String? id,
@@ -94,10 +122,13 @@ class Post {
     bool? isArchived,
     bool? isPinned,
     DateTime? createdAt,
+    String? seriesId,
+    int? episodeNumber,
     String? authorUsername,
     String? authorDisplayName,
     String? authorAvatarUrl,
     bool? likedByMe,
+    bool? unlockedByMe,
   }) {
     return Post(
       id: id ?? this.id,
@@ -115,12 +146,13 @@ class Post {
       isArchived: isArchived ?? this.isArchived,
       isPinned: isPinned ?? this.isPinned,
       createdAt: createdAt ?? this.createdAt,
+      seriesId: seriesId ?? this.seriesId,
+      episodeNumber: episodeNumber ?? this.episodeNumber,
       authorUsername: authorUsername ?? this.authorUsername,
       authorDisplayName: authorDisplayName ?? this.authorDisplayName,
       authorAvatarUrl: authorAvatarUrl ?? this.authorAvatarUrl,
       likedByMe: likedByMe ?? this.likedByMe,
+      unlockedByMe: unlockedByMe ?? this.unlockedByMe,
     );
   }
-
-
 }

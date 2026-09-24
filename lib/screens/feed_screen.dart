@@ -22,8 +22,17 @@ class FeedScreen extends StatefulWidget {
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
-class _FeedScreenState extends State<FeedScreen> {
-  List<Post> _posts = [];
+/// Home feed tabs: For You (the existing hot-ranked feed), Videos and
+/// AI Dramas (both just filters over that same pool — see PostService
+/// .getFeed's own doc comment on why fetching everything and ranking
+/// client-side is fine at this app's scale), and Following (a genuinely
+/// different, separately-fetched query — a followed creator's post can
+/// easily fall outside the For You pool entirely).
+class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(length: 4, vsync: this);
+
+  List<Post> _forYouPosts = [];
+  List<Post> _followingPosts = [];
   bool _loading = true;
 
   @override
@@ -32,19 +41,34 @@ class _FeedScreenState extends State<FeedScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final posts = await PostService.getFeed();
+      final results = await Future.wait([
+        PostService.getFeed(),
+        PostService.getFollowingFeed(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _posts = posts;
+        _forYouPosts = results[0];
+        _followingPosts = results[1];
         _loading = false;
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  List<Post> get _videoPosts =>
+      _forYouPosts.where((p) => p.postType == PostType.video).toList();
+
+  List<Post> get _aiDramaPosts => _forYouPosts.where((p) => p.isEpisode).toList();
 
   Future<void> _like(Post post) async {
     final userId = SupabaseService.currentUserId;
@@ -101,6 +125,37 @@ class _FeedScreenState extends State<FeedScreen> {
     _load();
   }
 
+  Widget _buildCard(Post post) {
+    return PostCard(
+      post: post,
+      // Passing the logged-in userId lets PostCard show
+      // the delete menu only on the current user's posts.
+      currentUserId: SupabaseService.currentUserId,
+      onLike: () => _like(post),
+      onDelete: () => _delete(post),
+      onShare: () => _share(post),
+      onComment: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PostDetailScreen(post: post),
+        ),
+      ),
+      onOpenMedia: post.postType == PostType.video
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => VideoFeedScreen(
+                    initialPostId: post.id,
+                  ),
+                ),
+              )
+          : null,
+      onOpenProfile: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(userId: post.userId),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -143,62 +198,131 @@ class _FeedScreenState extends State<FeedScreen> {
             ),
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textMuted,
+          indicatorColor: AppColors.primary,
+          tabAlignment: TabAlignment.start,
+          tabs: const [
+            Tab(text: 'For You'),
+            Tab(text: 'Videos'),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome, size: 14),
+                  SizedBox(width: 5),
+                  Text('AI Dramas'),
+                ],
+              ),
+            ),
+            Tab(text: 'Following'),
+          ],
+        ),
       ),
-      body: _loading
-          ? const _FeedSkeleton()
-          : RefreshIndicator(
-              onRefresh: _load,
-              color: AppColors.primary,
-              child: _posts.isEmpty
-                  ? ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-                      children: const [
-                        HomeHeaderSection(),
-                        Padding(
-                          padding: EdgeInsets.only(top: 70),
-                          child: Center(
-                            child: _EmptyFeedState(),
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-                      itemCount: _posts.length + 1,
-                      itemBuilder: (ctx, i) {
-                        if (i == 0) return const HomeHeaderSection();
-                        final post = _posts[i - 1];
-                        return PostCard(
-                          post: post,
-                          // Passing the logged-in userId lets PostCard show
-                          // the delete menu only on the current user's posts.
-                          currentUserId: SupabaseService.currentUserId,
-                          onLike: () => _like(post),
-                          onDelete: () => _delete(post),
-                          onShare: () => _share(post),
-                          onComment: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PostDetailScreen(post: post),
-                            ),
-                          ),
-                          onOpenMedia: post.postType == PostType.video
-                              ? () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => VideoFeedScreen(
-                                        initialPostId: post.id,
-                                      ),
-                                    ),
-                                  )
-                              : null,
-                          onOpenProfile: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ProfileScreen(userId: post.userId),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _FeedTabBody(
+            loading: _loading,
+            posts: _forYouPosts,
+            onRefresh: _load,
+            cardBuilder: _buildCard,
+            showHeader: true,
+            emptyState: const _EmptyFeedState(
+              title: 'No posts yet',
+              subtitle: 'Be the first to share — your AI coach\nreviews every post right after you do.',
+              icon: Icons.auto_awesome_outlined,
+            ),
+          ),
+          _FeedTabBody(
+            loading: _loading,
+            posts: _videoPosts,
+            onRefresh: _load,
+            cardBuilder: _buildCard,
+            emptyState: const _EmptyFeedState(
+              title: 'No videos yet',
+              subtitle: 'Videos posted to Viyo will show up here.',
+              icon: Icons.videocam_outlined,
+            ),
+          ),
+          _FeedTabBody(
+            loading: _loading,
+            posts: _aiDramaPosts,
+            onRefresh: _load,
+            cardBuilder: _buildCard,
+            emptyState: const _EmptyFeedState(
+              title: 'No AI Short Dramas yet',
+              subtitle: 'Upload one from the + button to start a series.',
+              icon: Icons.auto_awesome,
+            ),
+          ),
+          _FeedTabBody(
+            loading: _loading,
+            posts: _followingPosts,
+            onRefresh: _load,
+            cardBuilder: _buildCard,
+            emptyState: const _EmptyFeedState(
+              title: 'Follow creators to see them here',
+              subtitle: 'Posts from people you follow show up in this tab.',
+              icon: Icons.people_outline,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One tab's content — a pull-to-refresh list of post cards, shared by
+/// all four tabs above so the loading/empty/list wiring exists once.
+class _FeedTabBody extends StatelessWidget {
+  final bool loading;
+  final List<Post> posts;
+  final Future<void> Function() onRefresh;
+  final Widget Function(Post) cardBuilder;
+  final Widget emptyState;
+  final bool showHeader;
+
+  const _FeedTabBody({
+    required this.loading,
+    required this.posts,
+    required this.onRefresh,
+    required this.cardBuilder,
+    required this.emptyState,
+    this.showHeader = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const _FeedSkeleton();
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      color: AppColors.primary,
+      child: posts.isEmpty
+          ? ListView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              children: [
+                if (showHeader) const HomeHeaderSection(),
+                Padding(
+                  padding: const EdgeInsets.only(top: 70),
+                  child: Center(child: emptyState),
+                ),
+              ],
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              itemCount: posts.length + (showHeader ? 1 : 0),
+              itemBuilder: (ctx, i) {
+                if (showHeader) {
+                  if (i == 0) return const HomeHeaderSection();
+                  return cardBuilder(posts[i - 1]);
+                }
+                return cardBuilder(posts[i]);
+              },
             ),
     );
   }
@@ -250,10 +374,14 @@ class _FeedSkeleton extends StatelessWidget {
   }
 }
 
-/// Empty-feed state — an icon-led nudge instead of a lone line of text,
-/// since this is often the very first thing a new user sees.
+/// Empty-tab state — an icon-led nudge instead of a lone line of text,
+/// reused across all four feed tabs with a tab-specific message.
 class _EmptyFeedState extends StatelessWidget {
-  const _EmptyFeedState();
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _EmptyFeedState({required this.title, required this.subtitle, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -267,18 +395,18 @@ class _EmptyFeedState extends StatelessWidget {
             color: AppColors.primary.withOpacity(0.12),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.auto_awesome_outlined, color: AppColors.primary, size: 28),
+          child: Icon(icon, color: AppColors.primary, size: 28),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'No posts yet',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Be the first to share — your AI coach\nreviews every post right after you do.',
+        Text(
+          subtitle,
           textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
         ),
       ],
     );

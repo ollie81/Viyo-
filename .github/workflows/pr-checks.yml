@@ -36,3 +36,24 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  build-web:
+    # A separate job (not a step above) so a web-only compile failure
+    # — like a dart:io type used somewhere `flutter analyze` doesn't
+    # catch — shows up as its own clearly-named check, and one job's
+    # slower build time never blocks the fast analyze/test feedback.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web (PWA)
+        run: flutter build web --release

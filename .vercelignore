@@ -1,0 +1,9 @@
+# Platform folders Vercel never needs to upload — the build only ever
+# targets web (see vercel.json's buildCommand). Keeps the upload to
+# Vercel small and fast; none of this affects the Flutter web build.
+android
+ios
+macos
+windows
+linux
+build

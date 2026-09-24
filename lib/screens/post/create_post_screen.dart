@@ -1,5 +1,3 @@
-
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/caption_variants.dart';
@@ -14,6 +12,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/upload_progress_card.dart';
+import '../../widgets/xfile_preview_image.dart';
 import 'coach_feedback_screen.dart';
 import 'ai_repurpose_screen.dart';
 
@@ -27,7 +26,10 @@ class CreatePostScreen extends StatefulWidget {
 class _CreatePostScreenState extends State<CreatePostScreen> {
   PostType _type = PostType.text;
   final _caption = TextEditingController();
-  File? _mediaFile;
+  // XFile, not dart:io's File — File doesn't work on web (throws at
+  // runtime), while XFile (image_picker's own cross-platform file
+  // type) reads bytes and uploads identically on every platform.
+  XFile? _mediaFile;
   bool _posting = false;
   bool _uploading = false;
   double _uploadProgress = 0;
@@ -57,7 +59,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         : await picker.pickImage(source: source);
     if (picked != null) {
       setState(() {
-        _mediaFile = File(picked.path);
+        _mediaFile = picked;
         _type = video ? PostType.video : PostType.photo;
       });
     }
@@ -367,7 +369,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           child: _type == PostType.photo
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(14),
-                                  child: Image.file(_mediaFile!, fit: BoxFit.cover, width: double.infinity),
+                                  child: XFilePreviewImage(file: _mediaFile!, fit: BoxFit.cover, width: double.infinity),
                                 )
                               : const Center(
                                   child: Icon(Icons.play_circle_outline, size: 48, color: AppColors.primary),

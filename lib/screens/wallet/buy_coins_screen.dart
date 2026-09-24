@@ -2,11 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/coin_purchase_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/viyo_toast.dart';
+
+enum _PaymentProvider { stripe, paystack, flutterwave }
 
 /// Real-money coin purchases via Stripe's Payment Sheet. Coins are only
 /// ever credited by the backend once Stripe confirms the charge (see
@@ -21,17 +24,43 @@ class BuyCoinsScreen extends StatefulWidget {
   State<BuyCoinsScreen> createState() => _BuyCoinsScreenState();
 }
 
-class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
+class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObserver {
   List<CoinPackage> _packages = [];
   bool _loading = true;
   String? _loadError;
   String? _purchasingPackageId;
   String? _toast;
 
+  // Set while waiting for the user to come back from a Paystack/
+  // Flutterwave checkout opened in the system browser — there's no
+  // callback into the app from a plain external browser tab, so app
+  // resume (didChangeAppLifecycleState) is the signal to start
+  // polling the balance, same as Stripe's payment sheet closing does.
+  int? _hostedCheckoutExpectedCoins;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final expected = _hostedCheckoutExpectedCoins;
+    if (expected == null) return;
+    _hostedCheckoutExpectedCoins = null;
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    _showToast('Checking for your coins…');
+    _waitForCredit(userId, expected);
   }
 
   Future<void> _load() async {
@@ -63,8 +92,65 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
   }
 
   Future<void> _buy(CoinPackage package) async {
+    if (_purchasingPackageId != null) return;
+    final provider = await _pickProvider();
+    if (provider == null) return;
+
+    switch (provider) {
+      case _PaymentProvider.stripe:
+        await _buyWithStripe(package);
+        break;
+      case _PaymentProvider.paystack:
+        await _buyWithHostedCheckout(package, provider: 'paystack');
+        break;
+      case _PaymentProvider.flutterwave:
+        await _buyWithHostedCheckout(package, provider: 'flutterwave');
+        break;
+    }
+  }
+
+  Future<_PaymentProvider?> _pickProvider() {
+    return showModalBottomSheet<_PaymentProvider>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Pay with', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              _ProviderTile(
+                label: 'Card (Stripe)',
+                icon: Icons.credit_card,
+                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.stripe),
+              ),
+              _ProviderTile(
+                label: 'Paystack',
+                icon: Icons.account_balance_wallet_outlined,
+                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.paystack),
+              ),
+              _ProviderTile(
+                label: 'Flutterwave',
+                icon: Icons.payments_outlined,
+                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.flutterwave),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _buyWithStripe(CoinPackage package) async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null || _purchasingPackageId != null) return;
+    if (userId == null) return;
 
     setState(() => _purchasingPackageId = package.id);
     try {
@@ -90,6 +176,35 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
       if (code != FailureCode.Canceled) {
         _showToast(e.error.localizedMessage ?? 'Payment failed. Please try again.');
       }
+    } catch (e) {
+      _showToast('Purchase failed: $e');
+    } finally {
+      if (mounted) setState(() => _purchasingPackageId = null);
+    }
+  }
+
+  /// Paystack and Flutterwave both check out on a hosted page rather
+  /// than an in-app sheet — this opens it in the system browser and
+  /// relies on app-resume (didChangeAppLifecycleState above) to know
+  /// when to start polling for the credit, since there's no direct
+  /// callback from an external browser tab back into the app.
+  Future<void> _buyWithHostedCheckout(CoinPackage package, {required String provider}) async {
+    setState(() => _purchasingPackageId = package.id);
+    try {
+      final checkout = provider == 'paystack'
+          ? await CoinPurchaseService.initializePaystack(package.id)
+          : await CoinPurchaseService.initializeFlutterwave(package.id);
+
+      final opened = await launchUrl(
+        Uri.parse(checkout.url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        _showToast('Could not open the checkout page.');
+        return;
+      }
+      _hostedCheckoutExpectedCoins = checkout.coins;
+      _showToast('Complete your payment in the browser, then come back here.');
     } catch (e) {
       _showToast('Purchase failed: $e');
     } finally {
@@ -228,6 +343,33 @@ class _PackageCard extends StatelessWidget {
                       child: const Text('Buy', style: TextStyle(fontSize: 13)),
                     ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProviderTile extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _ProviderTile({required this.label, required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.coin, size: 22),
+            const SizedBox(width: 14),
+            Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            const Icon(Icons.chevron_right, color: AppColors.textMuted),
           ],
         ),
       ),
