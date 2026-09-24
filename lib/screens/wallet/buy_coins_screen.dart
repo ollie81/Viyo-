@@ -9,7 +9,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/viyo_toast.dart';
 
-enum _PaymentProvider { stripe, paystack, flutterwave }
+enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy }
 
 /// Real-money coin purchases via Stripe's Payment Sheet. Coins are only
 /// ever credited by the backend once Stripe confirms the charge (see
@@ -106,6 +106,9 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       case _PaymentProvider.flutterwave:
         await _buyWithHostedCheckout(package, provider: 'flutterwave');
         break;
+      case _PaymentProvider.lemonsqueezy:
+        await _buyWithHostedCheckout(package, provider: 'lemonsqueezy');
+        break;
     }
   }
 
@@ -140,6 +143,11 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
                 label: 'Flutterwave',
                 icon: Icons.payments_outlined,
                 onTap: () => Navigator.of(ctx).pop(_PaymentProvider.flutterwave),
+              ),
+              _ProviderTile(
+                label: 'Lemon Squeezy',
+                icon: Icons.storefront_outlined,
+                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.lemonsqueezy),
               ),
             ],
           ),
@@ -183,17 +191,26 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     }
   }
 
-  /// Paystack and Flutterwave both check out on a hosted page rather
-  /// than an in-app sheet — this opens it in the system browser and
-  /// relies on app-resume (didChangeAppLifecycleState above) to know
-  /// when to start polling for the credit, since there's no direct
-  /// callback from an external browser tab back into the app.
+  /// Paystack, Flutterwave and Lemon Squeezy all check out on a hosted
+  /// page rather than an in-app sheet — this opens it in the system
+  /// browser and relies on app-resume (didChangeAppLifecycleState
+  /// above) to know when to start polling for the credit, since
+  /// there's no direct callback from an external browser tab back into
+  /// the app.
   Future<void> _buyWithHostedCheckout(CoinPackage package, {required String provider}) async {
     setState(() => _purchasingPackageId = package.id);
     try {
-      final checkout = provider == 'paystack'
-          ? await CoinPurchaseService.initializePaystack(package.id)
-          : await CoinPurchaseService.initializeFlutterwave(package.id);
+      final HostedCheckout checkout;
+      switch (provider) {
+        case 'paystack':
+          checkout = await CoinPurchaseService.initializePaystack(package.id);
+          break;
+        case 'flutterwave':
+          checkout = await CoinPurchaseService.initializeFlutterwave(package.id);
+          break;
+        default:
+          checkout = await CoinPurchaseService.initializeLemonSqueezy(package.id);
+      }
 
       final opened = await launchUrl(
         Uri.parse(checkout.url),
