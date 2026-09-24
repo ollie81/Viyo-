@@ -187,6 +187,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
                 MaterialPageRoute(
                   builder: (_) => VideoFeedScreen(
                     initialPostId: post.id,
+                    seriesId: post.isEpisode ? post.seriesId : null,
                   ),
                 ),
               )

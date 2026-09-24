@@ -203,7 +203,12 @@ class _SearchScreenState extends State<SearchScreen> {
                         trendingDramas: _trendingDramas,
                         newSeries: _newSeries,
                         onOpenDrama: (post) => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => VideoFeedScreen(initialPostId: post.id)),
+                          MaterialPageRoute(
+                            builder: (_) => VideoFeedScreen(
+                              initialPostId: post.id,
+                              seriesId: post.seriesId,
+                            ),
+                          ),
                         ),
                         onOpenSeries: (series) => Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series)),

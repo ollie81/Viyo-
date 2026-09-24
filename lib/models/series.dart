@@ -85,6 +85,9 @@ const kDramaGenres = <String>[
   'Comedy',
   'Thriller',
   'Family',
+  'Male Lead',
+  'Female Lead',
+  'LGBTQ+',
 ];
 
 /// Episodes 1..freeEpisodeCount of every series are free to watch;

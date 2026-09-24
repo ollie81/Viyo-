@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
@@ -12,21 +13,22 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/episode_lock.dart';
 import '../widgets/comments_sheet.dart';
-import '../widgets/create_menu_sheet.dart';
 import '../widgets/guest_gate.dart';
-import '../widgets/viyo_glass_bottom_nav.dart';
 import 'profile/profile_screen.dart';
-import 'mission_screen.dart';
-import 'post/create_post_screen.dart';
-import 'post/upload_ai_drama_screen.dart';
-import 'search_screen.dart';
 
-/// Viyo's video feed. It intentionally keeps the main navigation visible so
-/// watching a video does not trap the user in a separate player.
+/// Viyo's video feed — full-screen, immersive playback (system UI
+/// hidden, video filling the whole screen) matching every other
+/// short-form/drama app: a back button is the only way out, the same
+/// way TikTok/Reels/drama apps work. [seriesId], when set, scopes
+/// playback to just that series' episodes in order instead of the
+/// global video feed — so opening Episode 1 of a drama naturally swipes
+/// (and auto-advances, see _VideoPage.autoAdvance) into Episode 2, 3...
+/// without ever needing to back out and pick the next one manually.
 class VideoFeedScreen extends StatefulWidget {
   final String? initialPostId;
+  final String? seriesId;
 
-  const VideoFeedScreen({super.key, this.initialPostId});
+  const VideoFeedScreen({super.key, this.initialPostId, this.seriesId});
 
   @override
   State<VideoFeedScreen> createState() => _VideoFeedScreenState();
@@ -48,12 +50,23 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   @override
   void initState() {
     super.initState();
+    // Full-bleed playback: hide the status/nav bars while this screen is
+    // up, restore them on the way out — the same immersive treatment
+    // every other short-form video screen uses.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _load();
+  }
+
+  Future<List<Post>> _fetchPosts() {
+    final seriesId = widget.seriesId;
+    return seriesId != null
+        ? SeriesService.getSeriesEpisodes(seriesId)
+        : PostService.getVideoFeed();
   }
 
   Future<void> _load() async {
     try {
-      final posts = await PostService.getVideoFeed();
+      final posts = await _fetchPosts();
       if (!mounted) return;
 
       var index = 0;
@@ -97,7 +110,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
 
       // Refresh the feed so the server's count and liked state remain the
       // source of truth.
-      final posts = await PostService.getVideoFeed();
+      final posts = await _fetchPosts();
       if (!mounted) return;
       setState(() => _posts = posts);
     } catch (e) {
@@ -152,59 +165,23 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     );
   }
 
-  Future<void> _selectNav(int index) async {
-    // Home returns to the existing HomeShell instead of creating a second
-    // Home screen on top of it.
-    if (index == 0) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    if (index == 2) {
-      final choice = await showCreateMenuSheet(context);
-      if (!mounted || choice == null) return;
-      switch (choice) {
-        case CreateMenuChoice.photoVideo:
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CreatePostScreen()),
-          );
-          break;
-        case CreateMenuChoice.aiDrama:
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const UploadAiDramaScreen()),
-          );
-          break;
-        case CreateMenuChoice.challenge:
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const MissionsScreen()),
-          );
-          break;
-      }
-      return;
-    }
-
-    final Widget screen;
-    switch (index) {
-      case 1:
-        screen = const SearchScreen();
-        break;
-      case 3:
-        screen = const MissionsScreen();
-        break;
-      case 4:
-        screen = const ProfileScreen();
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => screen),
+  /// Auto-advance to the next episode/video once the current one finishes
+  /// — see _VideoPage.autoAdvance. A no-op past the last item; a locked
+  /// next episode still advances into view (showing its own paywall),
+  /// same as swiping to it manually would.
+  void _advanceToNext(int fromIndex) {
+    final next = fromIndex + 1;
+    if (next >= _posts.length || !_pageController.hasClients) return;
+    _pageController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
     );
   }
 
   @override
   void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _pageController.dispose();
     super.dispose();
   }
@@ -232,6 +209,12 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                       post: post,
                       isActive: i == _currentIndex,
                       isLocked: locked,
+                      // Only auto-advance within a series — the global
+                      // video feed keeps its existing loop-forever
+                      // behavior, since there's no "next episode" to
+                      // queue up outside a series context.
+                      autoAdvance: widget.seriesId != null,
+                      onEnded: () => _advanceToNext(i),
                       onLike: () => _like(post),
                       onComment: () => _openComments(post),
                       onShare: () => _share(post),
@@ -241,11 +224,6 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                     );
                   },
                 ),
-      bottomNavigationBar: ViyoGlassBottomNav(
-        currentIndex: 0,
-        onTap: _selectNav,
-      ),
-
     );
   }
 }
@@ -254,6 +232,11 @@ class _VideoPage extends StatefulWidget {
   final Post post;
   final bool isActive;
   final bool isLocked;
+  // When true, this page doesn't loop — it plays once and calls onEnded,
+  // which the parent uses to auto-advance to the next page. Only set for
+  // series playback; the general video feed keeps looping.
+  final bool autoAdvance;
+  final VoidCallback? onEnded;
   final VoidCallback? onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
@@ -266,6 +249,8 @@ class _VideoPage extends StatefulWidget {
     required this.post,
     required this.isActive,
     required this.isLocked,
+    this.autoAdvance = false,
+    this.onEnded,
     required this.onLike,
     required this.onComment,
     required this.onShare,
@@ -280,6 +265,7 @@ class _VideoPage extends StatefulWidget {
 
 class _VideoPageState extends State<_VideoPage> {
   VideoPlayerController? _controller;
+  bool _ended = false;
   bool _muted = false;
   bool _liked = false;
   bool _initError = false;
@@ -318,7 +304,7 @@ class _VideoPageState extends State<_VideoPage> {
 
     try {
       await controller.initialize();
-      await controller.setLooping(true);
+      await controller.setLooping(!widget.autoAdvance);
       await controller.setVolume(_muted ? 0 : 1);
 
       if (!mounted) {
@@ -339,7 +325,21 @@ class _VideoPageState extends State<_VideoPage> {
   }
 
   void _videoListener() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // video_player has no explicit "completed" event — a non-looping
+    // controller just pauses once it reaches the end, so that's the
+    // signal to treat as "this episode is over" and fire onEnded once.
+    if (widget.autoAdvance && !_ended) {
+      final c = _controller;
+      if (c != null && c.value.isInitialized && c.value.duration > Duration.zero) {
+        final remaining = c.value.duration - c.value.position;
+        if (remaining <= const Duration(milliseconds: 200)) {
+          _ended = true;
+          widget.onEnded?.call();
+        }
+      }
+    }
+    setState(() {});
   }
 
   @override
@@ -423,17 +423,28 @@ class _VideoPageState extends State<_VideoPage> {
           child: Container(
             color: Colors.black,
             alignment: Alignment.center,
+            // Full-bleed, edge-to-edge playback (BoxFit.cover) instead of
+            // a letterboxed AspectRatio box — matches every other
+            // short-form/drama app. VideoPlayer has no fit param of its
+            // own, so FittedBox + a SizedBox at the video's natural size
+            // is the standard way to get cover behavior from it.
             child: widget.isLocked
                 ? _lockedMedia()
                 : ready
-                    ? AspectRatio(
-                        aspectRatio: c!.value.aspectRatio,
-                        child: VideoPlayer(c),
+                    ? FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: c!.value.size.width,
+                          height: c.value.size.height,
+                          child: VideoPlayer(c),
+                        ),
                       )
                     : post.thumbnailUrl != null
                         ? CachedNetworkImage(
                             imageUrl: post.thumbnailUrl!,
-                            fit: BoxFit.contain,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
                             placeholder: (_, __) => const Center(
                               child: CircularProgressIndicator(
                                 color: AppColors.primary,
@@ -489,7 +500,7 @@ class _VideoPageState extends State<_VideoPage> {
         Positioned(
           left: 14,
           right: 82,
-          bottom: 106,
+          bottom: 36,
           child: SafeArea(
             top: false,
             child: GestureDetector(
@@ -544,10 +555,10 @@ class _VideoPageState extends State<_VideoPage> {
           ),
         ),
 
-        // Like/comment/share actions stay above the navigation bar.
+        // Like/comment/share actions.
         Positioned(
           right: 12,
-          bottom: 108,
+          bottom: 38,
           child: SafeArea(
             top: false,
             child: Column(
@@ -579,12 +590,12 @@ class _VideoPageState extends State<_VideoPage> {
           ),
         ),
 
-        // Playback controls are kept above the navigation bar.
+        // Playback controls.
         if (ready)
           Positioned(
             left: 10,
             right: 10,
-            bottom: 62,
+            bottom: 10,
             child: SafeArea(
               top: false,
               child: Row(
