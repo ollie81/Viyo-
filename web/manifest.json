@@ -1,11 +1,13 @@
 {
-    "name": "viyo",
-    "short_name": "viyo",
+    "name": "Viyo — Creator Boost",
+    "short_name": "Viyo",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0B0B1A",
+    "theme_color": "#0B0B1A",
+    "description": "AI Short Dramas and creator tools — post, watch series, and earn Viyo Coins.",
+    "id": "/",
+    "categories": ["entertainment", "social", "video"],
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

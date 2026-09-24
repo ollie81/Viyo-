@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -51,7 +50,9 @@ class AiRepurposeScreen extends StatefulWidget {
 }
 
 class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
-  File? _selectedVideo;
+  // XFile, not dart:io's File — see create_post_screen.dart's
+  // _mediaFile for why (File doesn't work on web).
+  XFile? _selectedVideo;
   bool _isUploading = false;
   bool _isProcessing = false;
   double _uploadProgress = 0;
@@ -78,7 +79,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
     if (picked != null) {
       setState(() {
-        _selectedVideo = File(picked.path);
+        _selectedVideo = picked;
         _result = null;
         _videoId = null;
       });

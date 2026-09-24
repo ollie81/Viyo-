@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:cross_file/cross_file.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
@@ -278,15 +280,6 @@ class PostService {
     return posts.take(limit).toList();
   }
 
-  static Future<String> uploadMedia(File file, String userId) async {
-    final ext = file.path.split('.').last;
-    final path = '$userId/${const Uuid().v4()}.$ext';
-    await _client.storage
-        .from(SupabaseConstants.postsBucket)
-        .upload(path, file);
-    return _client.storage.from(SupabaseConstants.postsBucket).getPublicUrl(path);
-  }
-
   static String _mimeTypeFor(String ext) {
     switch (ext.toLowerCase()) {
       case 'mp4':
@@ -302,20 +295,28 @@ class PostService {
     }
   }
 
-  /// Same as [uploadMedia] but reports upload progress (0.0-1.0) so the UI
-  /// can show a percentage instead of a plain spinner. Uses dio directly
-  /// against Supabase Storage's REST endpoint since supabase_flutter's
-  /// convenience `.upload()` doesn't expose progress callbacks.
+  /// Uploads a picked file (photo, video, or a generated thumbnail) and
+  /// reports progress (0.0-1.0) so the UI can show a percentage instead
+  /// of a plain spinner. Uses dio directly against Supabase Storage's
+  /// REST endpoint since supabase_flutter's convenience `.upload()`
+  /// both lacks progress callbacks and, more importantly, only accepts
+  /// a dart:io File — unusable on web, where that type doesn't exist
+  /// at runtime. XFile (image_picker's own cross-platform file type)
+  /// and plain bytes work identically on every platform this app ships
+  /// to, which is why every call site here passes an XFile rather than
+  /// wrapping a pick in File(...) the moment it comes back from the
+  /// picker.
+  ///
   /// Pass [storagePath] to control where the file lands — the AI
   /// Repurposer needs to know the exact path, since it doubles as the
   /// id tying a Coach conversation to that specific upload.
   static Future<String> uploadMediaWithProgress(
-    File file,
+    XFile file,
     String userId, {
     void Function(double progress)? onProgress,
     String? storagePath,
   }) async {
-    final ext = file.path.split('.').last;
+    final ext = file.name.contains('.') ? file.name.split('.').last : 'jpg';
     final path = storagePath ?? '$userId/${const Uuid().v4()}.$ext';
     final bytes = await file.readAsBytes();
     final token = _client.auth.currentSession?.accessToken;
@@ -346,7 +347,13 @@ class PostService {
   /// returns its public URL. This is what lets the AI Creator Coach
   /// actually "see" video posts — GPT-4o's vision input takes images, not
   /// video streams, so a representative frame stands in for the video.
-  static Future<String?> generateAndUploadVideoThumbnail(File videoFile, String userId) async {
+  ///
+  /// Web has no video_thumbnail implementation at all (native-only
+  /// plugin), so this is skipped outright there rather than left to
+  /// throw and get caught below — a post still publishes fine with no
+  /// thumbnail, same as any other thumbnail failure here.
+  static Future<String?> generateAndUploadVideoThumbnail(XFile videoFile, String userId) async {
+    if (kIsWeb) return null;
     try {
       final thumbPath = await vt.VideoThumbnail.thumbnailFile(
         video: videoFile.path,
@@ -356,7 +363,7 @@ class PostService {
         timeMs: 500, // ~0.5s in — skips a possible black opening frame
       );
       if (thumbPath == null) return null;
-      return await uploadMedia(File(thumbPath), userId);
+      return await uploadMediaWithProgress(XFile(thumbPath), userId);
     } catch (_) {
       // Thumbnail generation is a nice-to-have for the coach, not a
       // requirement for posting — fail silently and fall back to

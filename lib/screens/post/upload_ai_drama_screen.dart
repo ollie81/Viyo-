@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/post.dart';
@@ -25,7 +24,9 @@ class UploadAiDramaScreen extends StatefulWidget {
 }
 
 class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
-  File? _video;
+  // XFile, not dart:io's File — see create_post_screen.dart's _mediaFile
+  // for why (File doesn't work on web).
+  XFile? _video;
   final _caption = TextEditingController();
   final _newSeriesTitle = TextEditingController();
   final _newSeriesDescription = TextEditingController();
@@ -107,7 +108,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
 
   Future<void> _pickVideo() async {
     final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
-    if (picked != null) setState(() => _video = File(picked.path));
+    if (picked != null) setState(() => _video = picked);
   }
 
   Future<void> _submit() async {
