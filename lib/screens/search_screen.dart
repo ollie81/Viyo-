@@ -5,13 +5,17 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/post.dart';
+import '../models/series.dart';
 import '../services/post_service.dart';
 import '../services/profile_service.dart';
+import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comments_sheet.dart';
+import 'post/series_detail_screen.dart';
 import 'post/viyo_post_viewer.dart';
 import 'profile/profile_screen.dart';
+import 'video_feed_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -33,6 +37,10 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Post> _discoverPosts = [];
   bool _loadingDiscover = true;
 
+  List<Post> _trendingDramas = [];
+  List<Series> _newSeries = [];
+  bool _loadingDramas = true;
+
   @override
   void initState() {
     super.initState();
@@ -40,7 +48,25 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _loadDefaults() async {
-    await Future.wait([_loadSuggested(), _loadDiscover()]);
+    await Future.wait([_loadSuggested(), _loadDiscover(), _loadAiDramas()]);
+  }
+
+  Future<void> _loadAiDramas() async {
+    try {
+      final results = await Future.wait([
+        SeriesService.getTrendingAiDramas(),
+        SeriesService.getNewAiSeries(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _trendingDramas = results[0] as List<Post>;
+        _newSeries = results[1] as List<Series>;
+        _loadingDramas = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingDramas = false);
+    }
   }
 
   Future<void> _loadSuggested() async {
@@ -172,6 +198,15 @@ class _SearchScreenState extends State<SearchScreen> {
                         loadingDiscover: _loadingDiscover,
                         posts: _discoverPosts,
                         onOpenPost: _openPost,
+                        loadingDramas: _loadingDramas,
+                        trendingDramas: _trendingDramas,
+                        newSeries: _newSeries,
+                        onOpenDrama: (post) => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => VideoFeedScreen(initialPostId: post.id)),
+                        ),
+                        onOpenSeries: (series) => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series)),
+                        ),
                       ),
                     )
                   : _loading
@@ -200,6 +235,11 @@ class _DiscoverBody extends StatelessWidget {
   final bool loadingDiscover;
   final List<Post> posts;
   final void Function(int index) onOpenPost;
+  final bool loadingDramas;
+  final List<Post> trendingDramas;
+  final List<Series> newSeries;
+  final void Function(Post) onOpenDrama;
+  final void Function(Series) onOpenSeries;
 
   const _DiscoverBody({
     required this.loadingSuggested,
@@ -207,6 +247,11 @@ class _DiscoverBody extends StatelessWidget {
     required this.loadingDiscover,
     required this.posts,
     required this.onOpenPost,
+    required this.loadingDramas,
+    required this.trendingDramas,
+    required this.newSeries,
+    required this.onOpenDrama,
+    required this.onOpenSeries,
   });
 
   @override
@@ -226,6 +271,38 @@ class _DiscoverBody extends StatelessWidget {
               itemCount: suggested.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (ctx, i) => _SuggestedCreatorChip(creator: suggested[i]),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (!loadingDramas && newSeries.isNotEmpty) ...[
+          const _SectionLabel('NEW AI SERIES', icon: Icons.auto_awesome, color: AppColors.secondary),
+          SizedBox(
+            height: 168,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: newSeries.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (ctx, i) => _NewSeriesCard(
+                series: newSeries[i],
+                onTap: () => onOpenSeries(newSeries[i]),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (!loadingDramas && trendingDramas.isNotEmpty) ...[
+          const _SectionLabel('TRENDING AI DRAMAS', icon: Icons.auto_awesome, color: AppColors.secondary),
+          SizedBox(
+            height: 220,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: trendingDramas.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (ctx, i) => _TrendingDramaCard(
+                post: trendingDramas[i],
+                onTap: () => onOpenDrama(trendingDramas[i]),
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -260,19 +337,167 @@ class _DiscoverBody extends StatelessWidget {
 
 class _SectionLabel extends StatelessWidget {
   final String text;
-  const _SectionLabel(this.text);
+  final IconData? icon;
+  final Color? color;
+  const _SectionLabel(this.text, {this.icon, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 11,
-          letterSpacing: 1.2,
-          color: AppColors.textMuted,
-          fontWeight: FontWeight.w600,
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: color ?? AppColors.textMuted),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              letterSpacing: 1.2,
+              color: color ?? AppColors.textMuted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A newly started series — cover, title, creator, episode count.
+class _NewSeriesCard extends StatelessWidget {
+  final Series series;
+  final VoidCallback onTap;
+  const _NewSeriesCard({required this.series, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 126,
+        decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.3)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 9 / 11,
+              child: series.coverImageUrl != null
+                  ? CachedNetworkImage(imageUrl: series.coverImageUrl!, fit: BoxFit.cover)
+                  : Container(
+                      color: AppColors.surfaceBorder,
+                      child: const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 26),
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    series.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${series.authorUsername ?? 'creator'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A trending AI Short Drama episode — same shape as _DiscoverTile but
+/// carries the series badge, matching the sparkle treatment used
+/// everywhere else an episode appears in the app.
+class _TrendingDramaCard extends StatelessWidget {
+  final Post post;
+  final VoidCallback onTap;
+  const _TrendingDramaCard({required this.post, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 130,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CachedNetworkImage(
+              imageUrl: post.thumbnailUrl ?? post.mediaUrl ?? '',
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
+            ),
+            const Positioned(
+              top: 0, left: 0, right: 0,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black87, Colors.transparent],
+                  ),
+                ),
+                child: SizedBox(height: 40),
+              ),
+            ),
+            Positioned(
+              top: 6,
+              left: 6,
+              right: 6,
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, size: 11, color: AppColors.secondary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Ep ${post.episodeNumber ?? ''}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 0, right: 0, bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black87],
+                  ),
+                ),
+                child: Text(
+                  post.seriesTitle ?? 'AI Short Drama',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.2),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

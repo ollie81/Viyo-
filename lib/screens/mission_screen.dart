@@ -1,5 +1,6 @@
 import 'video_feed_screen.dart';
 import 'post/create_post_screen.dart';
+import 'post/upload_ai_drama_screen.dart';
 import 'search_screen.dart';
 import 'profile/profile_screen.dart';
 import 'feed_screen.dart';
@@ -112,7 +113,9 @@ class _MissionsScreenState extends State<MissionsScreen> {
 
     Widget? destination;
 
-    if (text.contains('watch') || text.contains('video') || text.contains('short')) {
+    if (text.contains('drama') || text.contains('series') || text.contains('episode')) {
+      destination = const UploadAiDramaScreen();
+    } else if (text.contains('watch') || text.contains('video') || text.contains('short')) {
       destination = const VideoFeedScreen();
     } else if (text.contains('follow') || text.contains('circle') || text.contains('creator')) {
       destination = const SearchScreen();

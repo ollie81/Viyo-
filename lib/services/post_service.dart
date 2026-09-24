@@ -142,6 +142,40 @@ class PostService {
     return ranked.sublist(start, end);
   }
 
+  /// The home feed's "Following" tab — strictly posts from creators the
+  /// viewer follows, newest first. Unlike getFeed above (which only
+  /// ever *boosts* followed creators inside a shared ranked pool), this
+  /// is the actual filtered list, so it needs its own query rather than
+  /// a client-side filter of that pool — a followed creator's post can
+  /// easily fall outside getFeed's ranked pool entirely.
+  static Future<List<Post>> getFollowingFeed({int limit = 50}) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return [];
+
+    final follows = await _client
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', userId);
+    final followedIds = (follows as List).map((f) => f['following_id'] as String).toList();
+    if (followedIds.isEmpty) return [];
+
+    final data = await _client
+        .from('posts')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .inFilter('user_id', followedIds)
+        .eq('is_private', false)
+        .eq('is_archived', false)
+        .order('created_at', ascending: false)
+        .limit(limit);
+
+    var posts = await _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
+    final hidden = await ModerationService.getHiddenUserIds(userId);
+    if (hidden.isNotEmpty) {
+      posts = posts.where((p) => !hidden.contains(p.userId)).toList();
+    }
+    return posts;
+  }
+
   /// A profile's posts as seen by the *owner* — includes private/archived
   /// posts so they can manage them. For viewing someone else's profile,
   /// use [getPublicUserPosts] instead, which respects privacy.

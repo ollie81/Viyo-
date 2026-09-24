@@ -4,12 +4,14 @@ import 'package:shimmer/shimmer.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
+import '../../models/series.dart';
 import '../../models/user_profile.dart';
 import '../../services/discover_spotlight_service.dart';
 import '../../services/moderation_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/messaging_service.dart';
+import '../../services/series_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/coin_badge.dart';
@@ -18,6 +20,7 @@ import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/report_sheet.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
+import '../post/series_detail_screen.dart';
 import '../wallet_screen.dart';
 import 'edit_profile.dart';
 import '../messages/chat_screen.dart';
@@ -35,6 +38,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   UserProfile? _profile;
   List<Post> _posts = [];
+  List<Series> _series = [];
   int _followers = 0;
   int _following = 0;
   bool _isFollowing = false;
@@ -73,6 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         : await PostService.getPublicUserPosts(targetId);
     final followers = await ProfileService.getFollowerCount(targetId);
     final following = await ProfileService.getFollowingCount(targetId);
+    final series = await SeriesService.getUserSeries(targetId).catchError((_) => <Series>[]);
 
     var followingMe = false;
     var blocked = false;
@@ -100,6 +105,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _profile = profile;
       _posts = posts;
+      _series = series;
       _followers = followers;
       _following = following;
       _isFollowing = followingMe;
@@ -622,6 +628,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _tabButton(0, Icons.grid_on_rounded, 'Posts'),
                         _tabButton(1, Icons.play_circle_outline, 'Videos'),
                         _tabButton(2, Icons.photo_outlined, 'Photos'),
+                        if (_series.isNotEmpty) _tabButton(3, Icons.auto_awesome, 'Series'),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -629,7 +636,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            if (posts.isEmpty)
+            if (_tab == 3)
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                sliver: SliverGrid(
+                  delegate: SliverChildBuilderDelegate(
+                    (ctx, i) => _SeriesGridTile(
+                      series: _series[i],
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: _series[i])),
+                      ),
+                    ),
+                    childCount: _series.length,
+                  ),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 0.72,
+                  ),
+                ),
+              )
+            else if (posts.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 48),
@@ -1028,6 +1056,72 @@ class _ProfileSkeleton extends StatelessWidget {
             children: List.generate(9, (_) => Container(color: Colors.white)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One series in a creator's profile grid — cover, title, episode
+/// count. The Series tab only ever appears once a creator has at least
+/// one series (see the tab row above), so there's no empty state here.
+class _SeriesGridTile extends StatelessWidget {
+  final Series series;
+  final VoidCallback onTap;
+  const _SeriesGridTile({required this.series, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              series.coverImageUrl != null
+                  ? CachedNetworkImage(imageUrl: series.coverImageUrl!, fit: BoxFit.cover)
+                  : Container(
+                      color: AppColors.surfaceBorder,
+                      child: const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 28),
+                    ),
+              Positioned(
+                left: 0, right: 0, bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black87],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        series.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${series.episodeCount} episode${series.episodeCount == 1 ? '' : 's'}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
