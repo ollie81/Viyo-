@@ -73,6 +73,13 @@ class Series {
 /// access from this codebase to change one later, so a plain constant
 /// list is what's actually maintainable. 'All' is a UI-only filter
 /// value, never stored on a series itself.
+/// How the Dramas tab's poster grid orders series: newest first, by
+/// all-time engagement across a series' episodes, or by recent
+/// engagement decayed by age (same "hot" shape PostService._hotScore
+/// already uses for the home feed) — surfaces a series that's
+/// suddenly getting attention over one that was merely popular once.
+enum DramaSort { newest, popular, hot }
+
 const kDefaultDramaGenre = 'Drama';
 const kDramaGenres = <String>[
   kDefaultDramaGenre,

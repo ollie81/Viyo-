@@ -7,6 +7,7 @@ import '../services/post_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/drama_sort_toggle.dart';
 import '../widgets/genre_chip_row.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/home_header_section.dart';
@@ -45,6 +46,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   bool _loadingSeries = true;
   String? _seriesError;
   String _selectedGenre = GenreChipRow.all;
+  DramaSort _selectedSort = DramaSort.newest;
 
   @override
   void initState() {
@@ -98,7 +100,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     setState(() { _loadingSeries = true; _seriesError = null; });
     try {
       final genre = _selectedGenre == GenreChipRow.all ? null : _selectedGenre;
-      final series = await SeriesService.getAllSeries(genre: genre);
+      final series = await SeriesService.getAllSeries(genre: genre, sort: _selectedSort);
       if (!mounted) return;
       setState(() { _allSeries = series; _loadingSeries = false; });
     } catch (e) {
@@ -110,6 +112,12 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   void _selectGenre(String genre) {
     if (genre == _selectedGenre) return;
     setState(() => _selectedGenre = genre);
+    _loadSeries();
+  }
+
+  void _selectSort(DramaSort sort) {
+    if (sort == _selectedSort) return;
+    setState(() => _selectedSort = sort);
     _loadSeries();
   }
 
@@ -302,6 +310,8 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
             series: _allSeries,
             selectedGenre: _selectedGenre,
             onSelectGenre: _selectGenre,
+            selectedSort: _selectedSort,
+            onSelectSort: _selectSort,
             onRefresh: _loadSeries,
             onOpenSeries: (s) => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: s)),
@@ -401,6 +411,8 @@ class _DramaGridTab extends StatelessWidget {
   final List<Series> series;
   final String selectedGenre;
   final ValueChanged<String> onSelectGenre;
+  final DramaSort selectedSort;
+  final ValueChanged<DramaSort> onSelectSort;
   final Future<void> Function() onRefresh;
   final void Function(Series) onOpenSeries;
 
@@ -410,6 +422,8 @@ class _DramaGridTab extends StatelessWidget {
     required this.series,
     required this.selectedGenre,
     required this.onSelectGenre,
+    required this.selectedSort,
+    required this.onSelectSort,
     required this.onRefresh,
     required this.onOpenSeries,
   });
@@ -425,7 +439,13 @@ class _DramaGridTab extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            sliver: SliverToBoxAdapter(
+              child: DramaSortToggle(selected: selectedSort, onSelect: onSelectSort),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
             sliver: SliverToBoxAdapter(
               child: GenreChipRow(selected: selectedGenre, onSelect: onSelectGenre),
             ),

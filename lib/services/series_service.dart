@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/post.dart';
@@ -171,18 +172,62 @@ class SeriesService {
     return (data as List).map((e) => Series.fromJson(e)).toList();
   }
 
-  /// Every public series, optionally narrowed to one genre — powers the
-  /// Dramas tab's poster grid. Newest-first: with no per-series
-  /// engagement metric to rank by (that lives on episodes, not the
-  /// series row itself), recency is the honest signal, same call
-  /// getNewAiSeries above already makes.
-  static Future<List<Series>> getAllSeries({String? genre, int limit = 60}) async {
+  /// Every public series, optionally narrowed to one genre and ordered
+  /// by [sort] — powers the Dramas tab's poster grid. Popular/hot both
+  /// need per-series engagement, which lives on episodes (posts), not
+  /// the series row itself, so those two pull every matching series'
+  /// episodes in one extra query and aggregate client-side — the same
+  /// "rank a bounded pool client-side" tradeoff PostService.getFeed
+  /// already makes, just one level up (series instead of posts).
+  static Future<List<Series>> getAllSeries({
+    String? genre,
+    DramaSort sort = DramaSort.newest,
+    int limit = 60,
+  }) async {
     var query = _client.from('series').select('*, profiles(username, display_name, avatar_url)');
     if (genre != null && genre.isNotEmpty) {
       query = query.eq('genre', genre);
     }
-    final data = await query.order('created_at', ascending: false).limit(limit);
-    return (data as List).map((e) => Series.fromJson(e)).toList();
+    // A wider pool than `limit` when ranking by engagement — the
+    // newest-first order below isn't the final order in that case, so
+    // narrowing to exactly `limit` rows first would silently exclude an
+    // older-but-popular series from ever being scored at all.
+    final poolSize = sort == DramaSort.newest ? limit : limit * 4;
+    final data = await query.order('created_at', ascending: false).limit(poolSize);
+    final series = (data as List).map((e) => Series.fromJson(e)).toList();
+    if (series.isEmpty || sort == DramaSort.newest) {
+      return series.take(limit).toList();
+    }
+
+    final seriesIds = series.map((s) => s.id).toList();
+    final episodeRows = await _client
+        .from('posts')
+        .select('series_id, like_count, comment_count, view_count, created_at')
+        .inFilter('series_id', seriesIds);
+
+    final scores = <String, double>{};
+    final now = DateTime.now();
+    for (final row in (episodeRows as List)) {
+      final sid = row['series_id'] as String?;
+      if (sid == null) continue;
+      final likes = (row['like_count'] as num?)?.toInt() ?? 0;
+      final comments = (row['comment_count'] as num?)?.toInt() ?? 0;
+      final views = (row['view_count'] as num?)?.toInt() ?? 0;
+      final engagement = likes + comments * 2 + views ~/ 10;
+
+      double contribution;
+      if (sort == DramaSort.hot) {
+        final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '') ?? now;
+        final ageHours = now.difference(createdAt).inMinutes / 60.0;
+        contribution = engagement / pow(ageHours + 2, 1.2);
+      } else {
+        contribution = engagement.toDouble();
+      }
+      scores[sid] = (scores[sid] ?? 0) + contribution;
+    }
+
+    series.sort((a, b) => (scores[b.id] ?? 0).compareTo(scores[a.id] ?? 0));
+    return series.take(limit).toList();
   }
 
   /// Spends coins to unlock a locked episode — routed through the
