@@ -52,7 +52,7 @@ Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
             _CreateMenuTile(
               icon: Icons.auto_awesome,
               iconColor: AppColors.secondary,
-              title: 'Upload AI Short Drama',
+              title: 'Upload Short Drama',
               subtitle: 'Add an episode to a series',
               highlighted: true,
               onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.aiDrama),

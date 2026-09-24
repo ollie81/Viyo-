@@ -126,7 +126,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       setState(() => _error = 'Pick a series to add this episode to');
       return;
     }
-    if (!await GuestGate.allow(context, action: 'upload an AI Short Drama')) return;
+    if (!await GuestGate.allow(context, action: 'upload a Short Drama')) return;
 
     setState(() {
       _posting = true;
@@ -197,7 +197,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
           children: const [
             Icon(Icons.auto_awesome, size: 18, color: AppColors.secondary),
             SizedBox(width: 8),
-            Text('Upload AI Short Drama'),
+            Text('Upload Short Drama'),
           ],
         ),
       ),

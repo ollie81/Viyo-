@@ -804,7 +804,7 @@ class _SeriesBadge extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              '${post.seriesTitle ?? 'AI Short Drama'} · Ep ${post.episodeNumber ?? ''}',
+              '${post.seriesTitle ?? 'Short Drama'} · Ep ${post.episodeNumber ?? ''}',
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700),
             ),

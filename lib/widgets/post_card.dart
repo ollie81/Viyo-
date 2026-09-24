@@ -255,7 +255,7 @@ class PostCard extends StatelessWidget {
                               const SizedBox(width: 5),
                               Flexible(
                                 child: Text(
-                                  '${post.seriesTitle ?? 'AI Drama'} · Ep ${post.episodeNumber ?? ''}',
+                                  '${post.seriesTitle ?? 'Drama'} · Ep ${post.episodeNumber ?? ''}',
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
                                 ),
