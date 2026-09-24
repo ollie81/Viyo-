@@ -300,7 +300,7 @@ class _EarningsCard extends StatelessWidget {
             children: [
               const Icon(Icons.auto_awesome, size: 15, color: AppColors.secondary),
               const SizedBox(width: 6),
-              const Text('AI Short Drama earnings', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              const Text('Short Drama earnings', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ],
           ),
           const SizedBox(height: 14),

@@ -276,7 +276,7 @@ class _DiscoverBody extends StatelessWidget {
           const SizedBox(height: 18),
         ],
         if (!loadingDramas && newSeries.isNotEmpty) ...[
-          const _SectionLabel('NEW AI SERIES', icon: Icons.auto_awesome, color: AppColors.secondary),
+          const _SectionLabel('NEW SERIES', icon: Icons.auto_awesome, color: AppColors.secondary),
           SizedBox(
             height: 168,
             child: ListView.separated(
@@ -292,7 +292,7 @@ class _DiscoverBody extends StatelessWidget {
           const SizedBox(height: 18),
         ],
         if (!loadingDramas && trendingDramas.isNotEmpty) ...[
-          const _SectionLabel('TRENDING AI DRAMAS', icon: Icons.auto_awesome, color: AppColors.secondary),
+          const _SectionLabel('TRENDING DRAMAS', icon: Icons.auto_awesome, color: AppColors.secondary),
           SizedBox(
             height: 220,
             child: ListView.separated(
@@ -490,7 +490,7 @@ class _TrendingDramaCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  post.seriesTitle ?? 'AI Short Drama',
+                  post.seriesTitle ?? 'Short Drama',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.2),

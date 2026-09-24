@@ -229,7 +229,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
                 children: [
                   Icon(Icons.auto_awesome, size: 14),
                   SizedBox(width: 5),
-                  Text('AI Dramas'),
+                  Text('Dramas'),
                 ],
               ),
             ),
@@ -275,7 +275,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
             onRefresh: _load,
             cardBuilder: _buildCard,
             emptyState: const _EmptyFeedState(
-              title: 'No AI Short Dramas yet',
+              title: 'No Dramas yet',
               subtitle: 'Upload one from the + button to start a series.',
               icon: Icons.auto_awesome,
             ),
