@@ -5,6 +5,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'constants/supabase_constants.dart';
 import 'services/analytics_service.dart';
 import 'services/auth_service.dart';
+import 'services/google_play_purchase_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/supabase_service.dart';
 import 'services/profile_service.dart';
@@ -22,6 +23,12 @@ Future<void> main() async {
     ),
   );
   await SupabaseService.init();
+
+  // Must subscribe before anything else happens — see its own doc
+  // comment for why a purchase completed while nobody was listening
+  // (e.g. the app was killed mid-purchase) only gets redelivered on
+  // the next app launch.
+  GooglePlayPurchaseService.init();
 
   // SentryFlutter.init no-ops when SentryConstants.dsn is blank (see its
   // definition) — safe to always call, crash reporting just stays off

@@ -155,6 +155,22 @@ class CoinPurchaseService {
     );
   }
 
+  /// Confirms a Play Billing purchase with the backend, which
+  /// re-verifies the purchase token directly against Google before
+  /// crediting anything — this call is what actually moves coins into
+  /// the balance, the purchase itself (GooglePlayPurchaseService) only
+  /// gets Google's own confirmation that money changed hands.
+  static Future<int> verifyGooglePlay({required String packageId, required String purchaseToken}) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/purchase/google-play/verify'),
+      headers: await _headers(),
+      body: jsonEncode({'package_id': packageId, 'purchase_token': purchaseToken}),
+    );
+    if (res.statusCode != 200) throw Exception(_errorFrom(res, 'Google Play'));
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['coins'] as num).toInt();
+  }
+
   static String _errorFrom(http.Response res, String provider) {
     try {
       final data = jsonDecode(res.body);

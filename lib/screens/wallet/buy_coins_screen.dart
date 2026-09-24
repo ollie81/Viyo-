@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/coin_purchase_service.dart';
+import '../../services/google_play_purchase_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -11,12 +14,18 @@ import '../../widgets/viyo_toast.dart';
 
 enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy }
 
-/// Real-money coin purchases via Stripe's Payment Sheet. Coins are only
-/// ever credited by the backend once Stripe confirms the charge (see
-/// payments.py's webhook) — this screen never marks a purchase as
-/// fulfilled itself, it just starts checkout and then polls the balance
-/// for the credit to land, since the webhook may lag the sheet closing
-/// by a second or two.
+/// Real-money coin purchases. Coins are only ever credited by the
+/// backend once the payment provider confirms the charge — this screen
+/// never marks a purchase as fulfilled itself.
+///
+/// Android is a special case: Google Play policy requires any digital
+/// good consumed inside an app distributed through Google Play to be
+/// sold via Play Billing, not a third-party processor — offering both
+/// is itself a policy violation (anti-steering), not just unnecessary.
+/// So on Android specifically, this skips straight to Google Play
+/// Billing (see google_play_purchase_service.dart) instead of showing
+/// the Stripe/Paystack/Flutterwave/Lemon Squeezy picker below, which
+/// only web ever sees.
 class BuyCoinsScreen extends StatefulWidget {
   const BuyCoinsScreen({super.key});
 
@@ -91,8 +100,16 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     });
   }
 
+  static bool get _isAndroidNative => !kIsWeb && Platform.isAndroid;
+
   Future<void> _buy(CoinPackage package) async {
     if (_purchasingPackageId != null) return;
+
+    if (_isAndroidNative) {
+      await _buyWithGooglePlay(package);
+      return;
+    }
+
     final provider = await _pickProvider();
     if (provider == null) return;
 
@@ -224,6 +241,29 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       _showToast('Complete your payment in the browser, then come back here.');
     } catch (e) {
       _showToast('Purchase failed: $e');
+    } finally {
+      if (mounted) setState(() => _purchasingPackageId = null);
+    }
+  }
+
+  /// Android-only purchase path — Google Play Billing handles both the
+  /// payment UI and the "did it actually succeed" confirmation itself,
+  /// so unlike Stripe/the hosted-checkout providers there's no separate
+  /// polling step: GooglePlayPurchaseService.buy only resolves once the
+  /// backend has already verified the purchase with Google and credited
+  /// the coins.
+  Future<void> _buyWithGooglePlay(CoinPackage package) async {
+    setState(() => _purchasingPackageId = package.id);
+    try {
+      final coins = await GooglePlayPurchaseService.buy(package.id);
+      if (!mounted) return;
+      _showToast('+$coins coins added! 🪙');
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      if (!e.toString().contains('canceled')) {
+        _showToast('Purchase failed: $e');
+      }
     } finally {
       if (mounted) setState(() => _purchasingPackageId = null);
     }
