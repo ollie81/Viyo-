@@ -7,6 +7,7 @@ import '../models/post.dart';
 import '../services/moderation_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/episode_lock.dart';
 import 'report_sheet.dart';
 import '../screens/post/post_detail_screen.dart';
 
@@ -209,7 +210,11 @@ class PostCard extends StatelessWidget {
                       ),
                     ),
                     // Play button overlay on video posts so creators
-                    // always know a post is a video at a glance.
+                    // always know a post is a video at a glance. A
+                    // locked episode shows a lock instead — tapping
+                    // through to VideoFeedScreen is where unlocking
+                    // actually happens, but the thumbnail shouldn't
+                    // promise free playback it can't deliver.
                     if (post.postType == PostType.video)
                       Center(
                         child: Container(
@@ -219,10 +224,43 @@ class PostCard extends StatelessWidget {
                             color: Colors.black.withOpacity(0.55),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
+                          child: Icon(
+                            isEpisodeLocked(post, viewerId: SupabaseService.currentUserId)
+                                ? Icons.lock_outline
+                                : Icons.play_arrow_rounded,
                             color: Colors.white,
-                            size: 34,
+                            size: post.isEpisode ? 24 : 34,
+                          ),
+                        ),
+                      ),
+                    // AI Short Drama series + episode badge — the one
+                    // visual marker that distinguishes an episode from
+                    // an ordinary video post.
+                    if (post.isEpisode)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: AppColors.secondary.withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.auto_awesome, size: 11, color: AppColors.secondary),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  '${post.seriesTitle ?? 'AI Drama'} · Ep ${post.episodeNumber ?? ''}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

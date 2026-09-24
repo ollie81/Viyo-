@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -5,14 +7,18 @@ import 'package:video_player/video_player.dart';
 
 import '../models/post.dart';
 import '../services/post_service.dart';
+import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/episode_lock.dart';
 import '../widgets/comments_sheet.dart';
+import '../widgets/create_menu_sheet.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/viyo_glass_bottom_nav.dart';
 import 'profile/profile_screen.dart';
 import 'mission_screen.dart';
 import 'post/create_post_screen.dart';
+import 'post/upload_ai_drama_screen.dart';
 import 'search_screen.dart';
 
 /// Viyo's video feed. It intentionally keeps the main navigation visible so
@@ -107,6 +113,22 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     PostService.recordView(post.id);
   }
 
+  Future<void> _unlockEpisode(Post post) async {
+    if (!await GuestGate.allow(context, action: 'unlock this episode')) return;
+    try {
+      await SeriesService.unlockEpisode(post.id);
+      if (!mounted) return;
+      setState(() {
+        _posts = _posts.map((p) => p.id == post.id ? p.copyWith(unlockedByMe: true) : p).toList();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    }
+  }
+
   void _openComments(Post post) {
     // A bottom sheet, not a full navigation — the video keeps playing
     // and visible behind it, matching what commenting looks like on
@@ -130,7 +152,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     );
   }
 
-  void _selectNav(int index) {
+  Future<void> _selectNav(int index) async {
     // Home returns to the existing HomeShell instead of creating a second
     // Home screen on top of it.
     if (index == 0) {
@@ -138,13 +160,33 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
       return;
     }
 
+    if (index == 2) {
+      final choice = await showCreateMenuSheet(context);
+      if (!mounted || choice == null) return;
+      switch (choice) {
+        case CreateMenuChoice.photoVideo:
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+          );
+          break;
+        case CreateMenuChoice.aiDrama:
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const UploadAiDramaScreen()),
+          );
+          break;
+        case CreateMenuChoice.challenge:
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const MissionsScreen()),
+          );
+          break;
+      }
+      return;
+    }
+
     final Widget screen;
     switch (index) {
       case 1:
         screen = const SearchScreen();
-        break;
-      case 2:
-        screen = const CreatePostScreen();
         break;
       case 3:
         screen = const MissionsScreen();
@@ -184,15 +226,18 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                   onPageChanged: (i) => setState(() => _currentIndex = i),
                   itemBuilder: (ctx, i) {
                     final post = _posts[i];
+                    final locked = isEpisodeLocked(post, viewerId: SupabaseService.currentUserId);
                     return _VideoPage(
                       key: ValueKey(post.id),
                       post: post,
                       isActive: i == _currentIndex,
+                      isLocked: locked,
                       onLike: () => _like(post),
                       onComment: () => _openComments(post),
                       onShare: () => _share(post),
                       onOpenProfile: () => _openProfile(post),
                       onBecameActive: () => _recordView(post),
+                      onUnlock: () => _unlockEpisode(post),
                     );
                   },
                 ),
@@ -208,21 +253,25 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
 class _VideoPage extends StatefulWidget {
   final Post post;
   final bool isActive;
+  final bool isLocked;
   final VoidCallback? onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
   final VoidCallback onOpenProfile;
   final VoidCallback onBecameActive;
+  final Future<void> Function() onUnlock;
 
   const _VideoPage({
     super.key,
     required this.post,
     required this.isActive,
+    required this.isLocked,
     required this.onLike,
     required this.onComment,
     required this.onShare,
     required this.onOpenProfile,
     required this.onBecameActive,
+    required this.onUnlock,
   });
 
   @override
@@ -234,12 +283,27 @@ class _VideoPageState extends State<_VideoPage> {
   bool _muted = false;
   bool _liked = false;
   bool _initError = false;
+  bool _unlocking = false;
+
+  Future<void> _handleUnlock() async {
+    if (_unlocking) return;
+    setState(() => _unlocking = true);
+    try {
+      await widget.onUnlock();
+    } finally {
+      if (mounted) setState(() => _unlocking = false);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _liked = widget.post.likedByMe;
-    _initialize();
+    // A locked episode never even downloads its video — there's
+    // nothing to play until it's unlocked, so starting a network
+    // fetch for it would just waste bandwidth on content the viewer
+    // can't watch yet.
+    if (!widget.isLocked) _initialize();
     if (widget.isActive) widget.onBecameActive();
   }
 
@@ -289,6 +353,12 @@ class _VideoPageState extends State<_VideoPage> {
 
     if (widget.isActive && !oldWidget.isActive) {
       widget.onBecameActive();
+    }
+
+    if (oldWidget.isLocked && !widget.isLocked && _controller == null) {
+      // Just unlocked — nothing was ever downloaded while it was
+      // locked, so this is the first real chance to start.
+      _initialize();
     }
 
     final c = _controller;
@@ -348,36 +418,49 @@ class _VideoPageState extends State<_VideoPage> {
       children: [
         GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: _togglePlay,
-          onDoubleTap: _handleLike,
+          onTap: widget.isLocked ? null : _togglePlay,
+          onDoubleTap: widget.isLocked ? null : _handleLike,
           child: Container(
             color: Colors.black,
             alignment: Alignment.center,
-            child: ready
-                ? AspectRatio(
-                    aspectRatio: c!.value.aspectRatio,
-                    child: VideoPlayer(c),
-                  )
-                : post.thumbnailUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: post.thumbnailUrl!,
-                        fit: BoxFit.contain,
-                        placeholder: (_, __) => const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        errorWidget: (_, __, ___) => _videoError(),
+            child: widget.isLocked
+                ? _lockedMedia()
+                : ready
+                    ? AspectRatio(
+                        aspectRatio: c!.value.aspectRatio,
+                        child: VideoPlayer(c),
                       )
-                    : _initError
-                        ? _videoError()
-                        : const Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
+                    : post.thumbnailUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: post.thumbnailUrl!,
+                            fit: BoxFit.contain,
+                            placeholder: (_, __) => const Center(
+                              child: CircularProgressIndicator(
+                                color: AppColors.primary,
+                              ),
                             ),
-                          ),
+                            errorWidget: (_, __, ___) => _videoError(),
+                          )
+                        : _initError
+                            ? _videoError()
+                            : const Center(
+                                child: CircularProgressIndicator(
+                                  color: AppColors.primary,
+                                ),
+                              ),
           ),
         ),
+
+        if (post.isEpisode)
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _SeriesBadge(post: post),
+              ),
+            ),
+          ),
 
         SafeArea(
           child: Align(
@@ -605,6 +688,68 @@ class _VideoPageState extends State<_VideoPage> {
       ],
     );
   }
+
+  /// A blurred thumbnail behind an unlock paywall — the episode's
+  /// video was never even downloaded (see initState), so this is
+  /// deliberately the thumbnail, not a frame of the real video.
+  Widget _lockedMedia() {
+    final post = widget.post;
+    final price = post.seriesCoinPrice ?? 0;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (post.thumbnailUrl != null)
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: CachedNetworkImage(
+              imageUrl: post.thumbnailUrl!,
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(color: Colors.black),
+            ),
+          )
+        else
+          Container(color: Colors.black),
+        Container(color: Colors.black.withOpacity(0.45)),
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Icon(Icons.lock_outline, color: Colors.white, size: 26),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Episode ${post.episodeNumber ?? ''} is locked',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _handleUnlock,
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary),
+                icon: _unlocking
+                    ? const SizedBox(
+                        height: 14, width: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Icon(Icons.monetization_on, size: 16, color: Colors.black),
+                label: Text(
+                  _unlocking ? 'Unlocking...' : 'Unlock for $price coins',
+                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _EmptyVideoState extends StatelessWidget {
@@ -629,6 +774,40 @@ class _EmptyVideoState extends StatelessWidget {
           const Text(
             'No videos yet',
             style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The one visual marker that tells an AI Short Drama episode apart
+/// from an ordinary video in the same feed — a small sparkle pill
+/// naming the series and episode number.
+class _SeriesBadge extends StatelessWidget {
+  final Post post;
+  const _SeriesBadge({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.secondary.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.auto_awesome, size: 12, color: AppColors.secondary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '${post.seriesTitle ?? 'AI Short Drama'} · Ep ${post.episodeNumber ?? ''}',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),

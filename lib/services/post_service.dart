@@ -99,7 +99,7 @@ class PostService {
   static Future<List<Post>> getFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
         .eq('is_private', false)
         .eq('is_archived', false)
         .order('created_at', ascending: false)
@@ -148,7 +148,7 @@ class PostService {
   static Future<List<Post>> getUserPosts(String userId) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
         .eq('user_id', userId)
         .order('is_pinned', ascending: false)
         .order('created_at', ascending: false);
@@ -160,7 +160,7 @@ class PostService {
   static Future<List<Post>> getPublicUserPosts(String userId) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
         .eq('user_id', userId)
         .eq('is_private', false)
         .eq('is_archived', false)
@@ -185,7 +185,7 @@ class PostService {
   static Future<List<Post>> getVideoFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
         .eq('post_type', 'video')
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
@@ -209,7 +209,7 @@ class PostService {
   static Future<List<Post>> getDiscoverPosts({int limit = 40}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
         .eq('is_private', false)
         .eq('is_archived', false)
         .not('media_url', 'is', null)
@@ -338,6 +338,12 @@ class PostService {
     String? mediaUrl,
     String? thumbnailUrl,
     int? durationSeconds,
+    // Set together to publish this post as an AI Short Drama episode —
+    // series_id being non-null is the only signal anywhere in this app
+    // for "this is an episode" (see Post.isEpisode). Both null for a
+    // normal photo/video/text post.
+    String? seriesId,
+    int? episodeNumber,
   }) async {
     final inserted = await _client
         .from('posts')
@@ -348,6 +354,8 @@ class PostService {
           'media_url': mediaUrl,
           'thumbnail_url': thumbnailUrl,
           'duration_seconds': durationSeconds,
+          if (seriesId != null) 'series_id': seriesId,
+          if (episodeNumber != null) 'episode_number': episodeNumber,
         })
         .select()
         .single();
