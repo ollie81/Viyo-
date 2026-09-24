@@ -14,6 +14,7 @@ import 'analytics_service.dart';
 import 'discover_spotlight_service.dart';
 import 'moderation_service.dart';
 import 'supabase_service.dart';
+import 'web_thumbnail_stub.dart' if (dart.library.html) 'web_thumbnail_html.dart' as web_thumbnail;
 
 class PostService {
   static final _client = SupabaseService.client;
@@ -348,12 +349,25 @@ class PostService {
   /// actually "see" video posts — GPT-4o's vision input takes images, not
   /// video streams, so a representative frame stands in for the video.
   ///
-  /// Web has no video_thumbnail implementation at all (native-only
-  /// plugin), so this is skipped outright there rather than left to
-  /// throw and get caught below — a post still publishes fine with no
-  /// thumbnail, same as any other thumbnail failure here.
+  /// video_thumbnail (used below) is a native-only plugin with no web
+  /// implementation at all — on web this instead captures a frame
+  /// itself via the browser's own <video>/<canvas> APIs (see
+  /// web_thumbnail_html.dart), the same 0.5s-in frame the native path
+  /// grabs. Either way, a post still publishes fine with no thumbnail
+  /// if this fails — never a requirement for posting, just a nice-to-
+  /// have for cards/the AI coach's vision input.
   static Future<String?> generateAndUploadVideoThumbnail(XFile videoFile, String userId) async {
-    if (kIsWeb) return null;
+    if (kIsWeb) {
+      try {
+        final videoBytes = await videoFile.readAsBytes();
+        final jpegBytes = await web_thumbnail.captureVideoFrameWeb(videoBytes);
+        if (jpegBytes == null) return null;
+        final thumbFile = XFile.fromData(jpegBytes, name: 'thumbnail.jpg', mimeType: 'image/jpeg');
+        return await uploadMediaWithProgress(thumbFile, userId);
+      } catch (_) {
+        return null;
+      }
+    }
     try {
       final thumbPath = await vt.VideoThumbnail.thumbnailFile(
         video: videoFile.path,
