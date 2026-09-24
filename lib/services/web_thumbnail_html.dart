@@ -17,14 +17,41 @@ Future<Uint8List?> captureVideoFrameWeb(Uint8List videoBytes) async {
     ..preload = 'auto';
 
   try {
-    await video.onLoadedMetadata.first.timeout(const Duration(seconds: 10));
+    return await _captureFrame(video);
+  } finally {
+    html.Url.revokeObjectUrl(objectUrl);
+  }
+}
+
+/// Same capture, but reading a video that's already hosted somewhere
+/// (Supabase Storage) rather than freshly picked bytes — used to
+/// backfill a thumbnail for a video that was uploaded before this file
+/// existed (see SeriesService's cover-image backfill), without
+/// re-downloading and re-uploading the whole clip. Needs the resource
+/// to actually serve permissive CORS (confirmed for this app's public
+/// storage bucket) — canvas.toBlob throws a SecurityError on a tainted
+/// (cross-origin, no CORS) canvas otherwise, which surfaces here as a
+/// null return like any other capture failure.
+Future<Uint8List?> captureVideoFrameFromUrlWeb(String url) async {
+  final video = html.VideoElement()
+    ..crossOrigin = 'anonymous'
+    ..src = url
+    ..muted = true
+    ..preload = 'auto';
+
+  return _captureFrame(video);
+}
+
+Future<Uint8List?> _captureFrame(html.VideoElement video) async {
+  try {
+    await video.onLoadedMetadata.first.timeout(const Duration(seconds: 15));
 
     // A touch into the clip, same as the native path's timeMs: 500 —
     // skips a possible black opening frame. Falls back to the very
     // first frame for a clip shorter than that.
     final duration = video.duration;
     video.currentTime = (duration.isFinite && duration > 0.5) ? 0.5 : 0.0;
-    await video.onSeeked.first.timeout(const Duration(seconds: 10));
+    await video.onSeeked.first.timeout(const Duration(seconds: 15));
 
     final width = video.videoWidth;
     final height = video.videoHeight;
@@ -44,10 +71,8 @@ Future<Uint8List?> captureVideoFrameWeb(Uint8List videoBytes) async {
     reader.onError.first.then((_) => completer.complete(null));
     reader.readAsArrayBuffer(jpegBlob);
 
-    return await completer.future.timeout(const Duration(seconds: 10));
+    return await completer.future.timeout(const Duration(seconds: 15));
   } catch (_) {
     return null;
-  } finally {
-    html.Url.revokeObjectUrl(objectUrl);
   }
 }

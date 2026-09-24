@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/series.dart';
+import 'post_service.dart';
 import 'supabase_service.dart';
+import 'web_thumbnail_stub.dart' if (dart.library.html) 'web_thumbnail_html.dart' as web_thumbnail;
 
 /// AI Short Drama series: creating/listing a series and its episodes is
 /// a direct Supabase read/write (RLS scopes writes to your own rows,
@@ -48,6 +53,66 @@ class SeriesService {
     } catch (_) {}
   }
 
+  // Series ids already backfilled (or attempted and failed) this app
+  // session — a plain in-memory guard against every concurrent screen
+  // that lists series (Dramas tab, Discover) kicking off its own
+  // duplicate capture-and-upload for the same series.
+  static final _backfillAttempted = <String>{};
+
+  /// Self-heals a series with no cover image by grabbing one from its
+  /// earliest episode — for every series created before web thumbnail
+  /// capture existed (see post_service.dart's generateAndUploadVideo
+  /// Thumbnail), whose episodes also have no thumbnail of their own,
+  /// so there's nothing to just copy over. Fire-and-forget: called
+  /// from getAllSeries/getNewAiSeries below without awaiting, so a slow
+  /// or failed backfill never delays the list those screens are
+  /// actually waiting on. Web-only — the capture technique itself
+  /// needs a browser's <video>/<canvas>; a series uploaded from the
+  /// native app already has a real thumbnail from video_thumbnail, so
+  /// there's nothing to backfill there anyway.
+  static void backfillCoverIfMissing(Series series) {
+    if (!kIsWeb || series.coverImageUrl != null) return;
+    if (!_backfillAttempted.add(series.id)) return;
+    unawaited(_doBackfillCover(series));
+  }
+
+  static Future<void> _doBackfillCover(Series series) async {
+    try {
+      final row = await _client
+          .from('posts')
+          .select('media_url, thumbnail_url')
+          .eq('series_id', series.id)
+          .order('episode_number', ascending: true)
+          .limit(1)
+          .maybeSingle();
+      if (row == null) return;
+
+      // Cheapest path: the episode already has its own thumbnail
+      // (e.g. uploaded from the native app, or by a future fixed web
+      // build) — just point the series at it, no capture needed.
+      final existingThumb = row['thumbnail_url'] as String?;
+      if (existingThumb != null) {
+        await setCoverImage(series.id, existingThumb);
+        return;
+      }
+
+      final mediaUrl = row['media_url'] as String?;
+      if (mediaUrl == null) return;
+
+      final jpegBytes = await web_thumbnail.captureVideoFrameFromUrlWeb(mediaUrl);
+      if (jpegBytes == null) return;
+
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return;
+      final thumbFile = XFile.fromData(jpegBytes, name: 'thumbnail.jpg', mimeType: 'image/jpeg');
+      final uploadedUrl = await PostService.uploadMediaWithProgress(thumbFile, userId);
+      await setCoverImage(series.id, uploadedUrl);
+    } catch (_) {
+      // Best-effort — a failed backfill just leaves the placeholder
+      // tile in place, same as a series with no episodes yet.
+    }
+  }
+
   /// A creator's own series, each stamped with its real episode count —
   /// one query for the series rows, one for every episode's series_id
   /// so the count is computed here rather than trusting a stored
@@ -75,7 +140,15 @@ class SeriesService {
       counts[sid] = (counts[sid] ?? 0) + 1;
     }
 
-    return seriesList.map((s) => s.copyWith(episodeCount: counts[s.id] ?? 0)).toList();
+    final result = seriesList.map((s) => s.copyWith(episodeCount: counts[s.id] ?? 0)).toList();
+    // The most reliable backfill trigger of the three call sites: this
+    // is almost always the owner looking at their own series (profile's
+    // Series tab, the upload screen's series picker), so RLS actually
+    // lets setCoverImage's update through here.
+    for (final s in result) {
+      backfillCoverIfMissing(s);
+    }
+    return result;
   }
 
   static Future<Series?> getSeries(String seriesId) async {
@@ -169,7 +242,11 @@ class SeriesService {
         .select('*, profiles(username, display_name, avatar_url)')
         .order('created_at', ascending: false)
         .limit(limit);
-    return (data as List).map((e) => Series.fromJson(e)).toList();
+    final series = (data as List).map((e) => Series.fromJson(e)).toList();
+    for (final s in series) {
+      backfillCoverIfMissing(s);
+    }
+    return series;
   }
 
   /// Every public series, optionally narrowed to one genre and ordered
@@ -195,6 +272,9 @@ class SeriesService {
     final poolSize = sort == DramaSort.newest ? limit : limit * 4;
     final data = await query.order('created_at', ascending: false).limit(poolSize);
     final series = (data as List).map((e) => Series.fromJson(e)).toList();
+    for (final s in series) {
+      backfillCoverIfMissing(s);
+    }
     if (series.isEmpty || sort == DramaSort.newest) {
       return series.take(limit).toList();
     }
