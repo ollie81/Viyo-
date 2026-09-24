@@ -50,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _spotlightError;
 
   bool _isBlocked = false;
+  String? _loadError;
 
   bool get _isOwnProfile =>
       widget.userId == null || widget.userId == SupabaseService.currentUserId;
@@ -68,51 +69,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     final targetId = widget.userId ?? SupabaseService.currentUserId;
-    if (targetId == null) return;
-    if (mounted) setState(() => _loading = true);
-
-    final profile = await ProfileService.getProfile(targetId);
-    final posts = _isOwnProfile
-        ? await PostService.getUserPosts(targetId)
-        : await PostService.getPublicUserPosts(targetId);
-    final followers = await ProfileService.getFollowerCount(targetId);
-    final following = await ProfileService.getFollowingCount(targetId);
-    final series = await SeriesService.getUserSeries(targetId).catchError((_) => <Series>[]);
-
-    var followingMe = false;
-    var blocked = false;
-    final myId = SupabaseService.currentUserId;
-    if (!_isOwnProfile && myId != null) {
-      followingMe = await ProfileService.isFollowing(myId, targetId);
-      try {
-        blocked = await ModerationService.isBlocked(myId, targetId);
-      } catch (_) {
-        // Best-effort — the profile screen shouldn't fail to load over this.
-      }
+    if (targetId == null) {
+      // No session at all (shouldn't normally happen — main.dart starts
+      // an anonymous session before HomeShell ever mounts) — surface it
+      // instead of leaving the screen on its skeleton forever.
+      if (mounted) setState(() { _loading = false; _loadError = 'Not signed in.'; });
+      return;
     }
+    if (mounted) setState(() { _loading = true; _loadError = null; });
 
-    var isSpotlighted = false;
-    if (_isOwnProfile) {
-      try {
-        final spotlighted = await DiscoverSpotlightService.getActiveSpotlightIds();
-        isSpotlighted = spotlighted.contains(targetId);
-      } catch (_) {
-        // Best-effort — the profile screen shouldn't fail to load over this.
+    try {
+      final profile = await ProfileService.getProfile(targetId);
+      final posts = _isOwnProfile
+          ? await PostService.getUserPosts(targetId)
+          : await PostService.getPublicUserPosts(targetId);
+      final followers = await ProfileService.getFollowerCount(targetId);
+      final following = await ProfileService.getFollowingCount(targetId);
+      final series = await SeriesService.getUserSeries(targetId).catchError((_) => <Series>[]);
+
+      var followingMe = false;
+      var blocked = false;
+      final myId = SupabaseService.currentUserId;
+      if (!_isOwnProfile && myId != null) {
+        followingMe = await ProfileService.isFollowing(myId, targetId);
+        try {
+          blocked = await ModerationService.isBlocked(myId, targetId);
+        } catch (_) {
+          // Best-effort — the profile screen shouldn't fail to load over this.
+        }
       }
-    }
 
-    if (!mounted) return;
-    setState(() {
-      _profile = profile;
-      _posts = posts;
-      _series = series;
-      _followers = followers;
-      _following = following;
-      _isFollowing = followingMe;
-      _isSpotlighted = isSpotlighted;
-      _isBlocked = blocked;
-      _loading = false;
-    });
+      var isSpotlighted = false;
+      if (_isOwnProfile) {
+        try {
+          final spotlighted = await DiscoverSpotlightService.getActiveSpotlightIds();
+          isSpotlighted = spotlighted.contains(targetId);
+        } catch (_) {
+          // Best-effort — the profile screen shouldn't fail to load over this.
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _posts = posts;
+        _series = series;
+        _followers = followers;
+        _following = following;
+        _isFollowing = followingMe;
+        _isSpotlighted = isSpotlighted;
+        _isBlocked = blocked;
+        _loading = false;
+      });
+    } catch (e) {
+      // Without this, any failure above (e.g. a query joining a table
+      // that doesn't exist yet) left _loading stuck at true forever —
+      // the screen just sat on its skeleton with no way out.
+      debugPrint('ProfileScreen load failed: $e');
+      if (mounted) setState(() { _loading = false; _loadError = '$e'; });
+    }
   }
 
   Future<void> _toggleBlock() async {
@@ -367,10 +382,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading || _profile == null) {
+    if (_loading) {
       return const Scaffold(
         backgroundColor: AppColors.background,
         body: _ProfileSkeleton(),
+      );
+    }
+
+    if (_profile == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: AppColors.textSecondary, size: 32),
+                const SizedBox(height: 12),
+                Text(
+                  _loadError ?? "Couldn't load this profile.",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton(onPressed: _load, child: const Text('Retry')),
+              ],
+            ),
+          ),
+        ),
       );
     }
 

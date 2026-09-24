@@ -34,6 +34,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   List<Post> _forYouPosts = [];
   List<Post> _followingPosts = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -48,21 +49,35 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
+
+    // Each feed is fetched independently — one failing (e.g. a query
+    // joining a table that isn't set up yet) shouldn't blank the other,
+    // and swallowing both errors used to make a real failure look
+    // exactly like "no posts yet" with no way to tell them apart.
+    List<Post>? forYou;
+    List<Post>? following;
+    String? error;
     try {
-      final results = await Future.wait([
-        PostService.getFeed(),
-        PostService.getFollowingFeed(),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _forYouPosts = results[0];
-        _followingPosts = results[1];
-        _loading = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      forYou = await PostService.getFeed();
+    } catch (e) {
+      debugPrint('getFeed failed: $e');
+      error = '$e';
     }
+    try {
+      following = await PostService.getFollowingFeed();
+    } catch (e) {
+      debugPrint('getFollowingFeed failed: $e');
+      error ??= '$e';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _forYouPosts = forYou ?? [];
+      _followingPosts = following ?? [];
+      _loading = false;
+      _error = error;
+    });
   }
 
   List<Post> get _videoPosts =>
@@ -227,6 +242,8 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
         children: [
           _FeedTabBody(
             loading: _loading,
+            error: _error,
+            onRetry: _load,
             posts: _forYouPosts,
             onRefresh: _load,
             cardBuilder: _buildCard,
@@ -239,6 +256,8 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
           ),
           _FeedTabBody(
             loading: _loading,
+            error: _error,
+            onRetry: _load,
             posts: _videoPosts,
             onRefresh: _load,
             cardBuilder: _buildCard,
@@ -250,6 +269,8 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
           ),
           _FeedTabBody(
             loading: _loading,
+            error: _error,
+            onRetry: _load,
             posts: _aiDramaPosts,
             onRefresh: _load,
             cardBuilder: _buildCard,
@@ -261,6 +282,8 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
           ),
           _FeedTabBody(
             loading: _loading,
+            error: _error,
+            onRetry: _load,
             posts: _followingPosts,
             onRefresh: _load,
             cardBuilder: _buildCard,
@@ -280,6 +303,8 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
 /// all four tabs above so the loading/empty/list wiring exists once.
 class _FeedTabBody extends StatelessWidget {
   final bool loading;
+  final String? error;
+  final VoidCallback? onRetry;
   final List<Post> posts;
   final Future<void> Function() onRefresh;
   final Widget Function(Post) cardBuilder;
@@ -288,6 +313,8 @@ class _FeedTabBody extends StatelessWidget {
 
   const _FeedTabBody({
     required this.loading,
+    this.error,
+    this.onRetry,
     required this.posts,
     required this.onRefresh,
     required this.cardBuilder,
@@ -299,6 +326,11 @@ class _FeedTabBody extends StatelessWidget {
   Widget build(BuildContext context) {
     if (loading) return const _FeedSkeleton();
 
+    // A load failure looks identical to a genuinely empty feed unless
+    // called out — show what actually happened instead of "no posts yet"
+    // when this tab's list is empty only because the fetch itself failed.
+    final failedToLoad = posts.isEmpty && error != null;
+
     return RefreshIndicator(
       onRefresh: onRefresh,
       color: AppColors.primary,
@@ -309,7 +341,11 @@ class _FeedTabBody extends StatelessWidget {
                 if (showHeader) const HomeHeaderSection(),
                 Padding(
                   padding: const EdgeInsets.only(top: 70),
-                  child: Center(child: emptyState),
+                  child: Center(
+                    child: failedToLoad
+                        ? _FeedLoadError(message: error!, onRetry: onRetry)
+                        : emptyState,
+                  ),
                 ),
               ],
             )
@@ -370,6 +406,52 @@ class _FeedSkeleton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Shown instead of the empty state when the fetch itself failed, so a
+/// real error (bad query, network, backend down) never looks identical
+/// to "there's genuinely nothing here yet".
+class _FeedLoadError extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _FeedLoadError({required this.message, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: AppColors.danger.withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.error_outline, color: AppColors.danger, size: 28),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          "Couldn't load this feed",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+          ),
+        ),
+        if (onRetry != null) ...[
+          const SizedBox(height: 14),
+          OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ],
     );
   }
 }
