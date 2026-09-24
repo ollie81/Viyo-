@@ -19,6 +19,7 @@ class SeriesService {
     String description = '',
     String? coverImageUrl,
     int coinPricePerEpisode = 20,
+    String genre = kDefaultDramaGenre,
   }) async {
     final inserted = await _client
         .from('series')
@@ -28,10 +29,22 @@ class SeriesService {
           'description': description,
           'cover_image_url': coverImageUrl,
           'coin_price_per_episode': coinPricePerEpisode,
+          'genre': genre,
         })
         .select()
         .single();
     return Series.fromJson(inserted);
+  }
+
+  /// Backfills a series' poster art from its first episode's thumbnail
+  /// — called right after a new series' first episode finishes
+  /// uploading, since the create-series step above happens before any
+  /// video/thumbnail exists yet. Best-effort: a series with no cover
+  /// just falls back to a placeholder tile, never blocks publishing.
+  static Future<void> setCoverImage(String seriesId, String coverImageUrl) async {
+    try {
+      await _client.from('series').update({'cover_image_url': coverImageUrl}).eq('id', seriesId);
+    } catch (_) {}
   }
 
   /// A creator's own series, each stamped with its real episode count —
@@ -155,6 +168,20 @@ class SeriesService {
         .select('*, profiles(username, display_name, avatar_url)')
         .order('created_at', ascending: false)
         .limit(limit);
+    return (data as List).map((e) => Series.fromJson(e)).toList();
+  }
+
+  /// Every public series, optionally narrowed to one genre — powers the
+  /// Dramas tab's poster grid. Newest-first: with no per-series
+  /// engagement metric to rank by (that lives on episodes, not the
+  /// series row itself), recency is the honest signal, same call
+  /// getNewAiSeries above already makes.
+  static Future<List<Series>> getAllSeries({String? genre, int limit = 60}) async {
+    var query = _client.from('series').select('*, profiles(username, display_name, avatar_url)');
+    if (genre != null && genre.isNotEmpty) {
+      query = query.eq('genre', genre);
+    }
+    final data = await query.order('created_at', ascending: false).limit(limit);
     return (data as List).map((e) => Series.fromJson(e)).toList();
   }
 
