@@ -184,15 +184,19 @@ class PostCard extends StatelessWidget {
 
           // ── Media (photo or video thumbnail) ──
           if (post.mediaUrl != null) ...[
-            GestureDetector(
-              onTap: enableMediaTap
-                  ? (onOpenMedia ?? () => _openPostDetail(context))
-                  : null,
-              child: AspectRatio(
-                aspectRatio: post.postType == PostType.video ? 9 / 16 : 4 / 5,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: GestureDetector(
+                onTap: enableMediaTap
+                    ? (onOpenMedia ?? () => _openPostDetail(context))
+                    : null,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: AspectRatio(
+                    aspectRatio: post.postType == PostType.video ? 9 / 16 : 4 / 5,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
                     CachedNetworkImage(
                       imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
                       fit: BoxFit.cover,
@@ -287,11 +291,15 @@ class PostCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
+          const SizedBox(height: 4),
+          const Divider(height: 1, thickness: 1, color: AppColors.surfaceBorder),
 
           // ── Action bar: like + comment ──
           Padding(
