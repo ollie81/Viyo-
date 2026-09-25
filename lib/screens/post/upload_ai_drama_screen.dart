@@ -118,7 +118,17 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   }
 
   Future<void> _pickThumbnail() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    // maxWidth actually constrains the picked file's size — imageQuality
+    // alone doesn't: it's a JPEG compression level that image_picker
+    // silently ignores for a PNG source (e.g. a phone screenshot or a
+    // gallery photo saved as PNG), so without this a "thumbnail" could
+    // end up multi-megabyte at full camera resolution. On a weak
+    // connection that's large enough to fail to load at all.
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1080,
+      imageQuality: 85,
+    );
     if (picked != null) setState(() => _customThumbnail = picked);
   }
 

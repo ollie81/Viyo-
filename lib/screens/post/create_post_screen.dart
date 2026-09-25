@@ -98,7 +98,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   /// (see upload_ai_drama_screen.dart's _pickThumbnail), just missing
   /// here until now.
   Future<void> _pickCustomThumbnail() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    // maxWidth actually constrains the picked file's size — imageQuality
+    // alone doesn't: it's a JPEG compression level that image_picker
+    // silently ignores for a PNG source (e.g. a phone screenshot or a
+    // gallery photo saved as PNG), so without this a "thumbnail" could
+    // end up multi-megabyte at full camera resolution — same fix as
+    // upload_ai_drama_screen.dart's _pickThumbnail.
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1080,
+      imageQuality: 85,
+    );
     if (picked == null || !mounted) return;
     setState(() {
       _videoThumbnail = picked;
