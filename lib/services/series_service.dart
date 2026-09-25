@@ -47,9 +47,28 @@ class SeriesService {
   /// uploading, since the create-series step above happens before any
   /// video/thumbnail exists yet. Best-effort: a series with no cover
   /// just falls back to a placeholder tile, never blocks publishing.
+  ///
+  /// Routed through the backend rather than a direct Supabase update:
+  /// `series`' RLS update policy is owner-only, but this is called from
+  /// every viewer who sees a coverless series — overwhelmingly a
+  /// stranger browsing someone else's series in Discover/the Dramas
+  /// tab, not the owner — so a direct client write silently no-ops for
+  /// almost every caller. The backend's service-role client can write
+  /// regardless of who's viewing, with its own narrower checks (only
+  /// fills a null cover, only accepts this series' own episode
+  /// thumbnail or a Viyo-hosted upload) standing in for the RLS check
+  /// this bypasses.
   static Future<void> setCoverImage(String seriesId, String coverImageUrl) async {
     try {
-      await _client.from('series').update({'cover_image_url': coverImageUrl}).eq('id', seriesId);
+      final token = _client.auth.currentSession?.accessToken;
+      await http.post(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/series/$seriesId/cover'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'cover_image_url': coverImageUrl}),
+      );
     } catch (_) {}
   }
 
