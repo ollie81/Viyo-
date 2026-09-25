@@ -6,6 +6,7 @@ import '../../services/series_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/episode_lock.dart';
+import '../../utils/friendly_error.dart';
 import '../video_feed_screen.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
@@ -25,6 +26,7 @@ class SeriesDetailScreen extends StatefulWidget {
 class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   List<Post> _episodes = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -33,13 +35,20 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final episodes = await SeriesService.getSeriesEpisodes(widget.series.id);
-    if (!mounted) return;
     setState(() {
-      _episodes = episodes;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+    try {
+      final episodes = await SeriesService.getSeriesEpisodes(widget.series.id);
+      if (!mounted) return;
+      setState(() => _episodes = episodes);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -54,7 +63,27 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.secondary))
-          : RefreshIndicator(
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.textSecondary, size: 32),
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
               onRefresh: _load,
               color: AppColors.secondary,
               child: ListView(

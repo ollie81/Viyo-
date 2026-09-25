@@ -427,14 +427,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: [
-          if (_isOwnProfile)
+          if (_isOwnProfile) ...[
+            IconButton(
+              icon: const Icon(Icons.storefront_outlined),
+              tooltip: 'Store',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const StoreScreen()),
+              ),
+            ),
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               ),
-            )
-          else ...[
+            ),
+          ] else ...[
             IconButton(
               icon: const Icon(Icons.ios_share_outlined),
               onPressed: _shareProfile,
@@ -654,7 +661,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           if (_isOwnProfile)
-                            CoinBadge(amount: p.pointsBalance),
+                            GestureDetector(
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const WalletScreen()),
+                              ),
+                              child: CoinBadge(amount: p.pointsBalance),
+                            ),
                         ],
                       ),
                     ),
