@@ -357,13 +357,27 @@ class PostService {
   /// if this fails — never a requirement for posting, just a nice-to-
   /// have for cards/the AI coach's vision input.
   static Future<String?> generateAndUploadVideoThumbnail(XFile videoFile, String userId) async {
+    final thumb = await extractVideoThumbnail(videoFile);
+    if (thumb == null) return null;
+    try {
+      return await uploadMediaWithProgress(thumb, userId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Same frame extraction as above, without the upload — lets a screen
+  /// show what a locally-picked video's thumbnail will actually look
+  /// like (e.g. the create-post screen's preview) before anything's
+  /// been posted, and lets a caller that already has this XFile skip
+  /// re-decoding the video just to upload it moments later.
+  static Future<XFile?> extractVideoThumbnail(XFile videoFile) async {
     if (kIsWeb) {
       try {
         final videoBytes = await videoFile.readAsBytes();
         final jpegBytes = await web_thumbnail.captureVideoFrameWeb(videoBytes);
         if (jpegBytes == null) return null;
-        final thumbFile = XFile.fromData(jpegBytes, name: 'thumbnail.jpg', mimeType: 'image/jpeg');
-        return await uploadMediaWithProgress(thumbFile, userId);
+        return XFile.fromData(jpegBytes, name: 'thumbnail.jpg', mimeType: 'image/jpeg');
       } catch (_) {
         return null;
       }
@@ -377,7 +391,7 @@ class PostService {
         timeMs: 500, // ~0.5s in — skips a possible black opening frame
       );
       if (thumbPath == null) return null;
-      return await uploadMediaWithProgress(XFile(thumbPath), userId);
+      return XFile(thumbPath);
     } catch (_) {
       // Thumbnail generation is a nice-to-have for the coach, not a
       // requirement for posting — fail silently and fall back to

@@ -30,6 +30,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // runtime), while XFile (image_picker's own cross-platform file
   // type) reads bytes and uploads identically on every platform.
   XFile? _mediaFile;
+  // A locally-extracted preview frame for a picked video — same capture
+  // path used at submit time (see PostService.extractVideoThumbnail),
+  // just run early so the picker shows what was actually selected
+  // instead of a generic play icon that can't distinguish one video
+  // from another.
+  XFile? _videoThumbnail;
+  bool _extractingThumbnail = false;
   bool _posting = false;
   bool _uploading = false;
   double _uploadProgress = 0;
@@ -61,8 +68,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _mediaFile = picked;
         _type = video ? PostType.video : PostType.photo;
+        _videoThumbnail = null;
       });
+      if (video) _loadVideoThumbnail(picked);
     }
+  }
+
+  Future<void> _loadVideoThumbnail(XFile file) async {
+    setState(() => _extractingThumbnail = true);
+    final thumb = await PostService.extractVideoThumbnail(file);
+    // The picker could have been reopened (or cleared) while this was
+    // extracting — only apply the result if it's still the same file.
+    if (!mounted || _mediaFile != file) return;
+    setState(() {
+      _videoThumbnail = thumb;
+      _extractingThumbnail = false;
+    });
   }
 
   Future<void> _improveCaption() async {
@@ -241,7 +262,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         );
         if (mounted) setState(() => _uploading = false);
         if (_type == PostType.video) {
-          thumbnailUrl = await PostService.generateAndUploadVideoThumbnail(_mediaFile!, userId);
+          // Reuse the frame already extracted for the picker's preview
+          // instead of decoding the video a second time — falls back to
+          // extracting fresh only if that preview capture never landed.
+          thumbnailUrl = _videoThumbnail != null
+              ? await PostService.uploadMediaWithProgress(_videoThumbnail!, userId)
+              : await PostService.generateAndUploadVideoThumbnail(_mediaFile!, userId);
         }
       }
 
@@ -264,6 +290,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _caption.clear();
         _mediaFile = null;
+        _videoThumbnail = null;
         _type = PostType.text;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -371,16 +398,42 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                   borderRadius: BorderRadius.circular(14),
                                   child: XFilePreviewImage(file: _mediaFile!, fit: BoxFit.cover, width: double.infinity),
                                 )
-                              : const Center(
-                                  child: Icon(Icons.play_circle_outline, size: 48, color: AppColors.primary),
-                                ),
+                              : _videoThumbnail != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          XFilePreviewImage(
+                                            file: _videoThumbnail!,
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                          ),
+                                          const Center(
+                                            child: Icon(
+                                              Icons.play_circle_fill,
+                                              size: 48,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : Center(
+                                      child: _extractingThumbnail
+                                          ? const CircularProgressIndicator(strokeWidth: 2)
+                                          : const Icon(Icons.play_circle_outline, size: 48, color: AppColors.primary),
+                                    ),
                         ),
                         Positioned(
                           top: 8,
                           right: 8,
                           child: IconButton(
                             icon: const Icon(Icons.close, color: Colors.white),
-                            onPressed: () => setState(() => _mediaFile = null),
+                            onPressed: () => setState(() {
+                              _mediaFile = null;
+                              _videoThumbnail = null;
+                            }),
                           ),
                         ),
                       ],
@@ -569,7 +622,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       child: GestureDetector(
         onTap: () => setState(() {
           _type = type;
-          if (type == PostType.text) _mediaFile = null;
+          if (type == PostType.text) {
+            _mediaFile = null;
+            _videoThumbnail = null;
+          }
         }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),

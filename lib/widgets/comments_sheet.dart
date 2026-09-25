@@ -18,7 +18,7 @@ import 'guest_gate.dart';
 /// own: it's a translucent overlay, so the video underneath keeps
 /// painting (and keeps playing) in whatever's left visible, the same
 /// way Instagram/TikTok's comment sheets work.
-Future<void> showCommentsSheet(BuildContext context, Post post) {
+Future<void> showCommentsSheet(BuildContext context, Post post, {VoidCallback? onCommentAdded}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -26,13 +26,19 @@ Future<void> showCommentsSheet(BuildContext context, Post post) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
     ),
-    builder: (_) => _CommentsSheet(post: post),
+    builder: (_) => _CommentsSheet(post: post, onCommentAdded: onCommentAdded),
   );
 }
 
 class _CommentsSheet extends StatefulWidget {
   final Post post;
-  const _CommentsSheet({required this.post});
+  // Fired right after a comment is actually saved — not returned as the
+  // sheet's pop result, since swiping the sheet away dismisses it with
+  // no result at all. Lets the screen underneath (still visible through
+  // the translucent overlay) bump its own comment count live instead of
+  // only catching up the next time it happens to reload from scratch.
+  final VoidCallback? onCommentAdded;
+  const _CommentsSheet({required this.post, this.onCommentAdded});
 
   @override
   State<_CommentsSheet> createState() => _CommentsSheetState();
@@ -75,6 +81,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     try {
       await PostService.addComment(postId: widget.post.id, userId: userId, content: content);
       _commentCtrl.clear();
+      widget.onCommentAdded?.call();
       await _load();
     } catch (e) {
       if (!mounted) return;

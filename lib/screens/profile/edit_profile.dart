@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../constants/supabase_constants.dart';
@@ -6,7 +6,7 @@ import '../../models/user_profile.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../widgets/xfile_preview_image.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final UserProfile profile;
@@ -22,7 +22,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final _niche = TextEditingController(text: widget.profile.niche);
   bool _saving = false;
   bool _uploadingAvatar = false;
-  File? _pickedAvatar;
+  // XFile, not dart:io's File — File throws at runtime on web (see
+  // create_post_screen.dart's same note), and this screen is reachable
+  // from the web PWA build same as everywhere else.
+  XFile? _pickedAvatar;
   String? _error;
 
   Future<void> _pickAvatar() async {
@@ -34,13 +37,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         imageQuality: 85,
       );
       if (picked != null) {
-        setState(() => _pickedAvatar = File(picked.path));
+        setState(() => _pickedAvatar = picked);
       }
     } catch (e) {
       // Real error shown to the user instead of silently doing nothing —
       // this is almost always a missing gallery/photos permission on the
       // device, or the permission being denied.
       setState(() => _error = 'Could not open photo picker: $e');
+    }
+  }
+
+  static String _mimeTypeFor(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'jpg':
+      case 'jpeg':
+      default:
+        return 'image/jpeg';
     }
   }
 
@@ -60,11 +76,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   /// effect: photos work now, and quietly move to the proper bucket the
   /// moment it exists.
   Future<String?> _uploadAvatarIfNeeded() async {
-    if (_pickedAvatar == null) return null;
+    final picked = _pickedAvatar;
+    if (picked == null) return null;
     setState(() => _uploadingAvatar = true);
 
     final client = SupabaseService.client;
-    final ext = _pickedAvatar!.path.split('.').last;
+    // .name, not .path — a web XFile's path is a blob: URL with no real
+    // extension on it; .name carries the picked file's actual filename
+    // on every platform (same pattern as PostService.uploadMediaWithProgress).
+    final ext = picked.name.contains('.') ? picked.name.split('.').last : 'jpg';
+    final bytes = await picked.readAsBytes();
+    final token = client.auth.currentSession?.accessToken;
 
     // Cache-busting name: the same URL with new bytes behind it would
     // keep showing the old photo out of Flutter's image cache.
@@ -82,15 +104,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     ];
 
     Object? lastError;
+    final dio = Dio();
 
     try {
       for (final attempt in attempts) {
         try {
-          await client.storage.from(attempt.key).upload(
-                attempt.value,
-                _pickedAvatar!,
-                fileOptions: const FileOptions(upsert: true),
-              );
+          final url =
+              '${SupabaseConstants.url}/storage/v1/object/${attempt.key}/${attempt.value}';
+          await dio.put(
+            url,
+            data: bytes,
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $token',
+                'apikey': SupabaseConstants.anonKey,
+                'Content-Type': _mimeTypeFor(ext),
+                'x-upsert': 'true',
+              },
+            ),
+          );
           return client.storage.from(attempt.key).getPublicUrl(attempt.value);
         } catch (e) {
           lastError = e;
@@ -152,22 +184,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Stack(
                   alignment: Alignment.bottomRight,
                   children: [
-                    CircleAvatar(
-                      radius: 48,
-                      backgroundColor: AppColors.surfaceBorder,
-                      backgroundImage: _pickedAvatar != null
-                          ? FileImage(_pickedAvatar!)
-                          : (widget.profile.avatarUrl != null
-                              ? NetworkImage(widget.profile.avatarUrl!)
-                              : null) as ImageProvider?,
-                      child: (_pickedAvatar == null && widget.profile.avatarUrl == null)
-                          ? Text(
-                              widget.profile.displayName.isNotEmpty
-                                  ? widget.profile.displayName[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(fontSize: 32),
-                            )
-                          : null,
+                    ClipOval(
+                      child: SizedBox(
+                        width: 96,
+                        height: 96,
+                        child: _pickedAvatar != null
+                            ? XFilePreviewImage(
+                                file: _pickedAvatar!,
+                                fit: BoxFit.cover,
+                                width: 96,
+                                height: 96,
+                              )
+                            : Container(
+                                color: AppColors.surfaceBorder,
+                                alignment: Alignment.center,
+                                child: widget.profile.avatarUrl != null
+                                    ? Image.network(
+                                        widget.profile.avatarUrl!,
+                                        fit: BoxFit.cover,
+                                        width: 96,
+                                        height: 96,
+                                      )
+                                    : Text(
+                                        widget.profile.displayName.isNotEmpty
+                                            ? widget.profile.displayName[0].toUpperCase()
+                                            : '?',
+                                        style: const TextStyle(fontSize: 32),
+                                      ),
+                              ),
+                      ),
                     ),
                     Container(
                       padding: const EdgeInsets.all(6),

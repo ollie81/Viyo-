@@ -229,6 +229,12 @@ class SeriesService {
     }
   }
 
+  // A creator's paid boost (PostBoostService.boostPost) — same
+  // multiplier PostService uses for the home feed/Discover post grid,
+  // so a boosted episode gets the same lift here instead of the coin
+  // spend doing nothing for drama-specific ranking.
+  static const double _boostMultiplier = 4.0;
+
   /// Discover's "Trending AI Dramas" — the same hot-ranked pool as the
   /// rest of Discover (see PostService.getDiscoverPosts), just narrowed
   /// to episodes (series_id set at all).
@@ -246,8 +252,8 @@ class SeriesService {
     double score(Post p) {
       final ageHours = DateTime.now().difference(p.createdAt).inMinutes / 60.0;
       final engagement = p.likeCount + p.commentCount * 2 + p.viewCount ~/ 10;
-      if (engagement <= 0) return 1 / (ageHours + 1);
-      return engagement / (ageHours + 2);
+      final raw = engagement <= 0 ? 1 / (ageHours + 1) : engagement / (ageHours + 2);
+      return p.isBoosted ? raw * _boostMultiplier : raw;
     }
 
     posts.sort((a, b) => score(b).compareTo(score(a)));
@@ -301,7 +307,7 @@ class SeriesService {
     final seriesIds = series.map((s) => s.id).toList();
     final episodeRows = await _client
         .from('posts')
-        .select('series_id, like_count, comment_count, view_count, created_at')
+        .select('series_id, like_count, comment_count, view_count, created_at, is_boosted')
         .inFilter('series_id', seriesIds);
 
     final scores = <String, double>{};
@@ -322,6 +328,10 @@ class SeriesService {
       } else {
         contribution = engagement.toDouble();
       }
+      // A boosted episode lifts its whole series' score, not just that
+      // one episode's own standing — the same "coins spent" signal the
+      // home feed/Discover already honor, now meaningful here too.
+      if (row['is_boosted'] == true) contribution *= _boostMultiplier;
       scores[sid] = (scores[sid] ?? 0) + contribution;
     }
 
