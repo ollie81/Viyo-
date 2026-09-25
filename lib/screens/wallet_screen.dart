@@ -126,13 +126,27 @@ class _WalletScreenState extends State<WalletScreen> {
                           children: [
                             const Text('Your balance', style: TextStyle(color: AppColors.textSecondary)),
                             const SizedBox(height: 6),
-                            Text(
-                              '${_profile?.pointsBalance ?? 0}',
-                              style: const TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.coin,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    gradient: AppGradients.coin,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.monetization_on_rounded, color: AppColors.background, size: 22),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '${_profile?.pointsBalance ?? 0}',
+                                  style: const TextStyle(
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.coin,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -175,7 +189,13 @@ class _WalletScreenState extends State<WalletScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Gift coins to a friend', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Row(
+                              children: [
+                                Icon(Icons.card_giftcard_rounded, size: 15, color: AppColors.secondary),
+                                SizedBox(width: 6),
+                                Text('Gift coins to a friend', style: TextStyle(fontWeight: FontWeight.w600)),
+                              ],
+                            ),
                             const SizedBox(height: 12),
                             TextField(
                               controller: _giftHandleCtrl,
@@ -213,7 +233,13 @@ class _WalletScreenState extends State<WalletScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Recent activity', style: TextStyle(fontWeight: FontWeight.w600)),
+                            const Row(
+                              children: [
+                                Icon(Icons.receipt_long_rounded, size: 15, color: AppColors.secondary),
+                                SizedBox(width: 6),
+                                Text('Recent activity', style: TextStyle(fontWeight: FontWeight.w600)),
+                              ],
+                            ),
                             const SizedBox(height: 12),
                             if (_transactions.isEmpty)
                               const Text('No transactions yet', style: TextStyle(color: AppColors.textMuted))
