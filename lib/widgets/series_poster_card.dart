@@ -100,13 +100,26 @@ class SeriesPosterCard extends StatelessWidget {
   }
 }
 
+/// Shown while a series has no cover yet (new upload still backfilling,
+/// or the auto-capture hasn't landed) — a soft brand-colored gradient
+/// rather than a flat grey fill, so an empty poster still reads as a
+/// designed tile instead of a broken/missing image.
 class _PosterPlaceholder extends StatelessWidget {
   const _PosterPlaceholder();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.surfaceBorder,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.secondary.withOpacity(0.22),
+            AppColors.surface,
+          ],
+        ),
+      ),
       child: const Center(
         child: Icon(Icons.auto_awesome, color: AppColors.secondary, size: 28),
       ),

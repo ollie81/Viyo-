@@ -281,37 +281,49 @@ class _DiscoverBody extends StatelessWidget {
           ),
           const SizedBox(height: 18),
         ],
+        // Both drama sections below are a real 2-column grid, not a
+        // horizontally-scrolling single row — with only a handful of
+        // series/episodes existing so far, a narrow row of cards just
+        // floats in a mostly-empty strip with the rest of the screen's
+        // width unused. A grid puts that same content at roughly double
+        // the width per card and wraps onto more rows as more shows up,
+        // instead of requiring a sideways scroll to see more.
         if (!loadingDramas && newSeries.isNotEmpty) ...[
           const _SectionLabel('NEW SERIES', icon: Icons.auto_awesome, color: AppColors.secondary),
-          SizedBox(
-            height: 210,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: newSeries.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (ctx, i) => SizedBox(
-                width: 126,
-                child: SeriesPosterCard(
-                  series: newSeries[i],
-                  onTap: () => onOpenSeries(newSeries[i]),
-                ),
-              ),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.6,
+            ),
+            itemCount: newSeries.length,
+            itemBuilder: (ctx, i) => SeriesPosterCard(
+              series: newSeries[i],
+              onTap: () => onOpenSeries(newSeries[i]),
             ),
           ),
           const SizedBox(height: 18),
         ],
         if (!loadingDramas && trendingDramas.isNotEmpty) ...[
           const _SectionLabel('TRENDING DRAMAS', icon: Icons.auto_awesome, color: AppColors.secondary),
-          SizedBox(
-            height: 220,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: trendingDramas.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (ctx, i) => _TrendingDramaCard(
-                post: trendingDramas[i],
-                onTap: () => onOpenDrama(trendingDramas[i]),
-              ),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.72,
+            ),
+            itemCount: trendingDramas.length,
+            itemBuilder: (ctx, i) => _TrendingDramaCard(
+              post: trendingDramas[i],
+              onTap: () => onOpenDrama(trendingDramas[i]),
             ),
           ),
           const SizedBox(height: 18),
@@ -400,7 +412,15 @@ class _TrendingDramaCard extends StatelessWidget {
             CachedNetworkImage(
               imageUrl: post.thumbnailUrl ?? post.mediaUrl ?? '',
               fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
+              errorWidget: (_, __, ___) => Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.secondary.withOpacity(0.22), AppColors.surface],
+                  ),
+                ),
+              ),
             ),
             const Positioned(
               top: 0, left: 0, right: 0,
