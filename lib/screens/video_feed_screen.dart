@@ -12,6 +12,7 @@ import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/episode_lock.dart';
+import '../utils/friendly_error.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/guest_gate.dart';
 import 'profile/profile_screen.dart';
@@ -90,7 +91,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load videos: $e')),
+          SnackBar(content: Text('Could not load videos: ${friendlyErrorMessage(e)}')),
         );
       }
     }
@@ -116,7 +117,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update like: $e')),
+        SnackBar(content: Text('Could not update like: ${friendlyErrorMessage(e)}')),
       );
     }
   }
@@ -146,7 +147,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
+        SnackBar(content: Text(friendlyErrorMessage(e))),
       );
     }
   }
