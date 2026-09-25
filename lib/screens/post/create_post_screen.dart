@@ -36,6 +36,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // instead of a generic play icon that can't distinguish one video
   // from another.
   XFile? _videoThumbnail;
+  // True once the creator has picked their own thumbnail — stops a
+  // freshly-finished auto-extraction from clobbering that choice (the
+  // extraction runs in the background and can still land after a manual
+  // pick if the creator is fast).
+  bool _customThumbnailPicked = false;
   bool _extractingThumbnail = false;
   bool _posting = false;
   bool _uploading = false;
@@ -69,6 +74,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _mediaFile = picked;
         _type = video ? PostType.video : PostType.photo;
         _videoThumbnail = null;
+        _customThumbnailPicked = false;
       });
       if (video) _loadVideoThumbnail(picked);
     }
@@ -77,11 +83,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<void> _loadVideoThumbnail(XFile file) async {
     setState(() => _extractingThumbnail = true);
     final thumb = await PostService.extractVideoThumbnail(file);
-    // The picker could have been reopened (or cleared) while this was
-    // extracting — only apply the result if it's still the same file.
-    if (!mounted || _mediaFile != file) return;
+    // The picker could have been reopened (or cleared), or the creator
+    // could have already picked their own thumbnail, while this was
+    // extracting — only apply the result if neither happened.
+    if (!mounted || _mediaFile != file || _customThumbnailPicked) return;
     setState(() {
       _videoThumbnail = thumb;
+      _extractingThumbnail = false;
+    });
+  }
+
+  /// Lets the creator override the auto-captured frame with their own
+  /// image — same option the AI Short Drama upload flow already gives
+  /// (see upload_ai_drama_screen.dart's _pickThumbnail), just missing
+  /// here until now.
+  Future<void> _pickCustomThumbnail() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _videoThumbnail = picked;
+      _customThumbnailPicked = true;
       _extractingThumbnail = false;
     });
   }
@@ -291,6 +312,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _caption.clear();
         _mediaFile = null;
         _videoThumbnail = null;
+        _customThumbnailPicked = false;
         _type = PostType.text;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -433,9 +455,33 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             onPressed: () => setState(() {
                               _mediaFile = null;
                               _videoThumbnail = null;
+                              _customThumbnailPicked = false;
                             }),
                           ),
                         ),
+                        if (_type == PostType.video)
+                          Positioned(
+                            left: 8,
+                            bottom: 8,
+                            child: GestureDetector(
+                              onTap: _pickCustomThumbnail,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.55),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.add_photo_alternate_outlined, size: 14, color: Colors.white),
+                                    SizedBox(width: 5),
+                                    Text('Change thumbnail', style: TextStyle(color: Colors.white, fontSize: 11.5)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
             const SizedBox(height: 16),
@@ -625,6 +671,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           if (type == PostType.text) {
             _mediaFile = null;
             _videoThumbnail = null;
+            _customThumbnailPicked = false;
           }
         }),
         child: Container(

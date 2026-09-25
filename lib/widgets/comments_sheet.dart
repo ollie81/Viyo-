@@ -4,6 +4,7 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/friendly_error.dart';
 import 'guest_gate.dart';
 
 /// Comments as a partial-height overlay instead of a full navigation.
@@ -86,7 +87,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not post comment: $e')),
+        SnackBar(content: Text('Could not post comment: ${friendlyErrorMessage(e)}')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
