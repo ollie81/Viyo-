@@ -139,7 +139,14 @@ class _SeriesHeader extends StatelessWidget {
               width: 64,
               height: 90,
               child: series.coverImageUrl != null
-                  ? CachedNetworkImage(imageUrl: series.coverImageUrl!, fit: BoxFit.cover)
+                  ? CachedNetworkImage(
+                      imageUrl: series.coverImageUrl!,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        color: AppColors.surfaceBorder,
+                        child: const Icon(Icons.auto_awesome, color: AppColors.secondary),
+                      ),
+                    )
                   : Container(
                       color: AppColors.surfaceBorder,
                       child: const Icon(Icons.auto_awesome, color: AppColors.secondary),
@@ -225,7 +232,11 @@ class _EpisodeTile extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     episode.thumbnailUrl != null
-                        ? CachedNetworkImage(imageUrl: episode.thumbnailUrl!, fit: BoxFit.cover)
+                        ? CachedNetworkImage(
+                            imageUrl: episode.thumbnailUrl!,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
+                          )
                         : Container(color: AppColors.surfaceBorder),
                     if (locked)
                       Container(
