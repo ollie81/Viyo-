@@ -327,21 +327,36 @@ class _VideoPageState extends State<_VideoPage> {
       await controller.initialize();
       await controller.setLooping(!widget.autoAdvance);
       await controller.setVolume(_muted ? 0 : 1);
-
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-
-      controller.addListener(_videoListener);
-      setState(() => _controller = controller);
-
-      if (widget.isActive) {
-        await controller.play();
-      }
     } catch (_) {
+      // The video genuinely failed to load — this is the real
+      // "unavailable" case.
       await controller.dispose();
       if (mounted) setState(() => _initError = true);
+      return;
+    }
+
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+
+    controller.addListener(_videoListener);
+    setState(() => _controller = controller);
+
+    if (widget.isActive) {
+      try {
+        await controller.play();
+      } catch (_) {
+        // A loaded-and-ready video can still fail to autoplay — a
+        // browser blocking unmuted autoplay without a fresh-enough user
+        // gesture is the common case on web. That's not the same
+        // failure as never loading at all: the video stays set, just
+        // paused, so it shows normally and the existing tap-to-play
+        // control (_togglePlay) still starts it. Previously this was
+        // caught by the same block as the load itself and the whole
+        // video was thrown away as "unavailable" even though it had
+        // already loaded fine.
+      }
     }
   }
 
