@@ -8,6 +8,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/upload_progress_card.dart';
+import '../../widgets/xfile_preview_image.dart';
 
 /// Upload flow for AI Short Drama episodes — deliberately a separate
 /// screen from CreatePostScreen rather than one more mode bolted onto
@@ -27,6 +28,10 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   // XFile, not dart:io's File — see create_post_screen.dart's _mediaFile
   // for why (File doesn't work on web).
   XFile? _video;
+  // Optional — when unset, a thumbnail is auto-captured from the video
+  // itself (see PostService.generateAndUploadVideoThumbnail). Picking
+  // one here always wins over that auto-capture.
+  XFile? _customThumbnail;
   final _caption = TextEditingController();
   final _newSeriesTitle = TextEditingController();
   final _newSeriesDescription = TextEditingController();
@@ -112,6 +117,11 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
     if (picked != null) setState(() => _video = picked);
   }
 
+  Future<void> _pickThumbnail() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked != null) setState(() => _customThumbnail = picked);
+  }
+
   Future<void> _submit() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
@@ -162,7 +172,9 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         },
       );
       if (mounted) setState(() => _uploading = false);
-      final thumbnailUrl = await PostService.generateAndUploadVideoThumbnail(_video!, userId);
+      final thumbnailUrl = _customThumbnail != null
+          ? await PostService.uploadMediaWithProgress(_customThumbnail!, userId)
+          : await PostService.generateAndUploadVideoThumbnail(_video!, userId);
 
       // A brand-new series has no poster art yet (createSeries above ran
       // before this episode's video/thumbnail existed) — the episode's
@@ -252,6 +264,43 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                         ],
                       ),
               ),
+            ),
+            const SizedBox(height: 14),
+            const Text('THUMBNAIL', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: busy ? null : _pickThumbnail,
+                  child: Container(
+                    width: 64,
+                    height: 90,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.surfaceBorder),
+                    ),
+                    child: _customThumbnail != null
+                        ? XFilePreviewImage(file: _customThumbnail!, fit: BoxFit.cover)
+                        : const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted, size: 22),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _customThumbnail != null
+                        ? 'Custom thumbnail set.'
+                        : "We'll grab a frame from your video automatically — tap to pick your own instead.",
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.35),
+                  ),
+                ),
+                if (_customThumbnail != null)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppColors.textMuted, size: 18),
+                    onPressed: busy ? null : () => setState(() => _customThumbnail = null),
+                  ),
+              ],
             ),
             const SizedBox(height: 20),
             const Text('SERIES', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
