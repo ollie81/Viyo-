@@ -38,6 +38,16 @@
 
   <title>Viyo — Creator Boost</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Vercel Web Analytics — plain-HTML snippet (no npm package needed;
+       this is a static Flutter web build, not a JS-framework project,
+       so @vercel/analytics has nothing to install into). Also needs
+       Web Analytics turned on for this project in the Vercel dashboard
+       (Analytics tab -> Enable) — the script alone doesn't activate it. -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
   <!--
