@@ -124,6 +124,15 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   void _recordView(Post post) {
     if (!_viewedPostIds.add(post.id)) return; // already counted this session
     PostService.recordView(post.id);
+    // The request itself is fire-and-forget (see PostService.recordView),
+    // but the count on screen shouldn't just sit there unchanged — bump
+    // it locally the moment the view is actually being recorded, same
+    // as the like button's own optimistic update.
+    setState(() {
+      _posts = _posts
+          .map((p) => p.id == post.id ? p.copyWith(viewCount: p.viewCount + 1) : p)
+          .toList();
+    });
   }
 
   Future<void> _unlockEpisode(Post post) async {
@@ -148,7 +157,18 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     // every other short-form feed. A full-screen route here previously
     // left the video mounted and still playing underneath, invisible,
     // since the PageView itself never changed pages.
-    showCommentsSheet(context, post);
+    showCommentsSheet(
+      context,
+      post,
+      onCommentAdded: () {
+        if (!mounted) return;
+        setState(() {
+          _posts = _posts
+              .map((p) => p.id == post.id ? p.copyWith(commentCount: p.commentCount + 1) : p)
+              .toList();
+        });
+      },
+    );
   }
 
   Future<void> _share(Post post) async {
