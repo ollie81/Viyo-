@@ -54,6 +54,55 @@ class SeriesService {
     await _client.from('series').update({'status': status}).eq('id', seriesId);
   }
 
+  /// True per-series follow (`series_follows`) — distinct from the
+  /// creator-level `follows` table used elsewhere in the app. A viewer
+  /// can follow a specific series without following everything else
+  /// that creator makes, and vice versa. Phase 2 table — every method
+  /// here fails silently/returns a safe default if it doesn't exist
+  /// yet (the migration hasn't run), same "inert until migrated"
+  /// posture as series.status in Phase 1.
+  static Future<bool> isFollowingSeries(String userId, String seriesId) async {
+    try {
+      final row = await _client
+          .from('series_follows')
+          .select('id')
+          .eq('follower_id', userId)
+          .eq('series_id', seriesId)
+          .maybeSingle();
+      return row != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> followSeries(String userId, String seriesId) async {
+    await _client.from('series_follows').insert({
+      'follower_id': userId,
+      'series_id': seriesId,
+    });
+  }
+
+  static Future<void> unfollowSeries(String userId, String seriesId) async {
+    await _client
+        .from('series_follows')
+        .delete()
+        .eq('follower_id', userId)
+        .eq('series_id', seriesId);
+  }
+
+  static Future<int> getSeriesFollowerCount(String seriesId) async {
+    try {
+      final res = await _client
+          .from('series_follows')
+          .select('id')
+          .eq('series_id', seriesId)
+          .count();
+      return res.count;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Backfills a series' poster art from its first episode's thumbnail
   /// — called right after a new series' first episode finishes
   /// uploading, since the create-series step above happens before any

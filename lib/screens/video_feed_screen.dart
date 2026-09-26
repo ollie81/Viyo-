@@ -462,7 +462,15 @@ class _VideoPageState extends State<_VideoPage> {
       // Fire-and-forget final flush — dispose() can't be async, and a
       // position saved 3 seconds ago (the throttle window) is close
       // enough that losing this exact write isn't worth blocking on.
-      unawaited(WatchProgressService.savePosition(widget.post, c.value.position, c.value.duration));
+      // forceServerSync bypasses the (much coarser) server throttle —
+      // this is the one moment a synced value has to be current, since
+      // a different device reopening this episode next reads the
+      // server row as its source of truth (see WatchProgressService
+      // .getPosition).
+      unawaited(WatchProgressService.savePosition(
+        widget.post, c.value.position, c.value.duration,
+        forceServerSync: true,
+      ));
     }
     _controller?.dispose();
     super.dispose();

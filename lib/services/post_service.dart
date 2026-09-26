@@ -192,6 +192,20 @@ class PostService {
     return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
   }
 
+  /// A specific set of posts, in no particular server-side order — used
+  /// by WatchlistService to resolve saved post ids into real posts.
+  /// Empty input short-circuits rather than sending `.in_("id", [])`,
+  /// which some PostgREST versions treat as "match nothing" but isn't
+  /// worth relying on.
+  static Future<List<Post>> getPostsByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    final data = await _client
+        .from('posts')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .inFilter('id', ids);
+    return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
+  }
+
   /// A profile's posts as seen by *anyone else* — hides private and
   /// archived posts, since those should only be visible to the owner.
   static Future<List<Post>> getPublicUserPosts(String userId) async {
@@ -604,11 +618,21 @@ class PostService {
     required String postId,
     required String userId,
     required String content,
+    // Phase 2 — a reply's parent comment id, and a real spoiler flag
+    // replacing the Phase 1 client-only ||text|| convention. Both
+    // no-ops server-side until the migration adds their columns (see
+    // interactions.py's add_comment), so it's safe to always send them.
+    String? parentId,
+    bool isSpoiler = false,
   }) async {
     final res = await _postWithRetry(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/comments'),
       headers: await _interactionHeaders(),
-      body: jsonEncode({'content': content}),
+      body: jsonEncode({
+        'content': content,
+        if (parentId != null) 'parent_id': parentId,
+        if (isSpoiler) 'is_spoiler': isSpoiler,
+      }),
     );
     if (res.statusCode != 200) {
       throw Exception(_errorDetail(res) ?? 'Failed to add comment (${res.statusCode})');
@@ -629,6 +653,19 @@ class PostService {
     AnalyticsService.track('comment_added', properties: {'post_id': postId});
 
     return comment;
+  }
+
+  /// Pin/unpin — restricted server-side to the post's own creator (see
+  /// interactions.py's pin_comment), not the comment's author.
+  static Future<void> pinComment(String postId, String commentId, bool pinned) async {
+    final res = await _postWithRetry(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/comments/$commentId/pin'),
+      headers: await _interactionHeaders(),
+      body: jsonEncode({'pinned': pinned}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Failed to update comment (${res.statusCode})');
+    }
   }
 
   /// Persists the AI Creator Coach's feedback for a post so it can be
