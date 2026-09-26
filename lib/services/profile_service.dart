@@ -98,6 +98,55 @@ class ProfileService {
     return [...spotlightedFirst, ...rest].take(limit).toList();
   }
 
+  /// "Rising Creators" — ranked by real follow-growth velocity (new
+  /// `follows` rows in the last 7 days), not raw follower count, so a
+  /// small creator picking up real momentum ranks over a big one who's
+  /// simply plateaued. A minimum recent-follow count keeps a creator
+  /// who picked up two follows by chance from reading as "rising".
+  static Future<List<Map<String, dynamic>>> getRisingCreators({int limit = 10}) async {
+    const minRecentFollows = 3;
+    try {
+      final windowStart = DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
+      final recentFollows = await _client
+          .from('follows')
+          .select('following_id')
+          .gte('created_at', windowStart);
+
+      final counts = <String, int>{};
+      for (final row in (recentFollows as List)) {
+        final id = row['following_id'] as String?;
+        if (id == null) continue;
+        counts[id] = (counts[id] ?? 0) + 1;
+      }
+
+      final rising = counts.entries.where((e) => e.value >= minRecentFollows).toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      if (rising.isEmpty) return [];
+
+      final topIds = rising.take(limit).map((e) => e.key).toList();
+      final profiles = await _client
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .inFilter('id', topIds);
+      final byId = {
+        for (final p in (profiles as List)) p['id'] as String: Map<String, dynamic>.from(p),
+      };
+
+      return topIds
+          .map((id) {
+            final profile = byId[id];
+            if (profile == null) return null;
+            return {...profile, 'recent_follower_count': counts[id]};
+          })
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      // Phase 2-adjacent best-effort — a failed/empty result just means
+      // no Rising Creators row shows, never an error surfaced to Home.
+      return [];
+    }
+  }
+
   static Future<int> getFollowerCount(String userId) async {
     final res = await _client
         .from('follows')

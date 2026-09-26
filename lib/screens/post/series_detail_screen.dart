@@ -14,6 +14,7 @@ import '../../widgets/comments_sheet.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/series_poster_card.dart';
 import '../../widgets/watchlist_button.dart';
+import '../dramas/series_analytics_screen.dart';
 import '../video_feed_screen.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
@@ -104,6 +105,16 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         title: Text(series.title, overflow: TextOverflow.ellipsis),
+        actions: [
+          if (viewerId == series.userId)
+            IconButton(
+              icon: const Icon(Icons.insights_outlined),
+              tooltip: 'Analytics',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => SeriesAnalyticsScreen(series: series)),
+              ),
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.secondary))
