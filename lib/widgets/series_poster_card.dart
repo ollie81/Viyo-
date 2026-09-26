@@ -11,8 +11,14 @@ import '../theme/app_theme.dart';
 class SeriesPosterCard extends StatelessWidget {
   final Series series;
   final VoidCallback onTap;
+  // Set only by rows that actually rank by trending signal (see
+  // SeriesService.getTrendingLabels) — e.g. 'TRENDING NOW'/'RISING
+  // FAST'/'NEW & POPULAR'. Left null anywhere else (Browse, Similar
+  // Dramas, New Releases) so the label never implies a ranking that
+  // row isn't actually using.
+  final String? trendingLabel;
 
-  const SeriesPosterCard({super.key, required this.series, required this.onTap});
+  const SeriesPosterCard({super.key, required this.series, required this.onTap, this.trendingLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +80,22 @@ class SeriesPosterCard extends StatelessWidget {
                         child: Text(
                           '${series.episodeCount} ep',
                           style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  if (trendingLabel != null)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          trendingLabel!,
+                          style: const TextStyle(color: Colors.black, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.2),
                         ),
                       ),
                     ),

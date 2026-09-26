@@ -1,5 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../models/series.dart';
+import '../../services/profile_service.dart';
 import '../../services/series_service.dart';
 import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
@@ -8,6 +10,7 @@ import '../../widgets/drama_sort_toggle.dart';
 import '../../widgets/genre_chip_row.dart';
 import '../../widgets/series_poster_card.dart';
 import '../post/series_detail_screen.dart';
+import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
 import 'watchlist_screen.dart';
 
@@ -29,7 +32,11 @@ class DramaHomeScreen extends StatefulWidget {
 class _DramaHomeScreenState extends State<DramaHomeScreen> {
   List<WatchProgressEntry> _continueWatching = [];
   List<Series> _trending = [];
+  Map<String, String> _trendingLabels = {};
   List<Series> _newReleases = [];
+  List<Map<String, dynamic>> _risingCreators = [];
+  List<Series> _becauseYouWatched = [];
+  String? _becauseYouWatchedTitle;
   bool _loadingRows = true;
 
   List<Series> _browseSeries = [];
@@ -56,18 +63,37 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
     // pair.
     List<Series> trending = [];
     List<Series> newReleases = [];
+    Map<String, String> trendingLabels = {};
     try {
       trending = await SeriesService.getAllSeries(sort: DramaSort.hot, limit: 10);
+      trendingLabels = await SeriesService.getTrendingLabels(trending);
     } catch (_) {}
     try {
       newReleases = await SeriesService.getNewAiSeries(limit: 10);
     } catch (_) {}
+    final risingCreators = await ProfileService.getRisingCreators();
+
+    // Keyed off the most-recently-watched series (continueWatching is
+    // already most-recent-first) — a viewer with no watch history yet
+    // just doesn't get this row, same as every other best-effort row
+    // here.
+    List<Series> becauseYouWatched = [];
+    String? becauseYouWatchedTitle;
+    if (continueWatching.isNotEmpty) {
+      final source = continueWatching.first;
+      becauseYouWatched = await SeriesService.getBecauseYouWatched(source.seriesId);
+      if (becauseYouWatched.isNotEmpty) becauseYouWatchedTitle = source.seriesTitle;
+    }
 
     if (!mounted) return;
     setState(() {
       _continueWatching = continueWatching;
       _trending = trending;
+      _trendingLabels = trendingLabels;
       _newReleases = newReleases;
+      _risingCreators = risingCreators;
+      _becauseYouWatched = becauseYouWatched;
+      _becauseYouWatchedTitle = becauseYouWatchedTitle;
       _loadingRows = false;
     });
   }
@@ -170,7 +196,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
                 sliver: SliverToBoxAdapter(
-                  child: _SeriesRow(series: _trending, onTap: _openSeries),
+                  child: _SeriesRow(series: _trending, onTap: _openSeries, labels: _trendingLabels),
                 ),
               ),
             ],
@@ -183,6 +209,32 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
                 sliver: SliverToBoxAdapter(
                   child: _SeriesRow(series: _newReleases, onTap: _openSeries),
+                ),
+              ),
+            ],
+            if (!_loadingRows && _becauseYouWatched.isNotEmpty) ...[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(12, 18, 12, 8),
+                sliver: SliverToBoxAdapter(
+                  child: _SectionLabel('BECAUSE YOU WATCHED ${_becauseYouWatchedTitle?.toUpperCase() ?? ''}'),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
+                sliver: SliverToBoxAdapter(
+                  child: _SeriesRow(series: _becauseYouWatched, onTap: _openSeries),
+                ),
+              ),
+            ],
+            if (!_loadingRows && _risingCreators.isNotEmpty) ...[
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(12, 18, 12, 8),
+                sliver: SliverToBoxAdapter(child: _SectionLabel('RISING CREATORS')),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
+                sliver: SliverToBoxAdapter(
+                  child: _RisingCreatorsRow(creators: _risingCreators),
                 ),
               ),
             ],
@@ -262,7 +314,12 @@ class _SectionLabel extends StatelessWidget {
 class _SeriesRow extends StatelessWidget {
   final List<Series> series;
   final void Function(Series) onTap;
-  const _SeriesRow({required this.series, required this.onTap});
+  // Only ever passed for the Trending row (see SeriesService
+  // .getTrendingLabels) — every other row (New Releases, Similar
+  // Dramas, Browse) leaves this null so it never shows a trending
+  // label on a row that isn't actually ranked by that signal.
+  final Map<String, String> labels;
+  const _SeriesRow({required this.series, required this.onTap, this.labels = const {}});
 
   @override
   Widget build(BuildContext context) {
@@ -275,7 +332,83 @@ class _SeriesRow extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, i) => SizedBox(
           width: 116,
-          child: SeriesPosterCard(series: series[i], onTap: () => onTap(series[i])),
+          child: SeriesPosterCard(
+            series: series[i],
+            onTap: () => onTap(series[i]),
+            trendingLabel: labels[series[i].id],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Creators picking up real follow momentum in the last 7 days (see
+/// ProfileService.getRisingCreators) — surfaces who's growing, not just
+/// who's already big, alongside the follower-count row's the whole point
+/// of this section.
+class _RisingCreatorsRow extends StatelessWidget {
+  final List<Map<String, dynamic>> creators;
+  const _RisingCreatorsRow({required this.creators});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 104,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(right: 12),
+        itemCount: creators.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (_, i) => _RisingCreatorChip(creator: creators[i]),
+      ),
+    );
+  }
+}
+
+class _RisingCreatorChip extends StatelessWidget {
+  final Map<String, dynamic> creator;
+  const _RisingCreatorChip({required this.creator});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = creator['avatar_url'] as String?;
+    final displayName = (creator['display_name'] as String?) ?? '';
+    final username = (creator['username'] as String?) ?? '';
+    final recentFollows = creator['recent_follower_count'];
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ProfileScreen(userId: creator['id'] as String)),
+      ),
+      child: SizedBox(
+        width: 76,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: AppColors.surfaceBorder,
+              backgroundImage: avatarUrl != null ? CachedNetworkImageProvider(avatarUrl) : null,
+              child: avatarUrl == null
+                  ? Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : '?')
+                  : null,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '@$username',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '+$recentFollows this week',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9.5, color: AppColors.secondary, fontWeight: FontWeight.w700),
+            ),
+          ],
         ),
       ),
     );

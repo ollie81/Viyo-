@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/series.dart';
+import '../models/series_analytics.dart';
 import 'post_service.dart';
 import 'supabase_service.dart';
 import 'web_thumbnail_stub.dart' if (dart.library.html) 'web_thumbnail_html.dart' as web_thumbnail;
@@ -417,6 +418,85 @@ class SeriesService {
     return series.take(limit).toList();
   }
 
+  /// Which of three honest, simple labels each already-ranked series
+  /// (from getAllSeries(sort: hot)) earns — a separate, additive query
+  /// rather than touching getAllSeries' own ranking logic. Per the
+  /// product spec: show a transparent-feeling label, never the actual
+  /// score. Best-effort — an empty map just means no series gets a
+  /// badge, never an error the Trending row would have to handle.
+  static Future<Map<String, String>> getTrendingLabels(List<Series> trendingSeries) async {
+    if (trendingSeries.isEmpty) return {};
+    try {
+      final seriesIds = trendingSeries.map((s) => s.id).toList();
+      final episodeRows = await _client
+          .from('posts')
+          .select('series_id, like_count, comment_count, view_count, created_at')
+          .inFilter('series_id', seriesIds);
+
+      final now = DateTime.now();
+      final scores = <String, double>{};
+      final firstPublished = <String, DateTime>{};
+      for (final row in (episodeRows as List)) {
+        final sid = row['series_id'] as String?;
+        if (sid == null) continue;
+        final likes = (row['like_count'] as num?)?.toInt() ?? 0;
+        final comments = (row['comment_count'] as num?)?.toInt() ?? 0;
+        final views = (row['view_count'] as num?)?.toInt() ?? 0;
+        scores[sid] = (scores[sid] ?? 0) + likes + comments * 2 + views ~/ 10;
+
+        final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+        if (createdAt != null) {
+          final existing = firstPublished[sid];
+          if (existing == null || createdAt.isBefore(existing)) {
+            firstPublished[sid] = createdAt;
+          }
+        }
+      }
+      if (scores.isEmpty) return {};
+
+      // "High for this pool" — the top 30% of trending-row scores —
+      // rather than a fixed number, so the bar scales with however
+      // engaged this app's own trending pool currently is.
+      final sortedScores = scores.values.toList()..sort();
+      final topThreshold = sortedScores[(sortedScores.length * 0.7).floor().clamp(0, sortedScores.length - 1)];
+
+      final labels = <String, String>{};
+      for (final s in trendingSeries) {
+        final firstEp = firstPublished[s.id];
+        final ageDays = firstEp == null ? 999.0 : now.difference(firstEp).inHours / 24.0;
+        final score = scores[s.id] ?? 0;
+        if (ageDays <= 7) {
+          labels[s.id] = 'NEW & POPULAR';
+        } else if (ageDays <= 30 && score >= topThreshold) {
+          labels[s.id] = 'RISING FAST';
+        } else {
+          labels[s.id] = 'TRENDING NOW';
+        }
+      }
+      return labels;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// "Because You Watched" — a lightweight, non-ML recommendation: the
+  /// same genre as one series the viewer's actually watched, hottest
+  /// first, excluding that series itself. Deliberately not a real
+  /// recommender (no collaborative filtering, no embeddings) — genre
+  /// match off real watch history beats a generic trending re-list, and
+  /// costs nothing new to build. Best-effort: an unresolvable source
+  /// series (e.g. since deleted) just means the row doesn't show.
+  static Future<List<Series>> getBecauseYouWatched(String sourceSeriesId, {int limit = 12}) async {
+    try {
+      final source = await getSeries(sourceSeriesId);
+      if (source == null) return [];
+      final results = await getAllSeries(genre: source.genre, sort: DramaSort.hot, limit: limit + 1);
+      return results.where((s) => s.id != sourceSeriesId).take(limit).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Spends coins to unlock a locked episode — routed through the
   /// backend's service-role client since it both debits the viewer and
   /// credits a *different* user's earnings balance, the same
@@ -444,5 +524,28 @@ class SeriesService {
           : (detail is Map ? detail['error']?.toString() : null);
     } catch (_) {}
     throw Exception(message ?? 'Could not unlock episode (${res.statusCode})');
+  }
+
+  /// Owner-only — the backend itself enforces this (403s otherwise),
+  /// this is just the client-side call. Routed through the backend
+  /// rather than a direct client read because the aggregation
+  /// (completion rate/drop-off from watch_progress) happens in Python,
+  /// not something PostgREST can compute on its own.
+  static Future<SeriesAnalytics> getSeriesAnalytics(String seriesId) async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/series/$seriesId/analytics'),
+      headers: {if (token != null) 'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode == 200) {
+      return SeriesAnalytics.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    }
+
+    String? message;
+    try {
+      final data = jsonDecode(res.body);
+      message = data is Map ? data['detail']?.toString() : null;
+    } catch (_) {}
+    throw Exception(message ?? 'Could not load analytics (${res.statusCode})');
   }
 }
