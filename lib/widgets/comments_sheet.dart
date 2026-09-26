@@ -51,6 +51,14 @@ class _CommentsSheetState extends State<_CommentsSheet> {
   List<Map<String, dynamic>> _comments = [];
   bool _loading = true;
   bool _sending = false;
+  bool _spoilerComposing = false;
+  // The comment being replied to, if any — a top-level comment only
+  // (replies are one level deep, no reply-to-a-reply, same as most
+  // short-form comment sections).
+  Map<String, dynamic>? _replyingTo;
+
+  bool get _isPostOwner =>
+      SupabaseService.currentUserId != null && SupabaseService.currentUserId == widget.post.userId;
 
   @override
   void initState() {
@@ -81,8 +89,18 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 
     setState(() => _sending = true);
     try {
-      await PostService.addComment(postId: widget.post.id, userId: userId, content: content);
+      await PostService.addComment(
+        postId: widget.post.id,
+        userId: userId,
+        content: content,
+        parentId: _replyingTo?['id'] as String?,
+        isSpoiler: _spoilerComposing,
+      );
       _commentCtrl.clear();
+      setState(() {
+        _replyingTo = null;
+        _spoilerComposing = false;
+      });
       widget.onCommentAdded?.call();
       await _load();
     } catch (e) {
@@ -94,6 +112,36 @@ class _CommentsSheetState extends State<_CommentsSheet> {
       if (mounted) setState(() => _sending = false);
     }
   }
+
+  Future<void> _togglePin(Map<String, dynamic> comment) async {
+    final pinned = comment['is_pinned'] == true;
+    try {
+      await PostService.pinComment(widget.post.id, comment['id'] as String, !pinned);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(e))),
+      );
+    }
+  }
+
+  // Top-level comments, pinned first (stable otherwise — the fetch is
+  // already created_at-ascending, so this only reorders the pinned
+  // ones to the front rather than fully re-sorting).
+  List<Map<String, dynamic>> get _topLevel {
+    final top = _comments.where((c) => c['parent_id'] == null).toList();
+    top.sort((a, b) {
+      final aPinned = a['is_pinned'] == true;
+      final bPinned = b['is_pinned'] == true;
+      if (aPinned == bPinned) return 0;
+      return aPinned ? -1 : 1;
+    });
+    return top;
+  }
+
+  List<Map<String, dynamic>> _repliesTo(String parentId) =>
+      _comments.where((c) => c['parent_id'] == parentId).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -129,63 +177,104 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: _comments.length,
+                          itemCount: _topLevel.length,
                           itemBuilder: (_, i) {
-                            final c = _comments[i];
+                            final c = _topLevel[i];
+                            final replies = _repliesTo(c['id'] as String);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 16),
-                              child: Row(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: AppColors.surfaceBorder,
-                                    child: Text(
-                                      (c['profiles']?['display_name'] ?? '?')[0].toUpperCase(),
-                                      style: const TextStyle(fontSize: 11),
+                                  _commentTile(c, isReply: false),
+                                  for (final r in replies)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 34, top: 10),
+                                      child: _commentTile(r, isReply: true),
                                     ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(c['profiles']?['display_name'] ?? 'Unknown',
-                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                        SpoilerText(text: c['content'] ?? '', style: const TextStyle(fontSize: 13)),
-                                        Text(
-                                          timeago.format(DateTime.parse(c['created_at'])),
-                                          style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
                                 ],
                               ),
                             );
                           },
                         ),
             ),
+            if (_replyingTo != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Replying to ${_replyingTo!['profiles']?['display_name'] ?? 'comment'}',
+                        style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _replyingTo = null),
+                      child: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
             SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _commentCtrl,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(hintText: 'Add a comment... (||spoiler|| to hide it)'),
-                        onSubmitted: (_) => _send(),
+                    GestureDetector(
+                      onTap: () => setState(() => _spoilerComposing = !_spoilerComposing),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _spoilerComposing ? AppColors.secondary.withOpacity(0.18) : AppColors.surface,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: _spoilerComposing ? AppColors.secondary : AppColors.surfaceBorder,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.visibility_off_outlined,
+                              size: 12,
+                              color: _spoilerComposing ? AppColors.secondary : AppColors.textMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Spoiler',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _spoilerComposing ? AppColors.secondary : AppColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: _sending
-                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.send, color: AppColors.primary),
-                      onPressed: _sending ? null : _send,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _commentCtrl,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: _replyingTo != null ? 'Write a reply...' : 'Add a comment...',
+                            ),
+                            onSubmitted: (_) => _send(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: _sending
+                              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.send, color: AppColors.primary),
+                          onPressed: _sending ? null : _send,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -194,6 +283,86 @@ class _CommentsSheetState extends State<_CommentsSheet> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _commentTile(Map<String, dynamic> c, {required bool isReply}) {
+    final pinned = c['is_pinned'] == true;
+    final content = (c['content'] as String?) ?? '';
+    // A real is_spoiler flag renders through the same SpoilerText a
+    // literal ||text|| convention (Phase 1, still supported) already
+    // uses — wrap the whole thing only if the author didn't already
+    // mark part of it themselves.
+    final isSpoilerFlag = c['is_spoiler'] == true;
+    final displayText = isSpoilerFlag && !content.contains('||') ? '||$content||' : content;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: isReply ? 12 : 14,
+          backgroundColor: AppColors.surfaceBorder,
+          child: Text(
+            (c['profiles']?['display_name'] ?? '?')[0].toUpperCase(),
+            style: TextStyle(fontSize: isReply ? 10 : 11),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(c['profiles']?['display_name'] ?? 'Unknown',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  if (pinned) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'PINNED',
+                        style: TextStyle(fontSize: 8.5, color: AppColors.secondary, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              SpoilerText(text: displayText, style: const TextStyle(fontSize: 13)),
+              Row(
+                children: [
+                  Text(
+                    timeago.format(DateTime.tryParse(c['created_at'] as String? ?? '') ?? DateTime.now()),
+                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                  ),
+                  if (!isReply) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () => setState(() => _replyingTo = c),
+                      child: const Text('Reply',
+                          style: TextStyle(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                  if (_isPostOwner) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () => _togglePin(c),
+                      child: Text(
+                        pinned ? 'Unpin' : 'Pin',
+                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

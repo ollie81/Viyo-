@@ -13,6 +13,7 @@ import '../../utils/friendly_error.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/series_poster_card.dart';
+import '../../widgets/watchlist_button.dart';
 import '../video_feed_screen.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
@@ -89,11 +90,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   /// Local-only resume positions (see WatchProgressService) for
   /// whichever episodes have one — powers each tile's "Resume" label.
   Future<void> _loadResumePositions(List<Post> episodes) async {
-    final positions = <String, Duration>{};
-    for (final ep in episodes) {
-      final pos = await WatchProgressService.getPosition(ep.id);
-      if (pos != null) positions[ep.id] = pos;
-    }
+    final positions = await WatchProgressService.getPositions(episodes.map((e) => e.id).toList());
     if (!mounted) return;
     setState(() => _resumePositions = positions);
   }
@@ -284,10 +281,19 @@ class _SeriesHeader extends StatelessWidget {
                     ],
                   ],
                 ),
-                if (viewerId != series.userId) ...[
-                  const SizedBox(height: 10),
-                  _FollowCreatorButton(creatorId: series.userId, creatorUsername: series.authorUsername),
-                ],
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (viewerId != series.userId) ...[
+                      _FollowCreatorButton(creatorId: series.userId, creatorUsername: series.authorUsername),
+                      _FollowSeriesButton(seriesId: series.id),
+                    ],
+                    WatchlistButton(targetType: 'series', targetId: series.id, size: 20),
+                  ],
+                ),
               ],
             ),
           ),
@@ -385,6 +391,86 @@ class _FollowCreatorButtonState extends State<_FollowCreatorButton> {
                 style: const TextStyle(fontSize: 12.5, color: Colors.black, fontWeight: FontWeight.w700),
               ),
             ),
+    );
+  }
+}
+
+/// True per-series follow (series_follows) — separate from
+/// _FollowCreatorButton above. A viewer who wants updates on this one
+/// show without following everything else this creator makes (or the
+/// reverse) needs both to exist as distinct choices. Phase 2 table —
+/// SeriesService's methods already fail safe if it doesn't exist yet.
+class _FollowSeriesButton extends StatefulWidget {
+  final String seriesId;
+  const _FollowSeriesButton({required this.seriesId});
+
+  @override
+  State<_FollowSeriesButton> createState() => _FollowSeriesButtonState();
+}
+
+class _FollowSeriesButtonState extends State<_FollowSeriesButton> {
+  bool? _following;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final viewerId = SupabaseService.currentUserId;
+    if (viewerId == null) {
+      if (mounted) setState(() => _following = false);
+      return;
+    }
+    final following = await SeriesService.isFollowingSeries(viewerId, widget.seriesId);
+    if (mounted) setState(() => _following = following);
+  }
+
+  Future<void> _toggle() async {
+    if (_busy || _following == null) return;
+    if (!await GuestGate.allow(context, action: 'follow this series')) return;
+    final viewerId = SupabaseService.currentUserId;
+    if (viewerId == null) return;
+
+    setState(() => _busy = true);
+    try {
+      if (_following!) {
+        await SeriesService.unfollowSeries(viewerId, widget.seriesId);
+      } else {
+        await SeriesService.followSeries(viewerId, widget.seriesId);
+      }
+      if (mounted) setState(() => _following = !_following!);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_following == null) return const SizedBox(height: 32);
+    final following = _following!;
+    return SizedBox(
+      height: 32,
+      child: OutlinedButton.icon(
+        onPressed: _busy ? null : _toggle,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          foregroundColor: following ? AppColors.secondary : AppColors.textSecondary,
+          side: BorderSide(color: following ? AppColors.secondary : AppColors.surfaceBorder),
+        ),
+        icon: Icon(following ? Icons.favorite : Icons.favorite_border, size: 15),
+        label: Text(
+          following ? 'Following series' : 'Follow series',
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        ),
+      ),
     );
   }
 }

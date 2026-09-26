@@ -9,6 +9,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/episode_lock.dart';
 import 'report_sheet.dart';
+import 'watchlist_button.dart';
 import '../screens/post/post_detail_screen.dart';
 
 class PostCard extends StatelessWidget {
@@ -330,13 +331,7 @@ class PostCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  tooltip: 'More',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () {},
-                  icon: const Icon(Icons.bookmark_border_rounded,
-                      color: AppColors.textSecondary, size: 21),
-                ),
+                WatchlistButton(targetType: 'post', targetId: post.id),
               ],
             ),
           ),

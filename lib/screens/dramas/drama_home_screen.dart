@@ -9,6 +9,7 @@ import '../../widgets/genre_chip_row.dart';
 import '../../widgets/series_poster_card.dart';
 import '../post/series_detail_screen.dart';
 import '../video_feed_screen.dart';
+import 'watchlist_screen.dart';
 
 /// The dedicated Short Drama home — previously drama discovery was
 /// nested two levels deep (a tab inside Home's TabBar, and a section
@@ -133,6 +134,15 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
             Text('Short Dramas'),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bookmark_border_rounded),
+            tooltip: 'My Watchlist',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const WatchlistScreen()),
+            ),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
