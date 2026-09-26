@@ -11,6 +11,15 @@ class Series {
   final String genre;
   final DateTime createdAt;
 
+  // 'ongoing' | 'completed' | null. Null until a `status` column
+  // exists on `series` — read opportunistically (see fromJson) rather
+  // than sent on insert: a PostgREST insert referencing a nonexistent
+  // column fails the whole write, so createSeries deliberately never
+  // includes this key. Every place this is displayed is gated on
+  // `!= null`, so it stays invisible today and lights up automatically
+  // once the column exists, no follow-up deploy required.
+  final String? status;
+
   // Populated client-side after a join with `profiles`, same as Post.
   final String? authorUsername;
   final String? authorDisplayName;
@@ -34,6 +43,7 @@ class Series {
     this.authorDisplayName,
     this.authorAvatarUrl,
     this.episodeCount = 0,
+    this.status,
   });
 
   factory Series.fromJson(Map<String, dynamic> json, {int episodeCount = 0}) => Series(
@@ -49,6 +59,7 @@ class Series {
         authorDisplayName: json['profiles']?['display_name'],
         authorAvatarUrl: json['profiles']?['avatar_url'],
         episodeCount: episodeCount,
+        status: json['status'] as String?,
       );
 
   Series copyWith({int? episodeCount, String? coverImageUrl}) => Series(
@@ -62,6 +73,7 @@ class Series {
         createdAt: createdAt,
         authorUsername: authorUsername,
         authorDisplayName: authorDisplayName,
+        status: status,
         authorAvatarUrl: authorAvatarUrl,
         episodeCount: episodeCount ?? this.episodeCount,
       );

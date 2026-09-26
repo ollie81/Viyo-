@@ -6,6 +6,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/friendly_error.dart';
 import 'guest_gate.dart';
+import 'spoiler_text.dart';
 
 /// Comments as a partial-height overlay instead of a full navigation.
 ///
@@ -151,7 +152,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                                       children: [
                                         Text(c['profiles']?['display_name'] ?? 'Unknown',
                                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                        Text(c['content'], style: const TextStyle(fontSize: 13)),
+                                        SpoilerText(text: c['content'] ?? '', style: const TextStyle(fontSize: 13)),
                                         Text(
                                           timeago.format(DateTime.parse(c['created_at'])),
                                           style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
@@ -175,7 +176,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                       child: TextField(
                         controller: _commentCtrl,
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(hintText: 'Add a comment...'),
+                        decoration: const InputDecoration(hintText: 'Add a comment... (||spoiler|| to hide it)'),
                         onSubmitted: (_) => _send(),
                       ),
                     ),

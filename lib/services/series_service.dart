@@ -72,6 +72,23 @@ class SeriesService {
     } catch (_) {}
   }
 
+  /// Fires the new-episode fan-out to the creator's followers — see
+  /// episode_notify.py. Fire-and-forget, same posture as setCoverImage
+  /// above: a dropped notification must never surface as an upload
+  /// failure to the creator who's actually waiting on the real result.
+  static Future<void> notifyNewEpisode(String postId) async {
+    try {
+      final token = _client.auth.currentSession?.accessToken;
+      await http.post(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/episodes/$postId/notify-followers'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+    } catch (_) {}
+  }
+
   // Series ids already backfilled (or attempted and failed) this app
   // session — a plain in-memory guard against every concurrent screen
   // that lists series (Dramas tab, Discover) kicking off its own

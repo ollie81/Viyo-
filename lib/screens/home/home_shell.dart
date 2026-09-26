@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/create_menu_sheet.dart';
 import '../../widgets/viyo_glass_bottom_nav.dart';
+import '../dramas/drama_home_screen.dart';
 import '../mission_screen.dart';
 import '../post/create_post_screen.dart';
 import '../post/upload_ai_drama_screen.dart';
@@ -25,6 +26,7 @@ class _HomeShellState extends State<HomeShell> {
     CreatePostScreen(),
     MissionsScreen(),
     ProfileScreen(),
+    DramaHomeScreen(),
   ];
 
   // The "+" tab (index 2) is CreatePostScreen in the IndexedStack above

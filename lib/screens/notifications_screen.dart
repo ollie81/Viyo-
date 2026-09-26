@@ -46,6 +46,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.card_giftcard;
       case 'mission':
         return Icons.flag;
+      case 'new_episode':
+        return Icons.auto_awesome;
       default:
         return Icons.notifications;
     }

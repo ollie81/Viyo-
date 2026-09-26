@@ -12,6 +12,7 @@ import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/post_card.dart';
+import '../../widgets/spoiler_text.dart';
 import 'video_coach_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
@@ -327,7 +328,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 children: [
                                   Text(c['profiles']?['display_name'] ?? 'Unknown',
                                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                  Text(c['content'], style: const TextStyle(fontSize: 13)),
+                                  SpoilerText(text: c['content'] ?? '', style: const TextStyle(fontSize: 13)),
                                   Text(
                                     timeago.format(DateTime.parse(c['created_at'])),
                                     style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
