@@ -7,6 +7,7 @@ import '../services/post_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/friendly_error.dart';
 import '../widgets/drama_sort_toggle.dart';
 import '../widgets/genre_chip_row.dart';
 import '../widgets/guest_gate.dart';
@@ -135,7 +136,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update like: $e')),
+        SnackBar(content: Text('Could not update like: ${friendlyErrorMessage(e)}')),
       );
     }
   }

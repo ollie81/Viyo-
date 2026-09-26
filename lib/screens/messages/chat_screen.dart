@@ -3,6 +3,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../models/conversation.dart';
 import '../../services/messaging_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -72,7 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
       MessagingService.markRead(widget.conversationId).catchError((_) {});
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+      setState(() => _error = friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -115,7 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // Put the text back so nothing typed is lost to a failed send.
       _controller.text = text;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+        SnackBar(content: Text(friendlyErrorMessage(e))),
       );
     } finally {
       if (mounted) setState(() => _sending = false);

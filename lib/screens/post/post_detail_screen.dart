@@ -8,6 +8,7 @@ import '../../services/post_boost_service.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/post_card.dart';
@@ -68,7 +69,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not post comment: $e')),
+        SnackBar(content: Text('Could not post comment: ${friendlyErrorMessage(e)}')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -278,7 +279,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update like: $e')),
+        SnackBar(content: Text('Could not update like: ${friendlyErrorMessage(e)}')),
       );
     }
   }

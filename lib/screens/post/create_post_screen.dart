@@ -9,6 +9,7 @@ import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/upload_progress_card.dart';
@@ -374,7 +375,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // appearing with no way to tell why.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI Coach unavailable: $e')),
+        SnackBar(content: Text('AI Coach unavailable: ${friendlyErrorMessage(e)}')),
       );
     }
   }
