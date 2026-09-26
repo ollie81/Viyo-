@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/moderation_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/friendly_error.dart';
 
 /// Bottom sheet for reporting a post or a user. Tapping a reason submits
 /// immediately — "Other" prompts for a short free-text reason first.
@@ -89,7 +90,7 @@ Future<void> showReportSheet(
   } catch (e) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Could not submit report: $e')),
+      SnackBar(content: Text('Could not submit report: ${friendlyErrorMessage(e)}')),
     );
   }
 }

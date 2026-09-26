@@ -18,6 +18,10 @@ class ViyoGlassBottomNav extends StatelessWidget {
     (Icons.add_rounded, Icons.add_rounded, 'Post'),
     (Icons.flag_outlined, Icons.flag_rounded, 'Missions'),
     (Icons.person_outline_rounded, Icons.person_rounded, 'Profile'),
+    // Sparkle matches the drama visual language already used everywhere
+    // else in the app (SeriesPosterCard, the video feed's series badge,
+    // the upload screen) rather than introducing a new icon language.
+    (Icons.auto_awesome_outlined, Icons.auto_awesome_rounded, 'Dramas'),
   ];
 
   @override

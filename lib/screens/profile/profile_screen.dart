@@ -14,6 +14,7 @@ import '../../services/messaging_service.dart';
 import '../../services/series_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 import '../../widgets/coin_badge.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
@@ -294,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+        SnackBar(content: Text(friendlyErrorMessage(e))),
       );
     }
   }
@@ -361,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update like: $e')),
+        SnackBar(content: Text('Could not update like: ${friendlyErrorMessage(e)}')),
       );
     }
   }
@@ -1042,7 +1043,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Action failed: $e')),
+        SnackBar(content: Text('Action failed: ${friendlyErrorMessage(e)}')),
       );
     }
   }

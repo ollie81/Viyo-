@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -10,11 +11,13 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
+import '../services/watch_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/episode_lock.dart';
 import '../utils/friendly_error.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/guest_gate.dart';
+import '../widgets/up_next_overlay.dart';
 import 'profile/profile_screen.dart';
 
 /// Viyo's video feed — full-screen, immersive playback (system UI
@@ -225,11 +228,17 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                   itemBuilder: (ctx, i) {
                     final post = _posts[i];
                     final locked = isEpisodeLocked(post, viewerId: SupabaseService.currentUserId);
+                    final nextPost = i + 1 < _posts.length ? _posts[i + 1] : null;
+                    final nextLocked = nextPost != null
+                        ? isEpisodeLocked(nextPost, viewerId: SupabaseService.currentUserId)
+                        : false;
                     return _VideoPage(
                       key: ValueKey(post.id),
                       post: post,
                       isActive: i == _currentIndex,
                       isLocked: locked,
+                      nextPost: nextPost,
+                      nextLocked: nextLocked,
                       // Only auto-advance within a series — the global
                       // video feed keeps its existing loop-forever
                       // behavior, since there's no "next episode" to
@@ -253,6 +262,11 @@ class _VideoPage extends StatefulWidget {
   final Post post;
   final bool isActive;
   final bool isLocked;
+  // The next page in the PageView, if any — used only to populate the
+  // Up Next overlay (thumbnail/title/lock state); playback itself
+  // never touches this post directly.
+  final Post? nextPost;
+  final bool nextLocked;
   // When true, this page doesn't loop — it plays once and calls onEnded,
   // which the parent uses to auto-advance to the next page. Only set for
   // series playback; the general video feed keeps looping.
@@ -270,6 +284,8 @@ class _VideoPage extends StatefulWidget {
     required this.post,
     required this.isActive,
     required this.isLocked,
+    this.nextPost,
+    this.nextLocked = false,
     this.autoAdvance = false,
     this.onEnded,
     required this.onLike,
@@ -291,6 +307,13 @@ class _VideoPageState extends State<_VideoPage> {
   bool _liked = false;
   bool _initError = false;
   bool _unlocking = false;
+  bool _showUpNext = false;
+
+  // Throttles WatchProgressService writes — video_player's listener
+  // fires far too often (essentially every frame) to persist on every
+  // callback without hammering SharedPreferences.
+  Duration? _lastSavedPosition;
+  static const _savePositionInterval = Duration(seconds: 3);
 
   Future<void> _handleUnlock() async {
     if (_unlocking) return;
@@ -327,6 +350,14 @@ class _VideoPageState extends State<_VideoPage> {
       await controller.initialize();
       await controller.setLooping(!widget.autoAdvance);
       await controller.setVolume(_muted ? 0 : 1);
+
+      // Resume where this viewer left off, if anywhere — local-only
+      // (see WatchProgressService), so this is per-device, not synced.
+      final resumeAt = await WatchProgressService.getPosition(widget.post.id);
+      if (resumeAt != null && resumeAt < controller.value.duration) {
+        await controller.seekTo(resumeAt);
+        _lastSavedPosition = resumeAt;
+      }
     } catch (_) {
       // The video genuinely failed to load — this is the real
       // "unavailable" case.
@@ -362,20 +393,36 @@ class _VideoPageState extends State<_VideoPage> {
 
   void _videoListener() {
     if (!mounted) return;
-    // video_player has no explicit "completed" event — a non-looping
-    // controller just pauses once it reaches the end, so that's the
-    // signal to treat as "this episode is over" and fire onEnded once.
-    if (widget.autoAdvance && !_ended) {
-      final c = _controller;
-      if (c != null && c.value.isInitialized && c.value.duration > Duration.zero) {
+    final c = _controller;
+    if (c != null && c.value.isInitialized && c.value.duration > Duration.zero) {
+      _maybeSavePosition(c.value.position, c.value.duration);
+
+      // video_player has no explicit "completed" event — a non-looping
+      // controller just pauses once it reaches the end, so that's the
+      // signal to treat as "this episode is over" and fire onEnded once
+      // (or, if there's a next episode queued, show Up Next instead of
+      // advancing immediately/silently).
+      if (widget.autoAdvance && !_ended) {
         final remaining = c.value.duration - c.value.position;
         if (remaining <= const Duration(milliseconds: 200)) {
           _ended = true;
-          widget.onEnded?.call();
+          unawaited(WatchProgressService.clearPosition(widget.post.id));
+          if (widget.nextPost != null) {
+            _showUpNext = true;
+          } else {
+            widget.onEnded?.call();
+          }
         }
       }
     }
     setState(() {});
+  }
+
+  void _maybeSavePosition(Duration position, Duration duration) {
+    final last = _lastSavedPosition;
+    if (last != null && (position - last).abs() < _savePositionInterval) return;
+    _lastSavedPosition = position;
+    unawaited(WatchProgressService.savePosition(widget.post, position, duration));
   }
 
   @override
@@ -410,6 +457,13 @@ class _VideoPageState extends State<_VideoPage> {
   @override
   void dispose() {
     _controller?.removeListener(_videoListener);
+    final c = _controller;
+    if (c != null && c.value.isInitialized && c.value.duration > Duration.zero && !_ended) {
+      // Fire-and-forget final flush — dispose() can't be async, and a
+      // position saved 3 seconds ago (the throttle window) is close
+      // enough that losing this exact write isn't worth blocking on.
+      unawaited(WatchProgressService.savePosition(widget.post, c.value.position, c.value.duration));
+    }
     _controller?.dispose();
     super.dispose();
   }
@@ -682,6 +736,20 @@ class _VideoPageState extends State<_VideoPage> {
                   ),
                 ],
               ),
+            ),
+          ),
+
+        if (_showUpNext && widget.nextPost != null)
+          Positioned.fill(
+            child: UpNextOverlay(
+              nextPost: widget.nextPost!,
+              nextLocked: widget.nextLocked,
+              onCancel: () => setState(() => _showUpNext = false),
+              onAdvance: () {
+                setState(() => _showUpNext = false);
+                widget.onEnded?.call();
+              },
+              onBackToSeries: () => Navigator.of(context).pop(),
             ),
           ),
       ],

@@ -5,6 +5,7 @@ import '../../models/coach_video_context.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../services/ai_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 import '../../widgets/coach_markdown.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 
@@ -93,9 +94,11 @@ class _VideoCoachScreenState extends State<VideoCoachScreen> {
   }
 
   /// Server detail strings arrive wrapped in "Exception: " — the creator
-  /// should read the problem, not Dart's punctuation.
-  String _readable(Object e) =>
-      e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+  /// should read the problem, not Dart's punctuation. Also catches the
+  /// "ClientException: Failed to fetch, uri=..." shape a dropped
+  /// connection produces, which the plain prefix-strip above left
+  /// completely untouched.
+  String _readable(Object e) => friendlyErrorMessage(e);
 
   Future<void> _send([String? preset]) async {
     final message = (preset ?? _messageController.text).trim();

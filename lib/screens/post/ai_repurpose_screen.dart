@@ -15,6 +15,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/upload_progress_card.dart';
+import '../../utils/friendly_error.dart';
 import 'video_coach_screen.dart';
 
 /// AI Repurposer — upload a longer video, get back up to 5 ranked
@@ -171,14 +172,35 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       const maxAttempts = 120; // ~8 minutes, generous for the longest allowed video
 
       Map<String, dynamic>? finalResult;
+      // A dropped request here (weak signal, a brief network blip) is not
+      // the same as the job failing — the 40 coins are already spent and
+      // the backend may still be rendering, or already done. Losing the
+      // whole result to one bad request out of up to 120 would throw away
+      // real, finished work over a hiccup a retry 4 seconds later would
+      // have sailed through. Only a real HTTP response (job failed, not
+      // found, not yours) ends the job — a network-level exception just
+      // counts against a small retry budget instead.
+      var consecutiveNetworkFailures = 0;
+      const maxConsecutiveNetworkFailures = 5;
       for (var attempt = 0; attempt < maxAttempts; attempt++) {
         await Future.delayed(pollInterval);
         if (!mounted) return;
 
-        final statusResponse = await http.get(
-          statusUri,
-          headers: {if (token != null) 'Authorization': 'Bearer $token'},
-        );
+        http.Response statusResponse;
+        try {
+          statusResponse = await http.get(
+            statusUri,
+            headers: {if (token != null) 'Authorization': 'Bearer $token'},
+          );
+        } catch (_) {
+          consecutiveNetworkFailures++;
+          if (consecutiveNetworkFailures >= maxConsecutiveNetworkFailures) {
+            throw Exception('Lost connection while checking on your clip.');
+          }
+          continue;
+        }
+        consecutiveNetworkFailures = 0;
+
         if (statusResponse.statusCode != 200) {
           final body = jsonDecode(statusResponse.body);
           throw Exception(body['detail'] ?? 'Server returned ${statusResponse.statusCode}');
@@ -210,7 +232,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     } on InsufficientCoinsException catch (e) {
       if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
-      setState(() => _error = 'Processing failed: $e');
+      setState(() => _error = 'Processing failed: ${friendlyErrorMessage(e)}');
     } finally {
       if (mounted) {
         setState(() {
@@ -263,7 +285,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       );
       Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _error = 'Could not post: $e');
+      setState(() => _error = 'Could not post: ${friendlyErrorMessage(e)}');
     } finally {
       if (mounted) setState(() => _posting = false);
     }

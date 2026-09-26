@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/post.dart';
@@ -205,7 +206,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       }
 
       final episodeNumber = _creatingNewSeries ? 1 : _nextEpisodeNumber;
-      await PostService.createPost(
+      final episode = await PostService.createPost(
         userId: userId,
         type: PostType.video,
         caption: _caption.text.trim(),
@@ -214,6 +215,10 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         seriesId: series.id,
         episodeNumber: episodeNumber,
       );
+
+      // Fire-and-forget — a dropped notification call must never turn
+      // a successful upload into an error the creator sees.
+      unawaited(SeriesService.notifyNewEpisode(episode.id));
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

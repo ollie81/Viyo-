@@ -4,6 +4,7 @@ import '../../services/ai_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
 import 'admin/moderation_review_screen.dart';
 import 'auth/login_screen.dart';
@@ -103,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!context.mounted) return;
       setState(() => _deleting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not delete account: $e')),
+        SnackBar(content: Text('Could not delete account: ${friendlyErrorMessage(e)}')),
       );
     }
   }

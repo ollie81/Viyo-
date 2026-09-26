@@ -3,6 +3,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../models/conversation.dart';
 import '../../services/messaging_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/friendly_error.dart';
 import 'chat_screen.dart';
 
 class ConversationsScreen extends StatefulWidget {
@@ -34,7 +35,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       setState(() => _conversations = conversations);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+      setState(() => _error = friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
