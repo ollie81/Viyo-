@@ -360,10 +360,17 @@ class SeriesService {
   /// episodes in one extra query and aggregate client-side — the same
   /// "rank a bounded pool client-side" tradeoff PostService.getFeed
   /// already makes, just one level up (series instead of posts).
+  // A series-level boost (see SeriesBoostService/series_boost.py) is a
+  // bigger, pricier commitment than a single episode's own is_boosted
+  // flag below — it lifts the whole series' aggregate score, not one
+  // episode's contribution to it, so it gets a stronger multiplier.
+  static const double _seriesBoostMultiplier = 5.0;
+
   static Future<List<Series>> getAllSeries({
     String? genre,
     DramaSort sort = DramaSort.newest,
     int limit = 60,
+    Set<String> boostedSeriesIds = const {},
   }) async {
     var query = _client.from('series').select('*, profiles(username, display_name, avatar_url)');
     if (genre != null && genre.isNotEmpty) {
@@ -412,6 +419,12 @@ class SeriesService {
       // home feed/Discover already honor, now meaningful here too.
       if (row['is_boosted'] == true) contribution *= _boostMultiplier;
       scores[sid] = (scores[sid] ?? 0) + contribution;
+    }
+
+    if (boostedSeriesIds.isNotEmpty) {
+      for (final sid in scores.keys.toList()) {
+        if (boostedSeriesIds.contains(sid)) scores[sid] = scores[sid]! * _seriesBoostMultiplier;
+      }
     }
 
     series.sort((a, b) => (scores[b.id] ?? 0).compareTo(scores[a.id] ?? 0));

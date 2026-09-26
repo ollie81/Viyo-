@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../models/series.dart';
 import '../../services/profile_service.dart';
+import '../../services/series_boost_service.dart';
 import '../../services/series_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/watch_progress_service.dart';
@@ -12,6 +14,7 @@ import '../../utils/episode_lock.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/guest_gate.dart';
+import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/series_poster_card.dart';
 import '../../widgets/watchlist_button.dart';
 import '../dramas/series_analytics_screen.dart';
@@ -150,6 +153,10 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     viewerId: viewerId,
                     onStatusChanged: (status) => setState(() => _series = _series.copyWith(status: status)),
                   ),
+                  if (viewerId == series.userId) ...[
+                    const SizedBox(height: 10),
+                    _SeriesBoostSection(seriesId: series.id),
+                  ],
                   const SizedBox(height: 18),
                   const Text('EPISODES', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
@@ -559,6 +566,141 @@ class _StatusToggleState extends State<_StatusToggle> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Owner-only — spends coins to feature this whole series in
+/// Discover/Trending for a fixed window (see SeriesBoostService /
+/// viyo_ai's series_boost.py), distinct from a single episode's own
+/// per-post boost. Self-expiring server-side, so this only ever needs
+/// to know "is it boosted right now", never track a countdown itself.
+class _SeriesBoostSection extends StatefulWidget {
+  final String seriesId;
+  const _SeriesBoostSection({required this.seriesId});
+
+  @override
+  State<_SeriesBoostSection> createState() => _SeriesBoostSectionState();
+}
+
+class _SeriesBoostSectionState extends State<_SeriesBoostSection> {
+  bool? _isBoosted; // null while the initial check is still loading
+  bool _boosting = false;
+  String? _boostError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final boostedIds = await SeriesBoostService.getActiveBoostedSeriesIds();
+      if (mounted) setState(() => _isBoosted = boostedIds.contains(widget.seriesId));
+    } catch (_) {
+      // Best-effort, same as every other boosted/spotlight lookup in
+      // this app — falls back to "not boosted" rather than blocking
+      // the button, since worst case a creator just sees the button
+      // when they're actually already boosted and gets a clear 400.
+      if (mounted) setState(() => _isBoosted = false);
+    }
+  }
+
+  Future<void> _boost() async {
+    if (_boosting || _isBoosted != false) return;
+    setState(() {
+      _boosting = true;
+      _boostError = null;
+    });
+    try {
+      await SeriesBoostService.boostSeries(widget.seriesId);
+      if (mounted) setState(() => _isBoosted = true);
+    } on InsufficientCoinsException catch (e) {
+      if (mounted) showInsufficientCoinsSheet(context, e);
+    } catch (e) {
+      if (mounted) setState(() => _boostError = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _boosting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isBoosted == null) return const SizedBox.shrink();
+
+    if (_isBoosted!) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.4)),
+        child: const Row(
+          children: [
+            Icon(Icons.rocket_launch_outlined, size: 16, color: AppColors.secondary),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'This series is boosted — it ranks higher in Trending and Browse while it stays fresh.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _boosting ? null : _boost,
+          icon: _boosting
+              ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.rocket_launch_outlined, size: 16, color: AppColors.secondary),
+          label: _boosting
+              ? const Text('Boosting...')
+              : const _CoinButtonLabel(text: 'Boost This Series', cost: FeatureCoinCosts.boostSeries),
+        ),
+        if (_boostError != null) ...[
+          const SizedBox(height: 6),
+          Text(_boostError!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+        ],
+      ],
+    );
+  }
+}
+
+/// A button label with a small coin-cost chip — same visual pattern as
+/// post_detail_screen.dart's own (private, so duplicated rather than
+/// shared across files, matching this codebase's per-screen widget
+/// convention).
+class _CoinButtonLabel extends StatelessWidget {
+  final String text;
+  final int cost;
+  const _CoinButtonLabel({required this.text, required this.cost});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(text),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.coin.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.monetization_on, size: 11, color: AppColors.coin),
+              const SizedBox(width: 2),
+              Text('$cost', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.coin)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

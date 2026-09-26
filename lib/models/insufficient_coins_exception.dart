@@ -30,4 +30,5 @@ class FeatureCoinCosts {
   static const postInsight = 5;
   static const boostPost = 30;
   static const spotlight = 25;
+  static const boostSeries = 60;
 }

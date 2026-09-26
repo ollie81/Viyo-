@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../models/series.dart';
 import '../../services/profile_service.dart';
+import '../../services/series_boost_service.dart';
 import '../../services/series_service.dart';
 import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
@@ -37,6 +38,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
   List<Map<String, dynamic>> _risingCreators = [];
   List<Series> _becauseYouWatched = [];
   String? _becauseYouWatchedTitle;
+  Set<String> _boostedSeriesIds = {};
   bool _loadingRows = true;
 
   List<Series> _browseSeries = [];
@@ -61,12 +63,23 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
     // failing shouldn't blank the whole screen, same reasoning
     // feed_screen.dart already applies to its own For You/Following
     // pair.
+    Set<String> boostedIds = {};
+    try {
+      boostedIds = (await SeriesBoostService.getActiveBoostedSeriesIds()).toSet();
+    } catch (_) {}
+
     List<Series> trending = [];
     List<Series> newReleases = [];
     Map<String, String> trendingLabels = {};
     try {
-      trending = await SeriesService.getAllSeries(sort: DramaSort.hot, limit: 10);
+      trending = await SeriesService.getAllSeries(sort: DramaSort.hot, limit: 10, boostedSeriesIds: boostedIds);
       trendingLabels = await SeriesService.getTrendingLabels(trending);
+      // A paid boost is an explicit "feature me" signal from the
+      // creator — takes precedence over an organically-computed
+      // trending label rather than being shown alongside it.
+      for (final s in trending) {
+        if (boostedIds.contains(s.id)) trendingLabels[s.id] = 'BOOSTED';
+      }
     } catch (_) {}
     try {
       newReleases = await SeriesService.getNewAiSeries(limit: 10);
@@ -94,6 +107,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
       _risingCreators = risingCreators;
       _becauseYouWatched = becauseYouWatched;
       _becauseYouWatchedTitle = becauseYouWatchedTitle;
+      _boostedSeriesIds = boostedIds;
       _loadingRows = false;
     });
   }
@@ -104,11 +118,21 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
       _browseError = null;
     });
     try {
+      // Independent lookup rather than reusing _boostedSeriesIds —
+      // _loadBrowse can run before _loadRows finishes (both fire from
+      // initState together) or entirely on its own (genre/sort change),
+      // so it can't assume _loadRows has already populated that field.
+      Set<String> boostedIds = _boostedSeriesIds;
+      try {
+        boostedIds = (await SeriesBoostService.getActiveBoostedSeriesIds()).toSet();
+      } catch (_) {}
+
       final genre = _selectedGenre == GenreChipRow.all ? null : _selectedGenre;
-      final series = await SeriesService.getAllSeries(genre: genre, sort: _selectedSort);
+      final series = await SeriesService.getAllSeries(genre: genre, sort: _selectedSort, boostedSeriesIds: boostedIds);
       if (!mounted) return;
       setState(() {
         _browseSeries = series;
+        _boostedSeriesIds = boostedIds;
         _loadingBrowse = false;
       });
     } catch (e) {
@@ -286,7 +310,11 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
                     childAspectRatio: 0.6,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (ctx, i) => SeriesPosterCard(series: _browseSeries[i], onTap: () => _openSeries(_browseSeries[i])),
+                    (ctx, i) => SeriesPosterCard(
+                      series: _browseSeries[i],
+                      onTap: () => _openSeries(_browseSeries[i]),
+                      trendingLabel: _boostedSeriesIds.contains(_browseSeries[i].id) ? 'BOOSTED' : null,
+                    ),
                     childCount: _browseSeries.length,
                   ),
                 ),
