@@ -51,6 +51,12 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   int _uploadTotalBytes = 0;
   String? _error;
 
+  // Viyo never verifies what a creator uploads actually belongs to
+  // them — this is the one check that exists in its place: a real,
+  // recorded assertion at the moment of publishing, not just a buried
+  // clause in a terms-of-service page nobody reads.
+  bool _rightsConfirmed = false;
+
   @override
   void initState() {
     super.initState();
@@ -145,6 +151,10 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
     }
     if (!_creatingNewSeries && _selectedSeries == null) {
       setState(() => _error = 'Pick a series to add this episode to');
+      return;
+    }
+    if (!_rightsConfirmed) {
+      setState(() => _error = 'Confirm you own the rights to this video before publishing');
       return;
     }
     if (!await GuestGate.allow(context, action: 'upload a Short Drama')) return;
@@ -408,6 +418,19 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
               maxLines: 3,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(hintText: 'Caption for this episode (optional)'),
+            ),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              value: _rightsConfirmed,
+              onChanged: busy ? null : (v) => setState(() => _rightsConfirmed = v ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppColors.secondary,
+              dense: true,
+              title: const Text(
+                'I own this video, or have the right to post it',
+                style: TextStyle(fontSize: 12.5),
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),

@@ -19,6 +19,7 @@ class ModerationService {
     'Hate speech',
     'Nudity or sexual content',
     'Violence or dangerous behavior',
+    'Copyright infringement',
     'Misinformation',
     'Other',
   ];

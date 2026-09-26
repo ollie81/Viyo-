@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/ai_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
@@ -6,8 +7,21 @@ import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
 import 'admin/moderation_review_screen.dart';
 import 'auth/login_screen.dart';
+import 'copyright_screen.dart';
 import 'invite_screen.dart';
 import 'privacy_screen.dart';
+
+// Same inbox as copyright_screen.dart's takedown contact — one address
+// for both since there's no separate support team to split them across.
+const _supportEmail = 'olli1234x@gmail.com';
+
+Future<void> _emailSupport(BuildContext context, {required String subject}) async {
+  final uri = Uri(scheme: 'mailto', path: _supportEmail, query: 'subject=${Uri.encodeComponent(subject)}');
+  final opened = await launchUrl(uri);
+  if (!opened && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email us at $_supportEmail')));
+  }
+}
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -158,9 +172,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _divider(),
             _tile(
               context,
+              icon: Icons.copyright_outlined,
+              title: 'Copyright',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CopyrightScreen()),
+              ),
+            ),
+            _divider(),
+            _tile(
+              context,
               icon: Icons.help_outline,
               title: 'Help & Support',
-              onTap: () {},
+              onTap: () => _emailSupport(context, subject: 'Viyo support'),
             ),
           ]),
           const SizedBox(height: 16),
