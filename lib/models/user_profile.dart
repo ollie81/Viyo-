@@ -52,7 +52,13 @@ class UserProfile {
         lastCheckinDate: json['last_checkin_date'] != null
             ? DateTime.tryParse(json['last_checkin_date'])
             : null,
-        referralCode: json['referral_code'] ?? '',
+        // Falls back to the same id-derived code AuthService.createProfile
+        // writes for every new signup — covers a profile created before
+        // referral_code existed, or before the column is migrated, so
+        // Invite Friends never shows a blank code.
+        referralCode: (json['referral_code'] as String?)?.isNotEmpty == true
+            ? json['referral_code']
+            : (json['id'] as String).replaceAll('-', '').substring(0, 8).toUpperCase(),
         isPremium: json['is_premium'] ?? false,
       );
 

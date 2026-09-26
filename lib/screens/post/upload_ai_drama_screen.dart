@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../models/post.dart';
 import '../../models/series.dart';
 import '../../services/post_service.dart';
+import '../../services/scheduled_release_service.dart';
 import '../../services/series_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -51,6 +52,11 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   double _uploadProgress = 0;
   int _uploadTotalBytes = 0;
   String? _error;
+
+  // Null means "publish immediately" (the default, unchanged behavior).
+  // Set via _pickScheduleTime — see ScheduledReleaseService for how a
+  // non-null value here actually gets enforced.
+  DateTime? _scheduledFor;
 
   // Viyo never verifies what a creator uploads actually belongs to
   // them — this is the one check that exists in its place: a real,
@@ -139,6 +145,33 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
     if (picked != null) setState(() => _customThumbnail = picked);
   }
 
+  Future<void> _pickScheduleTime() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _scheduledFor ?? now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 90)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_scheduledFor ?? now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+    setState(() => _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+  }
+
+  String _formatScheduledFor(DateTime dt) {
+    final month = const [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ][dt.month - 1];
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    return '$month ${dt.day}, $hour:$minute $period';
+  }
+
   Future<void> _submit() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
@@ -152,6 +185,10 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
     }
     if (!_creatingNewSeries && _selectedSeries == null) {
       setState(() => _error = 'Pick a series to add this episode to');
+      return;
+    }
+    if (_scheduledFor != null && !_scheduledFor!.isAfter(DateTime.now())) {
+      setState(() => _error = 'Pick a publish time in the future, or switch to Publish now');
       return;
     }
     if (!_rightsConfirmed) {
@@ -206,6 +243,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       }
 
       final episodeNumber = _creatingNewSeries ? 1 : _nextEpisodeNumber;
+      final scheduledFor = _scheduledFor;
       final episode = await PostService.createPost(
         userId: userId,
         type: PostType.video,
@@ -214,15 +252,29 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         thumbnailUrl: thumbnailUrl,
         seriesId: series.id,
         episodeNumber: episodeNumber,
+        isPrivate: scheduledFor != null,
       );
 
-      // Fire-and-forget — a dropped notification call must never turn
-      // a successful upload into an error the creator sees.
-      unawaited(SeriesService.notifyNewEpisode(episode.id));
+      if (scheduledFor != null) {
+        // Notification is deferred until ScheduledReleaseService
+        // actually flips this episode public — firing it now would
+        // tell followers about an episode they can't watch yet.
+        await ScheduledReleaseService.schedule(episode.id, scheduledFor);
+      } else {
+        // Fire-and-forget — a dropped notification call must never
+        // turn a successful upload into an error the creator sees.
+        unawaited(SeriesService.notifyNewEpisode(episode.id));
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Episode $episodeNumber of "${series.title}" is live 🎬')),
+        SnackBar(
+          content: Text(
+            scheduledFor != null
+                ? 'Episode $episodeNumber of "${series.title}" is scheduled for ${_formatScheduledFor(scheduledFor)}'
+                : 'Episode $episodeNumber of "${series.title}" is live 🎬',
+          ),
+        ),
       );
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -424,6 +476,48 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(hintText: 'Caption for this episode (optional)'),
             ),
+            const SizedBox(height: 16),
+            const Text('PUBLISH', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _GenreChip(
+                  label: 'Publish now',
+                  selected: _scheduledFor == null,
+                  onTap: busy ? null : () => setState(() => _scheduledFor = null),
+                ),
+                _GenreChip(
+                  label: 'Schedule for later',
+                  selected: _scheduledFor != null,
+                  onTap: busy ? null : _pickScheduleTime,
+                ),
+              ],
+            ),
+            if (_scheduledFor != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: AppTheme.card(),
+                child: Row(
+                  children: [
+                    const Icon(Icons.schedule, size: 16, color: AppColors.secondary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Publishes ${_formatScheduledFor(_scheduledFor!)} — needs this app open on this device again after that time to actually go live.',
+                        style: const TextStyle(fontSize: 12, height: 1.35, color: AppColors.textSecondary),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: busy ? null : _pickScheduleTime,
+                      child: const Text('Change', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             CheckboxListTile(
               value: _rightsConfirmed,
@@ -451,7 +545,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary),
               child: busy
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Publish Episode'),
+                  : Text(_scheduledFor != null ? 'Schedule Episode' : 'Publish Episode'),
             ),
           ],
         ),
