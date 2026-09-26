@@ -62,7 +62,7 @@ class Series {
         status: json['status'] as String?,
       );
 
-  Series copyWith({int? episodeCount, String? coverImageUrl}) => Series(
+  Series copyWith({int? episodeCount, String? coverImageUrl, String? status}) => Series(
         id: id,
         userId: userId,
         title: title,
@@ -73,7 +73,7 @@ class Series {
         createdAt: createdAt,
         authorUsername: authorUsername,
         authorDisplayName: authorDisplayName,
-        status: status,
+        status: status ?? this.status,
         authorAvatarUrl: authorAvatarUrl,
         episodeCount: episodeCount ?? this.episodeCount,
       );

@@ -30,6 +30,11 @@ class SeriesDetailScreen extends StatefulWidget {
 }
 
 class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
+  // A local mutable copy so a status change (see _StatusToggle) can
+  // update this screen immediately without re-fetching the whole
+  // series — widget.series itself is the immutable value this screen
+  // was pushed with.
+  late Series _series = widget.series;
   List<Post> _episodes = [];
   List<Series> _similarSeries = [];
   Map<String, Duration> _resumePositions = {};
@@ -95,7 +100,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final series = widget.series;
+    final series = _series;
     final viewerId = SupabaseService.currentUserId;
 
     return Scaffold(
@@ -131,7 +136,12 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
-                  _SeriesHeader(series: series, episodeCount: _episodes.length, viewerId: viewerId),
+                  _SeriesHeader(
+                    series: series,
+                    episodeCount: _episodes.length,
+                    viewerId: viewerId,
+                    onStatusChanged: (status) => setState(() => _series = _series.copyWith(status: status)),
+                  ),
                   const SizedBox(height: 18),
                   const Text('EPISODES', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
@@ -204,7 +214,13 @@ class _SeriesHeader extends StatelessWidget {
   final Series series;
   final int episodeCount;
   final String? viewerId;
-  const _SeriesHeader({required this.series, required this.episodeCount, required this.viewerId});
+  final ValueChanged<String>? onStatusChanged;
+  const _SeriesHeader({
+    required this.series,
+    required this.episodeCount,
+    required this.viewerId,
+    this.onStatusChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -255,10 +271,16 @@ class _SeriesHeader extends StatelessWidget {
                     // — see the field's own doc comment in series.dart.
                     if (series.status != null) ...[
                       const SizedBox(width: 8),
-                      _Pill(
-                        icon: series.status == 'completed' ? Icons.check_circle_outline : Icons.autorenew,
-                        label: series.status == 'completed' ? 'Completed' : 'Ongoing',
-                      ),
+                      viewerId == series.userId
+                          ? _StatusToggle(
+                              seriesId: series.id,
+                              status: series.status!,
+                              onChanged: (s) => onStatusChanged?.call(s),
+                            )
+                          : _Pill(
+                              icon: series.status == 'completed' ? Icons.check_circle_outline : Icons.autorenew,
+                              label: series.status == 'completed' ? 'Completed' : 'Ongoing',
+                            ),
                     ],
                   ],
                 ),
@@ -363,6 +385,83 @@ class _FollowCreatorButtonState extends State<_FollowCreatorButton> {
                 style: const TextStyle(fontSize: 12.5, color: Colors.black, fontWeight: FontWeight.w700),
               ),
             ),
+    );
+  }
+}
+
+/// The owner's own version of the status pill — tap to flip between
+/// Ongoing and Completed. A direct RLS-scoped write (see
+/// SeriesService.updateStatus): only ever shown to the series' own
+/// owner, for whom the update policy already allows this without
+/// going through the backend.
+class _StatusToggle extends StatefulWidget {
+  final String seriesId;
+  final String status;
+  final ValueChanged<String> onChanged;
+  const _StatusToggle({required this.seriesId, required this.status, required this.onChanged});
+
+  @override
+  State<_StatusToggle> createState() => _StatusToggleState();
+}
+
+class _StatusToggleState extends State<_StatusToggle> {
+  bool _busy = false;
+
+  Future<void> _toggle() async {
+    if (_busy) return;
+    final next = widget.status == 'completed' ? 'ongoing' : 'completed';
+    setState(() => _busy = true);
+    try {
+      await SeriesService.updateStatus(widget.seriesId, next);
+      widget.onChanged(next);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyErrorMessage(e))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = widget.status == 'completed';
+    return GestureDetector(
+      onTap: _toggle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.secondary.withOpacity(0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_busy)
+              const SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.secondary),
+              )
+            else
+              Icon(
+                completed ? Icons.check_circle_outline : Icons.autorenew,
+                size: 11,
+                color: AppColors.secondary,
+              ),
+            const SizedBox(width: 4),
+            Text(
+              completed ? 'Completed' : 'Ongoing',
+              style: const TextStyle(fontSize: 10.5, color: AppColors.secondary, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.unfold_more, size: 11, color: AppColors.secondary),
+          ],
+        ),
+      ),
     );
   }
 }

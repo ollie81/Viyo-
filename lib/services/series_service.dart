@@ -42,6 +42,18 @@ class SeriesService {
     return Series.fromJson(inserted);
   }
 
+  /// Owner-only status flip (Ongoing/Completed) — a direct RLS-scoped
+  /// update rather than routed through the backend, unlike
+  /// setCoverImage above: that one is usually called by a stranger
+  /// (any viewer of a coverless series) and needs the backend's
+  /// service-role client to get past `series`' owner-only update
+  /// policy at all, while this is only ever invoked by the series'
+  /// own owner (gated in the UI), for whom that same RLS policy
+  /// already lets a direct client write through.
+  static Future<void> updateStatus(String seriesId, String status) async {
+    await _client.from('series').update({'status': status}).eq('id', seriesId);
+  }
+
   /// Backfills a series' poster art from its first episode's thumbnail
   /// — called right after a new series' first episode finishes
   /// uploading, since the create-series step above happens before any
