@@ -70,6 +70,14 @@ class AuthService {
   }
 
   /// Call once, right after sign up, during onboarding.
+  ///
+  /// Referral attribution (referral_code/referred_by columns,
+  /// grant_referral_bonus RPC) is optional best-effort — every step of
+  /// it is wrapped so a schema piece that isn't migrated yet (or a
+  /// bonus RPC that fails) degrades to "no referral credit" rather
+  /// than failing account creation itself. Entering something in an
+  /// optional referral-code field must never be able to leave someone
+  /// signed up with no profile row.
   static Future<void> createProfile({
     required String userId,
     required String username,
@@ -78,29 +86,49 @@ class AuthService {
   }) async {
     String? referrerId;
     if (referredByCode != null && referredByCode.trim().isNotEmpty) {
-      final referrer = await _client
-          .from('profiles')
-          .select('id')
-          .eq('referral_code', referredByCode.trim())
-          .maybeSingle();
-      referrerId = referrer?['id'];
+      try {
+        final referrer = await _client
+            .from('profiles')
+            .select('id')
+            .eq('referral_code', referredByCode.trim())
+            .maybeSingle();
+        referrerId = referrer?['id'];
+      } catch (_) {
+        // referral_code column not migrated yet, or the code didn't
+        // resolve — proceed with a normal, unattributed signup.
+      }
     }
 
-    await _client.from('profiles').insert({
+    final profileData = {
       'id': userId,
       'username': username,
       'display_name': displayName,
-      if (referrerId != null) 'referred_by': referrerId,
-    });
+    };
+    try {
+      if (referrerId != null) {
+        await _client.from('profiles').insert({...profileData, 'referred_by': referrerId});
+      } else {
+        await _client.from('profiles').insert(profileData);
+      }
+    } catch (e) {
+      if (referrerId == null) rethrow;
+      // referred_by column not migrated yet — retry without it rather
+      // than lose account creation over an optional attribution field.
+      await _client.from('profiles').insert(profileData);
+      referrerId = null;
+    }
 
-    // Award referral bonus to both sides via a transaction row + balance bump.
-    // In production this should be a single RPC (see schema.sql pattern) to
-    // avoid partial failures; kept simple here for clarity.
     if (referrerId != null) {
-      await _client.rpc('grant_referral_bonus', params: {
-        'p_new_user_id': userId,
-        'p_referrer_id': referrerId,
-      });
+      try {
+        await _client.rpc('grant_referral_bonus', params: {
+          'p_new_user_id': userId,
+          'p_referrer_id': referrerId,
+        });
+      } catch (_) {
+        // Bonus RPC not migrated yet — the profile itself is already
+        // created successfully by this point, so this must never
+        // surface as a failed signup.
+      }
     }
   }
 
