@@ -28,6 +28,10 @@ dependencies:
   # UI / UX
   share_plus: ^7.2.1
   cached_network_image: ^3.3.1
+  # Already pulled in transitively by cached_network_image — declared
+  # directly since retryable_network_image.dart calls its
+  # DefaultCacheManager API explicitly, not just through the widget.
+  flutter_cache_manager: ^3.4.1
   image_picker: ^1.1.2
   # image_picker's own file type — used directly (instead of always
   # wrapping picks in dart:io's File) so upload code works on web too,
