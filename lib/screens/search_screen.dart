@@ -12,6 +12,7 @@ import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/comments_sheet.dart';
+import '../widgets/retryable_network_image.dart';
 import '../widgets/series_poster_card.dart';
 import 'post/series_detail_screen.dart';
 import 'post/viyo_post_viewer.dart';
@@ -534,17 +535,13 @@ class _DiscoverTile extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              CachedNetworkImage(
+              RetryableNetworkImage(
                 imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Shimmer.fromColors(
                   baseColor: AppColors.surfaceBorder,
                   highlightColor: AppColors.surface,
                   child: Container(color: Colors.white),
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  color: AppColors.surfaceBorder,
-                  child: const Icon(Icons.broken_image_outlined, color: AppColors.textMuted),
                 ),
               ),
               // Bottom gradient so the like-count/caption row stays legible
