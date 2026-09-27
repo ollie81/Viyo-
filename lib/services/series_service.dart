@@ -265,12 +265,21 @@ class SeriesService {
   /// content, so unlockedByMe alone can't distinguish "the owner" from
   /// "a stranger who hasn't paid"; callers check post.userId separately
   /// (see EpisodeLock.isLockedFor in episode_lock.dart).
-  static Future<List<Post>> getSeriesEpisodes(String seriesId) async {
-    final data = await _client
+  /// [includePrivate] surfaces a not-yet-published scheduled episode
+  /// (see ScheduledReleaseService) — only ever passed true by the
+  /// series' own owner reviewing their own upcoming releases. Every
+  /// other caller (a stranger browsing the series, VideoFeedScreen's
+  /// own playlist for a series) leaves this false, so a scheduled
+  /// episode is neither listed nor playable before its time.
+  static Future<List<Post>> getSeriesEpisodes(String seriesId, {bool includePrivate = false}) async {
+    var query = _client
         .from('posts')
         .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
-        .eq('series_id', seriesId)
-        .order('episode_number', ascending: true);
+        .eq('series_id', seriesId);
+    if (!includePrivate) {
+      query = query.eq('is_private', false);
+    }
+    final data = await query.order('episode_number', ascending: true);
 
     final episodes = (data as List).map((e) => Post.fromJson(e)).toList();
     return _withUnlockState(episodes);
@@ -537,6 +546,37 @@ class SeriesService {
           : (detail is Map ? detail['error']?.toString() : null);
     } catch (_) {}
     throw Exception(message ?? 'Could not unlock episode (${res.statusCode})');
+  }
+
+  /// Unlocks every currently-locked episode of a series in one purchase
+  /// at a discount (see episodes.py's unlock_series_bundle) — not just
+  /// N calls to unlockEpisode, which can't apply a discount and would
+  /// multiply that endpoint's own partial-failure surface by N. Returns
+  /// the raw response map (unlocked_episode_ids, coins_spent,
+  /// already_complete) rather than a typed model since the only caller
+  /// needs just the id list to flip local state.
+  static Future<Map<String, dynamic>> unlockSeriesBundle(String seriesId) async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/series/$seriesId/unlock-bundle'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+
+    String? message;
+    try {
+      final data = jsonDecode(res.body);
+      final detail = data is Map ? data['detail'] : null;
+      message = detail is String
+          ? detail
+          : (detail is Map ? detail['error']?.toString() : null);
+    } catch (_) {}
+    throw Exception(message ?? 'Could not unlock series (${res.statusCode})');
   }
 
   /// Owner-only — the backend itself enforces this (403s otherwise),

@@ -427,6 +427,12 @@ class PostService {
     // normal photo/video/text post.
     String? seriesId,
     int? episodeNumber,
+    // Inserted live but hidden from every feed/discover/series query
+    // that already filters is_private (see PostService.setPrivate) —
+    // the mechanism ScheduledReleaseService's "publish later" uses:
+    // create the real row now, flip this to false once the scheduled
+    // time passes.
+    bool isPrivate = false,
   }) async {
     final inserted = await _client
         .from('posts')
@@ -437,6 +443,7 @@ class PostService {
           'media_url': mediaUrl,
           'thumbnail_url': thumbnailUrl,
           'duration_seconds': durationSeconds,
+          'is_private': isPrivate,
           if (seriesId != null) 'series_id': seriesId,
           if (episodeNumber != null) 'episode_number': episodeNumber,
         })

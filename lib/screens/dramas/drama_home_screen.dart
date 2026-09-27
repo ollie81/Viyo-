@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../models/series.dart';
 import '../../services/profile_service.dart';
+import '../../services/scheduled_release_service.dart';
 import '../../services/series_boost_service.dart';
 import '../../services/series_service.dart';
 import '../../services/watch_progress_service.dart';
@@ -50,6 +52,11 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Fire-and-forget — publishes any locally-scheduled episode whose
+    // time has passed (see ScheduledReleaseService). Runs before the
+    // rows below load so a just-published episode can show up in the
+    // very same load rather than needing a second visit.
+    unawaited(ScheduledReleaseService.checkAndPublishDue());
     _loadRows();
     _loadBrowse();
   }

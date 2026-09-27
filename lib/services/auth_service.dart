@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../constants/supabase_constants.dart';
 import 'push_notification_service.dart';
 import 'supabase_service.dart';
 
@@ -71,13 +74,12 @@ class AuthService {
 
   /// Call once, right after sign up, during onboarding.
   ///
-  /// Referral attribution (referral_code/referred_by columns,
-  /// grant_referral_bonus RPC) is optional best-effort — every step of
-  /// it is wrapped so a schema piece that isn't migrated yet (or a
-  /// bonus RPC that fails) degrades to "no referral credit" rather
-  /// than failing account creation itself. Entering something in an
-  /// optional referral-code field must never be able to leave someone
-  /// signed up with no profile row.
+  /// Referral attribution (referral_code/referred_by columns, the
+  /// bonus-granting call) is optional best-effort — every step of it
+  /// is wrapped so a schema piece that isn't migrated yet degrades to
+  /// "no referral credit" rather than failing account creation itself.
+  /// Entering something in an optional referral-code field must never
+  /// be able to leave someone signed up with no profile row.
   static Future<void> createProfile({
     required String userId,
     required String username,
@@ -99,35 +101,47 @@ class AuthService {
       }
     }
 
-    final profileData = {
+    // Every profile gets a shareable referral code, deterministically
+    // derived from its own id (see UserProfile.fromJson's matching
+    // fallback and invite_screen.dart) — no separate generation or
+    // uniqueness-retry step needed; profiles.referral_code's own
+    // UNIQUE constraint is the actual backstop once migrated.
+    final referralCode = userId.replaceAll('-', '').substring(0, 8).toUpperCase();
+
+    final baseProfileData = {
       'id': userId,
       'username': username,
       'display_name': displayName,
     };
     try {
-      if (referrerId != null) {
-        await _client.from('profiles').insert({...profileData, 'referred_by': referrerId});
-      } else {
-        await _client.from('profiles').insert(profileData);
-      }
+      await _client.from('profiles').insert({
+        ...baseProfileData,
+        'referral_code': referralCode,
+        if (referrerId != null) 'referred_by': referrerId,
+      });
     } catch (e) {
-      if (referrerId == null) rethrow;
-      // referred_by column not migrated yet — retry without it rather
-      // than lose account creation over an optional attribution field.
-      await _client.from('profiles').insert(profileData);
+      // referral_code/referred_by not migrated yet — retry with just
+      // the fields every version of this table has always had, rather
+      // than lose account creation over optional referral metadata.
+      await _client.from('profiles').insert(baseProfileData);
       referrerId = null;
     }
 
     if (referrerId != null) {
       try {
-        await _client.rpc('grant_referral_bonus', params: {
-          'p_new_user_id': userId,
-          'p_referrer_id': referrerId,
-        });
+        final token = _client.auth.currentSession?.accessToken;
+        await http.post(
+          Uri.parse('${AiBackendConstants.baseUrl}/api/v1/referrals/grant-bonus'),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'referrer_id': referrerId}),
+        );
       } catch (_) {
-        // Bonus RPC not migrated yet — the profile itself is already
-        // created successfully by this point, so this must never
-        // surface as a failed signup.
+        // Bonus endpoint not reachable, or already granted — the
+        // profile itself is already created successfully by this
+        // point, so this must never surface as a failed signup.
       }
     }
   }

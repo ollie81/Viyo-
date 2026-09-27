@@ -5,6 +5,7 @@ import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../models/series.dart';
 import '../../services/profile_service.dart';
+import '../../services/scheduled_release_service.dart';
 import '../../services/series_boost_service.dart';
 import '../../services/series_service.dart';
 import '../../services/supabase_service.dart';
@@ -43,6 +44,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   List<Post> _episodes = [];
   List<Series> _similarSeries = [];
   Map<String, Duration> _resumePositions = {};
+  Map<String, DateTime> _scheduledTimes = {};
   bool _loading = true;
   String? _error;
 
@@ -58,17 +60,33 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       _error = null;
     });
     try {
-      final episodes = await SeriesService.getSeriesEpisodes(widget.series.id);
+      final viewerId = SupabaseService.currentUserId;
+      // Only the series' own owner ever sees a not-yet-published
+      // scheduled episode in this list (see ScheduledReleaseService) —
+      // everyone else gets exactly what they got before this existed.
+      final episodes = await SeriesService.getSeriesEpisodes(
+        widget.series.id,
+        includePrivate: viewerId == widget.series.userId,
+      );
       if (!mounted) return;
       setState(() => _episodes = episodes);
       unawaited(_loadResumePositions(episodes));
       unawaited(_loadSimilarSeries());
+      unawaited(_loadScheduledTimes(episodes));
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadScheduledTimes(List<Post> episodes) async {
+    final privateIds = episodes.where((e) => e.isPrivate).map((e) => e.id).toList();
+    if (privateIds.isEmpty) return;
+    final times = await ScheduledReleaseService.getScheduledTimes(privateIds);
+    if (!mounted) return;
+    setState(() => _scheduledTimes = times);
   }
 
   /// Best-effort, doesn't block the episode list itself — "Similar
@@ -156,6 +174,23 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                   if (viewerId == series.userId) ...[
                     const SizedBox(height: 10),
                     _SeriesBoostSection(seriesId: series.id),
+                  ] else ...[
+                    const SizedBox(height: 10),
+                    _SeriesBundleUnlockSection(
+                      seriesId: series.id,
+                      lockedCount: _episodes
+                          .where((e) => (e.episodeNumber ?? 1) > kFreeEpisodeCount && !e.unlockedByMe)
+                          .length,
+                      pricePerEpisode: series.coinPricePerEpisode,
+                      onUnlocked: (unlockedIds) {
+                        final ids = unlockedIds.toSet();
+                        setState(() {
+                          _episodes = _episodes
+                              .map((e) => ids.contains(e.id) ? e.copyWith(unlockedByMe: true) : e)
+                              .toList();
+                        });
+                      },
+                    ),
                   ],
                   const SizedBox(height: 18),
                   const Text('EPISODES', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
@@ -172,6 +207,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                           episode: ep,
                           locked: isEpisodeLocked(ep, viewerId: viewerId),
                           resumePosition: _resumePositions[ep.id],
+                          scheduledFor: _scheduledTimes[ep.id],
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => VideoFeedScreen(
@@ -669,6 +705,105 @@ class _SeriesBoostSectionState extends State<_SeriesBoostSection> {
   }
 }
 
+/// A discounted "unlock everything at once" offer — hidden entirely
+/// once there's nothing locked left to buy (the owner never sees it;
+/// see the owner/viewer split in SeriesDetailScreen.build). Prices
+/// shown here are display-only estimates (kBundleDiscount mirrors
+/// episodes.py's BUNDLE_DISCOUNT) — the actual charge always comes
+/// back from unlock_series_bundle itself.
+class _SeriesBundleUnlockSection extends StatefulWidget {
+  final String seriesId;
+  final int lockedCount;
+  final int pricePerEpisode;
+  final ValueChanged<List<String>> onUnlocked;
+  const _SeriesBundleUnlockSection({
+    required this.seriesId,
+    required this.lockedCount,
+    required this.pricePerEpisode,
+    required this.onUnlocked,
+  });
+
+  @override
+  State<_SeriesBundleUnlockSection> createState() => _SeriesBundleUnlockSectionState();
+}
+
+class _SeriesBundleUnlockSectionState extends State<_SeriesBundleUnlockSection> {
+  bool _unlocking = false;
+  String? _error;
+
+  Future<void> _unlock() async {
+    if (_unlocking) return;
+    if (!await GuestGate.allow(context, action: 'unlock this series')) return;
+    setState(() {
+      _unlocking = true;
+      _error = null;
+    });
+    try {
+      final result = await SeriesService.unlockSeriesBundle(widget.seriesId);
+      final ids = List<String>.from(result['unlocked_episode_ids'] as List? ?? const []);
+      widget.onUnlocked(ids);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _unlocking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.lockedCount <= 0) return const SizedBox.shrink();
+
+    final fullTotal = widget.pricePerEpisode * widget.lockedCount;
+    final perEpisodeDiscounted = (widget.pricePerEpisode * (1 - kBundleDiscount)).round();
+    final discountedTotal = perEpisodeDiscounted * widget.lockedCount;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.card(borderColor: AppColors.coin.withOpacity(0.4)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.local_offer_outlined, size: 16, color: AppColors.coin),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Unlock all ${widget.lockedCount} remaining episode${widget.lockedCount == 1 ? '' : 's'} and save ${(kBundleDiscount * 100).round()}%',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: _unlocking ? null : _unlock,
+            child: _unlocking
+                ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Unlock Series — '),
+                      const Icon(Icons.monetization_on, size: 13, color: AppColors.coin),
+                      Text(' $discountedTotal', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.coin)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$fullTotal',
+                        style: const TextStyle(decoration: TextDecoration.lineThrough, color: AppColors.textMuted, fontSize: 11),
+                      ),
+                    ],
+                  ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// A button label with a small coin-cost chip — same visual pattern as
 /// post_detail_screen.dart's own (private, so duplicated rather than
 /// shared across files, matching this codebase's per-screen widget
@@ -734,12 +869,17 @@ class _EpisodeTile extends StatelessWidget {
   final Post episode;
   final bool locked;
   final Duration? resumePosition;
+  // Only ever set for the series' own owner (see SeriesDetailScreen._load
+  // and getSeriesEpisodes' includePrivate) — a scheduled episode is
+  // otherwise never included in this list at all.
+  final DateTime? scheduledFor;
   final VoidCallback onTap;
   final VoidCallback onComment;
   const _EpisodeTile({
     required this.episode,
     required this.locked,
     this.resumePosition,
+    this.scheduledFor,
     required this.onTap,
     required this.onComment,
   });
@@ -750,10 +890,25 @@ class _EpisodeTile extends StatelessWidget {
     return '$m:${s.toString().padLeft(2, '0')}';
   }
 
+  String _formatScheduled(DateTime dt) {
+    final month = const [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ][dt.month - 1];
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    return '$month ${dt.day}, $hour:$minute $period';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheduled = scheduledFor != null;
     return InkWell(
-      onTap: onTap,
+      onTap: scheduled
+          ? () => ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Publishes ${_formatScheduled(scheduledFor!)} — not watchable until then.')),
+              )
+          : onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -776,7 +931,12 @@ class _EpisodeTile extends StatelessWidget {
                             errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
                           )
                         : Container(color: AppColors.surfaceBorder),
-                    if (locked)
+                    if (scheduled)
+                      Container(
+                        color: Colors.black.withOpacity(0.5),
+                        child: const Icon(Icons.schedule, color: Colors.white, size: 16),
+                      )
+                    else if (locked)
                       Container(
                         color: Colors.black.withOpacity(0.5),
                         child: const Icon(Icons.lock_outline, color: Colors.white, size: 16),
@@ -791,7 +951,13 @@ class _EpisodeTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Episode ${episode.episodeNumber ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  if (resumePosition != null) ...[
+                  if (scheduled) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Scheduled · ${_formatScheduled(scheduledFor!)}',
+                      style: const TextStyle(color: AppColors.secondary, fontSize: 11.5, fontWeight: FontWeight.w600),
+                    ),
+                  ] else if (resumePosition != null) ...[
                     const SizedBox(height: 2),
                     Text(
                       'Resume · ${_formatDuration(resumePosition!)}',
@@ -809,24 +975,25 @@ class _EpisodeTile extends StatelessWidget {
                 ],
               ),
             ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onComment,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.mode_comment_outlined, color: AppColors.textMuted, size: 18),
-                    const SizedBox(height: 2),
-                    Text('${episode.commentCount}', style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
-                  ],
+            if (!scheduled)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onComment,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.mode_comment_outlined, color: AppColors.textMuted, size: 18),
+                      const SizedBox(height: 2),
+                      Text('${episode.commentCount}', style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                    ],
+                  ),
                 ),
               ),
-            ),
             const SizedBox(width: 4),
             Icon(
-              locked ? Icons.lock_outline : Icons.play_circle_outline,
+              scheduled ? Icons.schedule : (locked ? Icons.lock_outline : Icons.play_circle_outline),
               color: locked ? AppColors.textMuted : AppColors.secondary,
               size: 22,
             ),

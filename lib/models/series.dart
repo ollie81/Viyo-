@@ -115,3 +115,10 @@ const kDramaGenres = <String>[
 /// truth across the two repos, same tradeoff already accepted for
 /// coin costs elsewhere in this app.
 const int kFreeEpisodeCount = 3;
+
+/// Discount applied when unlocking every remaining episode of a series
+/// at once instead of one at a time (see SeriesService.unlockSeriesBundle).
+/// Display-only here — the backend (episodes.py's BUNDLE_DISCOUNT) is
+/// the actual source of truth for what gets charged, mirrored client-
+/// side same as kFreeEpisodeCount already is.
+const double kBundleDiscount = 0.20;
