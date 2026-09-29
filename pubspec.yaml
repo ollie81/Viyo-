@@ -57,7 +57,13 @@ dependencies:
   sentry_flutter: ^9.0.0
 
   # Push notifications
-  firebase_core: ^4.14.0
+  # >=4.15.0 specifically: 4.14.0 resolves to firebase_core_web 3.11.0,
+  # which fails to compile for web at all (calls the js_interop `isA()`
+  # extension on a plain Object from a bare `catch (e)`, which only
+  # exists on JSAny — a real bug in that package, fixed in
+  # firebase_core_web 3.12.0's own changelog: "isA on Object requires
+  # Dart 3.12; this package supports 3.6").
+  firebase_core: ^4.15.0
   firebase_messaging: ^16.6.0
 
 dev_dependencies:
