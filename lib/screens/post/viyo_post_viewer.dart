@@ -17,6 +17,12 @@ class ViyoPostMedia {
   final bool likedByMe;
   final int likeCount;
   final int commentCount;
+  // See Post.videoStatus — a Bunny-hosted video still mid-encode has no
+  // file behind mediaUrl yet, so playback needs to wait rather than
+  // attempt a fetch that would just fail. Always false for a photo or a
+  // Supabase-hosted video.
+  final bool isVideoProcessing;
+  final bool isVideoFailed;
 
   const ViyoPostMedia({
     required this.id,
@@ -30,6 +36,8 @@ class ViyoPostMedia {
     this.likedByMe = false,
     this.likeCount = 0,
     this.commentCount = 0,
+    this.isVideoProcessing = false,
+    this.isVideoFailed = false,
   });
 
   factory ViyoPostMedia.fromPost(Post post) => ViyoPostMedia(
@@ -46,6 +54,8 @@ class ViyoPostMedia {
         likedByMe: post.likedByMe,
         likeCount: post.likeCount,
         commentCount: post.commentCount,
+        isVideoProcessing: post.isVideoProcessing,
+        isVideoFailed: post.isVideoFailed,
       );
 }
 
@@ -193,7 +203,11 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
   void initState() {
     super.initState();
     _liked = widget.post.likedByMe;
-    if (widget.post.type == ViyoMediaType.video) _initVideo();
+    if (widget.post.type == ViyoMediaType.video &&
+        !widget.post.isVideoProcessing &&
+        !widget.post.isVideoFailed) {
+      _initVideo();
+    }
   }
 
   Future<void> _initVideo() async {
@@ -346,6 +360,33 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
             size: 60,
           ),
         ),
+      );
+    }
+    if (widget.post.isVideoProcessing || widget.post.isVideoFailed) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          if (widget.post.thumbnailUrl != null)
+            Image.network(widget.post.thumbnailUrl!, fit: BoxFit.contain),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: widget.post.isVideoFailed
+                ? const [
+                    Icon(Icons.error_outline, color: Colors.white54, size: 44),
+                    SizedBox(height: 8),
+                    Text('This video failed to process', style: TextStyle(color: Colors.white70)),
+                  ]
+                : const [
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                    ),
+                    SizedBox(height: 10),
+                    Text('Processing video…', style: TextStyle(color: Colors.white70)),
+                  ],
+          ),
+        ],
       );
     }
     if (_video == null || !_video!.value.isInitialized) {

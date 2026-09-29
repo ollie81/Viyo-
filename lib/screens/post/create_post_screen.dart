@@ -5,6 +5,7 @@ import '../../models/hook_feedback.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/ai_service.dart';
+import '../../services/bunny_stream_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
@@ -273,6 +274,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       String? mediaUrl;
       String? thumbnailUrl;
+      String? videoProvider;
+      String? bunnyVideoId;
+      String? videoStatus;
 
       if (_mediaFile != null) {
         _uploadTotalBytes = await _mediaFile!.length();
@@ -282,24 +286,61 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             _uploadProgress = 0;
           });
         }
-        // Progress-reporting upload rather than the plain one, so the
-        // card below can show a real percentage instead of a spinner
-        // that says nothing on a large video.
-        mediaUrl = await PostService.uploadMediaWithProgress(
-          _mediaFile!,
-          userId,
-          onProgress: (p) {
-            if (mounted) setState(() => _uploadProgress = p);
-          },
-        );
-        if (mounted) setState(() => _uploading = false);
+
         if (_type == PostType.video) {
+          // Bunny Stream first (the video's bytes go straight to Bunny,
+          // never through our backend) — falls back to the existing
+          // Supabase Storage path only when Bunny isn't configured on
+          // the backend yet (503), so old and new videos coexist with
+          // no feature flag on this side. Any other Bunny failure
+          // (network drop, rejected upload) surfaces as a normal post
+          // failure below rather than silently downgrading to Supabase
+          // after wasting the upload time.
+          try {
+            final creds = await BunnyStreamService.createUploadCredentials(
+              _caption.text.trim().isEmpty ? 'Viyo video' : _caption.text.trim(),
+            );
+            await BunnyStreamService.uploadVideo(
+              _mediaFile!,
+              creds,
+              onProgress: (p) {
+                if (mounted) setState(() => _uploadProgress = p);
+              },
+            );
+            mediaUrl = creds.playbackUrl;
+            videoProvider = 'bunny';
+            bunnyVideoId = creds.videoId;
+            videoStatus = 'processing';
+          } on BunnyNotConfiguredException {
+            mediaUrl = await PostService.uploadMediaWithProgress(
+              _mediaFile!,
+              userId,
+              onProgress: (p) {
+                if (mounted) setState(() => _uploadProgress = p);
+              },
+            );
+          }
+          if (mounted) setState(() => _uploading = false);
           // Reuse the frame already extracted for the picker's preview
           // instead of decoding the video a second time — falls back to
           // extracting fresh only if that preview capture never landed.
+          // Always a small JPEG to Supabase Storage regardless of which
+          // provider hosts the video itself.
           thumbnailUrl = _videoThumbnail != null
               ? await PostService.uploadMediaWithProgress(_videoThumbnail!, userId)
               : await PostService.generateAndUploadVideoThumbnail(_mediaFile!, userId);
+        } else {
+          // Progress-reporting upload rather than the plain one, so the
+          // card below can show a real percentage instead of a spinner
+          // that says nothing on a large photo.
+          mediaUrl = await PostService.uploadMediaWithProgress(
+            _mediaFile!,
+            userId,
+            onProgress: (p) {
+              if (mounted) setState(() => _uploadProgress = p);
+            },
+          );
+          if (mounted) setState(() => _uploading = false);
         }
       }
 
@@ -316,7 +357,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         mediaUrl: mediaUrl,
         thumbnailUrl: thumbnailUrl,
         durationSeconds: postType == PostType.video ? 30 : null,
+        videoProvider: videoProvider,
+        bunnyVideoId: bunnyVideoId,
+        videoStatus: videoStatus,
       );
+
+      // Bunny still needs a little time to finish encoding after the
+      // upload itself completes — poll in the background and flip the
+      // post's status once it's ready (or failed) so the feed player
+      // stops showing a "processing" state. Detached from this screen's
+      // lifecycle on purpose: the creator may well navigate away before
+      // Bunny finishes.
+      if (bunnyVideoId != null) {
+        BunnyStreamService.waitForReady(bunnyVideoId).then((status) async {
+          if (status == null) return;
+          await PostService.updateVideoStatus(post.id, status.failed ? 'failed' : 'ready');
+        }).catchError((_) {});
+      }
 
       if (!mounted) return;
       setState(() {

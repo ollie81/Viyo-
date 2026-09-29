@@ -332,8 +332,14 @@ class _VideoPageState extends State<_VideoPage> {
     // A locked episode never even downloads its video — there's
     // nothing to play until it's unlocked, so starting a network
     // fetch for it would just waste bandwidth on content the viewer
-    // can't watch yet.
-    if (!widget.isLocked) _initialize();
+    // can't watch yet. A Bunny-hosted video still mid-encode has no
+    // file behind its playback URL yet either — starting a fetch for
+    // it would just fail, so this waits for the background poll kicked
+    // off at upload time (see PostService.updateVideoStatus) to flip
+    // video_status before ever trying to play it.
+    if (!widget.isLocked && !widget.post.isVideoProcessing && !widget.post.isVideoFailed) {
+      _initialize();
+    }
     if (widget.isActive) widget.onBecameActive();
   }
 
@@ -438,9 +444,20 @@ class _VideoPageState extends State<_VideoPage> {
       widget.onBecameActive();
     }
 
-    if (oldWidget.isLocked && !widget.isLocked && _controller == null) {
-      // Just unlocked — nothing was ever downloaded while it was
-      // locked, so this is the first real chance to start.
+    final justUnlocked = oldWidget.isLocked && !widget.isLocked;
+    final justFinishedProcessing =
+        (oldWidget.post.isVideoProcessing || oldWidget.post.isVideoFailed) &&
+            !widget.post.isVideoProcessing &&
+            !widget.post.isVideoFailed;
+    if ((justUnlocked || justFinishedProcessing) &&
+        _controller == null &&
+        !widget.isLocked &&
+        !widget.post.isVideoProcessing &&
+        !widget.post.isVideoFailed) {
+      // Either just unlocked (nothing was ever downloaded while
+      // locked) or Bunny just finished encoding this video (see the
+      // matching guard in initState) — either way, this is the first
+      // real chance to start playback.
       _initialize();
     }
 
@@ -537,26 +554,30 @@ class _VideoPageState extends State<_VideoPage> {
                           child: VideoPlayer(c),
                         ),
                       )
-                    : post.thumbnailUrl != null
-                        ? CachedNetworkImage(
-                            imageUrl: post.thumbnailUrl!,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            placeholder: (_, __) => const Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            errorWidget: (_, __, ___) => _videoError(),
-                          )
-                        : _initError
-                            ? _videoError()
-                            : const Center(
-                                child: CircularProgressIndicator(
-                                  color: AppColors.primary,
-                                ),
-                              ),
+                    : post.isVideoProcessing
+                        ? _videoProcessing()
+                        : post.isVideoFailed
+                            ? _videoError(message: 'This video failed to process')
+                            : post.thumbnailUrl != null
+                                ? CachedNetworkImage(
+                                    imageUrl: post.thumbnailUrl!,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    placeholder: (_, __) => const Center(
+                                      child: CircularProgressIndicator(
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    errorWidget: (_, __, ___) => _videoError(),
+                                  )
+                                : _initError
+                                    ? _videoError()
+                                    : const Center(
+                                        child: CircularProgressIndicator(
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
           ),
         ),
 
@@ -794,19 +815,59 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  Widget _videoError() {
-    return const Column(
+  Widget _videoError({String message = 'Video unavailable'}) {
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
+        const Icon(
           Icons.error_outline,
           color: Colors.white54,
           size: 44,
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         Text(
-          'Video unavailable',
-          style: TextStyle(color: Colors.white70),
+          message,
+          style: const TextStyle(color: Colors.white70),
+        ),
+      ],
+    );
+  }
+
+  /// Bunny Stream still needs a little time to encode a just-uploaded
+  /// video — the playback URL is real (it's deterministic from the
+  /// video id, see bunny_stream.py) but there's no file behind it yet,
+  /// so this shows the thumbnail everyone already sees (small local
+  /// JPEG uploaded to Supabase Storage regardless of provider) rather
+  /// than attempting a fetch that would just 404. Flips to the real
+  /// player on its own once the background poll started at upload time
+  /// updates this post's video_status (see didUpdateWidget above) —
+  /// nothing here needs to poll itself.
+  Widget _videoProcessing() {
+    final thumbnailUrl = widget.post.thumbnailUrl;
+    return Stack(
+      fit: StackFit.expand,
+      alignment: Alignment.center,
+      children: [
+        if (thumbnailUrl != null)
+          CachedNetworkImage(
+            imageUrl: thumbnailUrl,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        Container(color: Colors.black.withOpacity(0.4)),
+        const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+            ),
+            SizedBox(height: 10),
+            Text('Processing video…', style: TextStyle(color: Colors.white70)),
+          ],
         ),
       ],
     );
