@@ -56,7 +56,7 @@ class Series {
     required this.title,
     this.description = '',
     this.coverImageUrl,
-    this.coinPricePerEpisode = 30,
+    this.coinPricePerEpisode = kDefaultEpisodeCoinPrice,
     this.genre = kDefaultDramaGenre,
     required this.createdAt,
     this.authorUsername,
@@ -74,7 +74,7 @@ class Series {
         title: json['title'] ?? '',
         description: json['description'] ?? '',
         coverImageUrl: json['cover_image_url'],
-        coinPricePerEpisode: json['coin_price_per_episode'] ?? 30,
+        coinPricePerEpisode: json['coin_price_per_episode'] ?? kDefaultEpisodeCoinPrice,
         genre: json['genre'] ?? kDefaultDramaGenre,
         createdAt: DateTime.parse(json['created_at']),
         authorUsername: json['profiles']?['username'],
@@ -198,3 +198,12 @@ const int kFreeEpisodeCount = 3;
 /// the actual source of truth for what gets charged, mirrored client-
 /// side same as kFreeEpisodeCount already is.
 const double kBundleDiscount = 0.20;
+
+/// Fallback price used whenever a series/episode's real coin price
+/// can't be read — a series created before coin_price_per_episode
+/// existed, or a join that came back without it. Never displays or
+/// charges 0 coins for a locked episode: a null/zero price would
+/// otherwise mean "free to unlock" (see episodes.py's own matching
+/// DEFAULT_EPISODE_COIN_PRICE fallback — mirrored, not shared, same
+/// tradeoff as every other cross-repo constant here).
+const int kDefaultEpisodeCoinPrice = 30;

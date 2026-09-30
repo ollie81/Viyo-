@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/insufficient_coins_exception.dart';
 import '../screens/mission_screen.dart';
+import '../screens/wallet/buy_coins_screen.dart';
 import '../services/rewarded_ad_service.dart';
 import '../theme/app_theme.dart';
 
@@ -127,10 +128,25 @@ class _InsufficientCoinsSheetState extends State<_InsufficientCoinsSheet> {
               ),
             ),
             const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const BuyCoinsScreen()),
+                );
+              },
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.coin,
+                foregroundColor: AppColors.background,
+              ),
+              label: const Text('Buy Coins'),
+            ),
+            const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _watchingAd ? null : _watchAd,
               icon: const Icon(Icons.smart_display_outlined, size: 18),
-              label: Text(_watchingAd ? 'Loading ad...' : 'Watch an Ad for Coins'),
+              label: Text(_watchingAd ? 'Loading ad...' : 'Watch an Ad for Free Coins'),
             ),
             if (_adResultMessage != null) ...[
               const SizedBox(height: 8),
@@ -141,16 +157,16 @@ class _InsufficientCoinsSheetState extends State<_InsufficientCoinsSheet> {
               ),
             ],
             const SizedBox(height: 10),
-            ElevatedButton(
+            TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const MissionsScreen()),
                 );
               },
-              child: const Text('Earn Coins'),
+              child: const Text('Or complete a mission to earn coins'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Not now', style: TextStyle(color: AppColors.textMuted)),
