@@ -391,6 +391,14 @@ class SeriesService {
 
   static Future<List<Series>> getAllSeries({
     String? genre,
+    // One of series.dart's kContentType* ids, or null for "every type"
+    // (the default — unchanged behavior). Filtered client-side rather
+    // than via `.eq('content_type', ...)`: content_type is null for
+    // every series made before that column existed, and those are all
+    // Short Drama — a plain equality filter can't express "this value,
+    // or null" without excluding them, but Series.effectiveContentType
+    // already encodes exactly that fallback.
+    String? contentType,
     DramaSort sort = DramaSort.newest,
     int limit = 60,
     Set<String> boostedSeriesIds = const {},
@@ -402,10 +410,18 @@ class SeriesService {
     // A wider pool than `limit` when ranking by engagement — the
     // newest-first order below isn't the final order in that case, so
     // narrowing to exactly `limit` rows first would silently exclude an
-    // older-but-popular series from ever being scored at all.
-    final poolSize = sort == DramaSort.newest ? limit : limit * 4;
+    // older-but-popular series from ever being scored at all. Wider
+    // again when filtering by content type, since that filter only
+    // happens after this fetch (see above) — same "rank/filter a
+    // bounded pool client-side" tradeoff the rest of this method
+    // already makes, just one dimension wider.
+    var poolSize = sort == DramaSort.newest ? limit : limit * 4;
+    if (contentType != null) poolSize *= 3;
     final data = await query.order('created_at', ascending: false).limit(poolSize);
-    final series = (data as List).map((e) => Series.fromJson(e)).toList();
+    var series = (data as List).map((e) => Series.fromJson(e)).toList();
+    if (contentType != null) {
+      series = series.where((s) => s.effectiveContentType == contentType).toList();
+    }
     for (final s in series) {
       backfillCoverIfMissing(s);
     }
