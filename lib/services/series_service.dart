@@ -25,7 +25,7 @@ class SeriesService {
     required String title,
     String description = '',
     String? coverImageUrl,
-    int coinPricePerEpisode = 20,
+    int coinPricePerEpisode = 30,
     String genre = kDefaultDramaGenre,
     // Sent conditionally, and retried without them below, so creating
     // a title still works before the content_type/orientation columns

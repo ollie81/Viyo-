@@ -48,7 +48,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   final _caption = TextEditingController();
   final _newSeriesTitle = TextEditingController();
   final _newSeriesDescription = TextEditingController();
-  final _newSeriesPrice = TextEditingController(text: '20');
+  final _newSeriesPrice = TextEditingController(text: '30');
   String _newSeriesGenre = kDefaultDramaGenre;
 
   // What kind of Title this upload creates — see series.dart's
@@ -251,7 +251,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
     try {
       Series series;
       if (_creatingNewSeries) {
-        final price = int.tryParse(_newSeriesPrice.text.trim()) ?? 20;
+        final price = int.tryParse(_newSeriesPrice.text.trim()) ?? 30;
         series = await SeriesService.createSeries(
           userId: userId,
           title: _newSeriesTitle.text.trim(),
