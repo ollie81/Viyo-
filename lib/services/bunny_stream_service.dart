@@ -113,9 +113,24 @@ class BunnyStreamService {
     );
     if (res.statusCode == 503) throw BunnyNotConfiguredException();
     if (res.statusCode != 200) {
-      throw Exception('Could not start Bunny upload (${res.statusCode})');
+      throw Exception(_detailFrom(res) ?? 'Could not start Bunny upload (${res.statusCode})');
     }
     return BunnyStreamCredentials.fromJson(jsonDecode(res.body));
+  }
+
+  /// Pulls the backend's own `detail` message out of a non-200 response
+  /// (e.g. "Create an account to use this feature." on a 403 from
+  /// get_current_user_id_no_guest) instead of collapsing every failure
+  /// into a bare status code — the actual reason is what tells a viewer
+  /// (or whoever's debugging their report) what to do next.
+  static String? _detailFrom(http.Response res) {
+    try {
+      final data = jsonDecode(res.body);
+      final detail = data is Map ? data['detail'] : null;
+      return detail is String ? detail : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _mimeTypeFor(String filename) {
