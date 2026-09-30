@@ -5,6 +5,7 @@ import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
+import '../models/insufficient_coins_exception.dart';
 import '../models/post.dart';
 import '../models/series.dart';
 import '../models/series_analytics.dart';
@@ -25,7 +26,7 @@ class SeriesService {
     required String title,
     String description = '',
     String? coverImageUrl,
-    int coinPricePerEpisode = 20,
+    int coinPricePerEpisode = 30,
     String genre = kDefaultDramaGenre,
     // Sent conditionally, and retried without them below, so creating
     // a title still works before the content_type/orientation columns
@@ -567,15 +568,29 @@ class SeriesService {
       return (data['coins_spent'] as num).toInt();
     }
 
-    String? message;
+    throw _errorFor(res, 'Could not unlock episode');
+  }
+
+  /// Builds the exception to throw for a non-200 unlock response — an
+  /// InsufficientCoinsException on a 402 from episodes.py's debit_coins,
+  /// same shape ai_service.dart already uses for coin-gated AI features,
+  /// so this reaches the same "watch an ad / buy coins" sheet instead of
+  /// a flat error snackbar. A plain Exception with the server's own
+  /// detail message otherwise.
+  static Exception _errorFor(http.Response res, String fallback) {
     try {
       final data = jsonDecode(res.body);
       final detail = data is Map ? data['detail'] : null;
-      message = detail is String
-          ? detail
-          : (detail is Map ? detail['error']?.toString() : null);
+      if (res.statusCode == 402 && detail is Map && detail['error'] == 'insufficient_coins') {
+        return InsufficientCoinsException(
+          feature: 'this episode',
+          balance: (detail['balance'] as num?)?.toInt() ?? 0,
+          needed: (detail['needed'] as num?)?.toInt() ?? 0,
+        );
+      }
+      if (detail is String) return Exception(detail);
     } catch (_) {}
-    throw Exception(message ?? 'Could not unlock episode (${res.statusCode})');
+    return Exception('$fallback (${res.statusCode})');
   }
 
   /// Unlocks every currently-locked episode of a series in one purchase

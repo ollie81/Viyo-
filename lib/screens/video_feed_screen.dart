@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/insufficient_coins_exception.dart';
 import '../models/post.dart';
+import '../models/series.dart';
 import '../services/bunny_stream_service.dart';
 import '../services/post_service.dart';
 import '../services/series_service.dart';
@@ -18,6 +20,7 @@ import '../utils/episode_lock.dart';
 import '../utils/friendly_error.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/guest_gate.dart';
+import '../widgets/insufficient_coins_sheet.dart';
 import '../widgets/up_next_overlay.dart';
 import 'profile/profile_screen.dart';
 
@@ -148,6 +151,12 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
       setState(() {
         _posts = _posts.map((p) => p.id == post.id ? p.copyWith(unlockedByMe: true) : p).toList();
       });
+    } on InsufficientCoinsException catch (e) {
+      if (!mounted) return;
+      // Offers watch-an-ad / buy coins / earn coins — not just a "you
+      // can't afford this" snackbar — since unlocking an episode is a
+      // real purchase moment, not a soft AI-feature gate.
+      await showInsufficientCoinsSheet(context, e);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -923,7 +932,7 @@ class _VideoPageState extends State<_VideoPage> {
   /// deliberately the thumbnail, not a frame of the real video.
   Widget _lockedMedia() {
     final post = widget.post;
-    final price = post.seriesCoinPrice ?? 0;
+    final price = post.seriesCoinPrice ?? kDefaultEpisodeCoinPrice;
     return Stack(
       fit: StackFit.expand,
       children: [

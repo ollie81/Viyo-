@@ -4,6 +4,13 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- google_mobile_ads requires this even just to load ads. This is
+	     Google's own public TEST App ID (safe to ship, always serves
+	     test creatives) — swap it for this app's real AdMob App ID
+	     before a store release, or production ad requests will fail.
+	     See rewarded_ad_service.dart. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

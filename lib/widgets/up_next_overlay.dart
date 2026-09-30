@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/post.dart';
+import '../models/series.dart';
 import '../theme/app_theme.dart';
 
 /// The end-of-episode "Up Next" card — built on top of the autoplay-next
@@ -136,7 +137,7 @@ class _UpNextOverlayState extends State<UpNextOverlay> {
               const SizedBox(height: 24),
               if (widget.nextLocked) ...[
                 Text(
-                  'This episode is locked · ${post.seriesCoinPrice ?? 0} coins',
+                  'This episode is locked · ${post.seriesCoinPrice ?? kDefaultEpisodeCoinPrice} coins',
                   style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12.5),
                 ),
                 const SizedBox(height: 14),

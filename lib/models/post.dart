@@ -1,3 +1,5 @@
+import 'series.dart';
+
 enum PostType { text, photo, video }
 
 PostType postTypeFromString(String s) {
@@ -132,7 +134,14 @@ class Post {
         seriesId: json['series_id'],
         episodeNumber: json['episode_number'],
         seriesTitle: json['series']?['title'],
-        seriesCoinPrice: json['series']?['coin_price_per_episode'],
+        // Null only when this post has no series at all — a series
+        // that exists but has no price set (a row from before
+        // coin_price_per_episode existed) falls back to
+        // kDefaultEpisodeCoinPrice instead of silently reading as a
+        // free (0-coin) unlock. Mirrors Series.fromJson's own fallback.
+        seriesCoinPrice: json['series'] == null
+            ? null
+            : (json['series']['coin_price_per_episode'] ?? kDefaultEpisodeCoinPrice),
         seriesOrientation: json['series']?['orientation'],
         authorUsername: json['profiles']?['username'],
         authorDisplayName: json['profiles']?['display_name'],

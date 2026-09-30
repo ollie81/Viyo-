@@ -24,6 +24,10 @@ dependencies:
   # policy doesn't allow the other providers above to sell coins inside
   # an app distributed through Google Play (see buy_coins_screen.dart).
   in_app_purchase: ^3.2.0
+  # Rewarded video ads — "watch an ad, get Viyo Coins" (see
+  # rewarded_ad_service.dart). Uses Google's public TEST ad unit ids
+  # until this app's real AdMob account/ad units are wired in.
+  google_mobile_ads: ^5.2.0
 
   # UI / UX
   share_plus: ^7.2.1

@@ -5,6 +5,7 @@ import '../models/transaction.dart';
 import '../models/user_profile.dart';
 import '../services/coin_service.dart';
 import '../services/profile_service.dart';
+import '../services/rewarded_ad_service.dart';
 import '../services/supabase_service.dart';
 import '../services/wallet_service.dart';
 import '../theme/app_theme.dart';
@@ -25,6 +26,7 @@ class _WalletScreenState extends State<WalletScreen> {
   WalletEarnings _earnings = WalletEarnings.empty();
   bool _loading = true;
   bool _withdrawing = false;
+  bool _watchingAd = false;
   final _giftHandleCtrl = TextEditingController();
   final _giftAmountCtrl = TextEditingController(text: '50');
   bool _gifting = false;
@@ -64,6 +66,23 @@ class _WalletScreenState extends State<WalletScreen> {
       _showToast('$e');
     } finally {
       if (mounted) setState(() => _withdrawing = false);
+    }
+  }
+
+  Future<void> _watchAdForCoins() async {
+    setState(() => _watchingAd = true);
+    try {
+      final coins = await RewardedAdService.showAndClaim();
+      if (coins != null) {
+        _showToast('+$coins coins — thanks for watching! 🎬');
+        _load();
+      } else {
+        _showToast('No ad available right now — try again in a bit');
+      }
+    } catch (e) {
+      _showToast('$e');
+    } finally {
+      if (mounted) setState(() => _watchingAd = false);
     }
   }
 
@@ -169,6 +188,15 @@ class _WalletScreenState extends State<WalletScreen> {
                                   foregroundColor: AppColors.background,
                                 ),
                                 label: const Text('Buy Coins'),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _watchingAd ? null : _watchAdForCoins,
+                                icon: const Icon(Icons.smart_display_outlined, size: 18),
+                                label: Text(_watchingAd ? 'Loading ad...' : 'Watch Ad for Free Coins'),
                               ),
                             ),
                           ],
