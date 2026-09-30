@@ -9,6 +9,7 @@ import '../../services/series_service.dart';
 import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/friendly_error.dart';
+import '../../widgets/content_type_chip_row.dart';
 import '../../widgets/drama_sort_toggle.dart';
 import '../../widgets/genre_chip_row.dart';
 import '../../widgets/series_poster_card.dart';
@@ -47,6 +48,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
   bool _loadingBrowse = true;
   String? _browseError;
   String _selectedGenre = GenreChipRow.all;
+  String _selectedContentType = ContentTypeChipRow.all;
   DramaSort _selectedSort = DramaSort.newest;
 
   @override
@@ -135,7 +137,13 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
       } catch (_) {}
 
       final genre = _selectedGenre == GenreChipRow.all ? null : _selectedGenre;
-      final series = await SeriesService.getAllSeries(genre: genre, sort: _selectedSort, boostedSeriesIds: boostedIds);
+      final contentType = _selectedContentType == ContentTypeChipRow.all ? null : _selectedContentType;
+      final series = await SeriesService.getAllSeries(
+        genre: genre,
+        contentType: contentType,
+        sort: _selectedSort,
+        boostedSeriesIds: boostedIds,
+      );
       if (!mounted) return;
       setState(() {
         _browseSeries = series;
@@ -155,6 +163,12 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
   void _selectGenre(String genre) {
     if (genre == _selectedGenre) return;
     setState(() => _selectedGenre = genre);
+    _loadBrowse();
+  }
+
+  void _selectContentType(String contentType) {
+    if (contentType == _selectedContentType) return;
+    setState(() => _selectedContentType = contentType);
     _loadBrowse();
   }
 
@@ -188,7 +202,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
           children: [
             Icon(Icons.auto_awesome, color: AppColors.secondary, size: 20),
             SizedBox(width: 8),
-            Text('Short Dramas'),
+            Text('Watch'),
           ],
         ),
         actions: [
@@ -276,6 +290,12 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               sliver: SliverToBoxAdapter(
+                child: ContentTypeChipRow(selected: _selectedContentType, onSelect: _selectContentType),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              sliver: SliverToBoxAdapter(
                 child: DramaSortToggle(selected: _selectedSort, onSelect: _selectSort),
               ),
             ),
@@ -296,13 +316,15 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
                 child: Center(child: _DramaStateMessage.error(_browseError!, onRetry: _loadBrowse)),
               )
             else if (_browseSeries.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
                   child: _DramaStateMessage(
                     icon: Icons.auto_awesome,
-                    title: 'No Dramas yet',
-                    subtitle: 'Upload one from the + button to start a series.',
+                    title: _selectedContentType == ContentTypeChipRow.all
+                        ? 'Nothing here yet'
+                        : 'No ${kContentTypeLabels[_selectedContentType]}s yet',
+                    subtitle: 'Upload one from the + button to get started.',
                   ),
                 ),
               )
