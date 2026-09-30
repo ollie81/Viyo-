@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -32,11 +33,19 @@ Future<void> main() async {
   // the next app launch.
   GooglePlayPurchaseService.init();
 
-  // Fire-and-forget: MobileAds.instance.initialize() resolves once ad
-  // SDKs are ready, but nothing here needs to block app start on that.
-  // preload() queues the first rewarded ad request right behind it.
-  MobileAds.instance.initialize();
-  RewardedAdService.preload();
+  // google_mobile_ads has no web implementation at all — calling any of
+  // its APIs on web (including RewardedAdService.preload(), which reads
+  // dart:io's Platform.isIOS) throws before the first frame ever
+  // renders, which is exactly what blanked the Vercel web build. Skip
+  // both entirely on web; RewardedAdService's own calls stay guarded
+  // too; see its doc comment.
+  if (!kIsWeb) {
+    // Fire-and-forget: MobileAds.instance.initialize() resolves once ad
+    // SDKs are ready, but nothing here needs to block app start on that.
+    // preload() queues the first rewarded ad request right behind it.
+    MobileAds.instance.initialize();
+    RewardedAdService.preload();
+  }
 
   // SentryFlutter.init no-ops when SentryConstants.dsn is blank (see its
   // definition) — safe to always call, crash reporting just stays off
