@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'coin_service.dart';
 
@@ -13,6 +14,12 @@ import 'coin_service.dart';
 /// before a store release — shipping test ids to production risks the
 /// AdMob account, and shipping real ids into this sandbox risks
 /// invalid-traffic flags, so the two must never be mixed.
+///
+/// google_mobile_ads has no web implementation, and Platform.isIOS
+/// below (dart:io) throws outright on web — every public method here
+/// checks kIsWeb first and no-ops, so this service is safe to call
+/// from shared (mobile + web) screens like the wallet or the
+/// insufficient-coins sheet without a platform check at each call site.
 class RewardedAdService {
   static const _testAndroidUnitId = 'ca-app-pub-3940256099942544/5224354917';
   static const _testIosUnitId = 'ca-app-pub-3940256099942544/1712485313';
@@ -28,7 +35,7 @@ class RewardedAdService {
   /// flight or one's already sitting ready; showAndClaim() falls back
   /// to an on-demand load if this never succeeded.
   static void preload() {
-    if (_preloaded != null || _loading) return;
+    if (kIsWeb || _preloaded != null || _loading) return;
     _loading = true;
     RewardedAd.load(
       adUnitId: _adUnitId,
@@ -56,6 +63,7 @@ class RewardedAdService {
   /// viewer closed it before earning the reward, or the backend claim
   /// failed (e.g. today's daily cap already hit).
   static Future<int?> showAndClaim() async {
+    if (kIsWeb) return null;
     var ad = _preloaded;
     _preloaded = null;
     ad ??= await _loadNow();
