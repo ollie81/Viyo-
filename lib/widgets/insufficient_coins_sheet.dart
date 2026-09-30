@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/insufficient_coins_exception.dart';
 import '../screens/mission_screen.dart';
+import '../services/rewarded_ad_service.dart';
 import '../theme/app_theme.dart';
 
 /// Shown whenever an AiService call throws InsufficientCoinsException —
 /// the one place every gated-feature call site routes to, so "not
 /// enough coins" always looks and behaves the same everywhere.
-///
-/// Only offers an "Earn Coins" path today — there's no real-money coin
-/// purchase flow in the app yet (no in-app purchase / Stripe wired up),
-/// so a "Get Coins" button here would go nowhere. Add one once that
-/// exists.
 Future<void> showInsufficientCoinsSheet(
   BuildContext context,
   InsufficientCoinsException error,
@@ -23,12 +19,41 @@ Future<void> showInsufficientCoinsSheet(
   );
 }
 
-class _InsufficientCoinsSheet extends StatelessWidget {
+class _InsufficientCoinsSheet extends StatefulWidget {
   final InsufficientCoinsException error;
   const _InsufficientCoinsSheet({required this.error});
 
   @override
+  State<_InsufficientCoinsSheet> createState() => _InsufficientCoinsSheetState();
+}
+
+class _InsufficientCoinsSheetState extends State<_InsufficientCoinsSheet> {
+  bool _watchingAd = false;
+  String? _adResultMessage;
+
+  Future<void> _watchAd() async {
+    setState(() {
+      _watchingAd = true;
+      _adResultMessage = null;
+    });
+    try {
+      final coins = await RewardedAdService.showAndClaim();
+      if (!mounted) return;
+      setState(() {
+        _adResultMessage = coins != null
+            ? '+$coins coins added! You may still need a few more.'
+            : 'No ad available right now — try again in a bit';
+      });
+    } catch (e) {
+      if (mounted) setState(() => _adResultMessage = '$e');
+    } finally {
+      if (mounted) setState(() => _watchingAd = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final error = widget.error;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -102,6 +127,20 @@ class _InsufficientCoinsSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: _watchingAd ? null : _watchAd,
+              icon: const Icon(Icons.smart_display_outlined, size: 18),
+              label: Text(_watchingAd ? 'Loading ad...' : 'Watch an Ad for Coins'),
+            ),
+            if (_adResultMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _adResultMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();

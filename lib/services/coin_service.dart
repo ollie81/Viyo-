@@ -72,6 +72,39 @@ class CoinService {
     throw Exception(message ?? 'Gift failed (${res.statusCode})');
   }
 
+  /// Credits coins for watching a rewarded ad through to completion —
+  /// routed through the Python backend (viyo_ai's rewarded_ads.py)
+  /// rather than a client-side balance update, same "don't trust the
+  /// client with money movement" line as giftCoins above. The backend
+  /// is also what enforces today's claim cap; a client-only cap could
+  /// just be skipped by whoever's calling this.
+  static Future<int> claimRewardedAd() async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/rewarded-ad/claim'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      return (data['coins_earned'] as num).toInt();
+    }
+
+    String? message;
+    try {
+      final data = jsonDecode(res.body);
+      final detail = data is Map ? data['detail'] : null;
+      if (detail is Map && detail['error'] == 'daily_ad_cap_reached') {
+        message = "You've hit today's limit of ${detail['daily_cap']} ad watches — come back tomorrow.";
+      } else if (detail is String) {
+        message = detail;
+      }
+    } catch (_) {}
+    throw Exception(message ?? 'Could not claim ad reward (${res.statusCode})');
+  }
+
   static Future<List<AppBadge>> getStoreBadges(String userId) async {
     final badges = await _client.from('badges').select().order('tier');
     final owned = await _client

@@ -49,6 +49,11 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   final _newSeriesTitle = TextEditingController();
   final _newSeriesDescription = TextEditingController();
   final _newSeriesPrice = TextEditingController(text: '30');
+  // True once the creator has typed into the price field themselves —
+  // _selectContentType below only ever overwrites the *default* price
+  // suggestion when switching content types, never a price someone
+  // already chose on purpose.
+  bool _priceManuallyEdited = false;
   String _newSeriesGenre = kDefaultDramaGenre;
 
   // What kind of Title this upload creates — see series.dart's
@@ -167,6 +172,14 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       }
       final genres = contentType == kContentTypeShortDrama ? kDramaGenres : kGeneralGenres;
       if (!genres.contains(_newSeriesGenre)) _newSeriesGenre = genres.first;
+      // A Movie/Short Film is priced from the very first watch (no free
+      // episode window — see episodes.py's SINGLE_ASSET_CONTENT_TYPES)
+      // and is typically feature-length rather than a 2-3 minute drama
+      // episode, so it defaults to a higher suggested price. Only ever
+      // overwrites a price the creator hasn't already typed themselves.
+      if (!_priceManuallyEdited) {
+        _newSeriesPrice.text = kSingleAssetContentTypes.contains(contentType) ? '100' : '30';
+      }
     });
   }
 
@@ -556,6 +569,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                   enabled: !busy,
                   keyboardType: TextInputType.number,
                   style: const TextStyle(color: Colors.white),
+                  onChanged: (_) => _priceManuallyEdited = true,
                   decoration: InputDecoration(
                     hintText: _isSingleAsset ? 'Coins to unlock this ${contentLabel.toLowerCase()}' : 'Coins to unlock one episode',
                     prefixIcon: const Icon(Icons.monetization_on_outlined, color: AppColors.coin, size: 18),
