@@ -37,6 +37,13 @@ class Post {
   // posts itself, same as the author fields below.
   final String? seriesTitle;
   final int? seriesCoinPrice;
+  // Which way this episode's title is shot — 'vertical' | 'landscape'
+  // | null (reads as vertical, same as Series.effectiveOrientation).
+  // Populated the same join-and-read-opportunistically way as the two
+  // fields above; drives VideoFeedScreen's BoxFit choice so a landscape
+  // movie shows full-frame instead of getting cropped to fill a
+  // vertical screen the way a short drama episode is meant to.
+  final String? seriesOrientation;
 
   // Populated client-side after a join with `profiles` — not stored in the
   // posts table itself.
@@ -71,6 +78,7 @@ class Post {
   final String? videoStatus;
 
   bool get isEpisode => seriesId != null;
+  bool get isLandscapeVideo => seriesOrientation == 'landscape';
   bool get isVideoProcessing => videoStatus == 'processing';
   bool get isVideoFailed => videoStatus == 'failed';
 
@@ -94,6 +102,7 @@ class Post {
     this.episodeNumber,
     this.seriesTitle,
     this.seriesCoinPrice,
+    this.seriesOrientation,
     this.authorUsername,
     this.authorDisplayName,
     this.authorAvatarUrl,
@@ -124,6 +133,7 @@ class Post {
         episodeNumber: json['episode_number'],
         seriesTitle: json['series']?['title'],
         seriesCoinPrice: json['series']?['coin_price_per_episode'],
+        seriesOrientation: json['series']?['orientation'],
         authorUsername: json['profiles']?['username'],
         authorDisplayName: json['profiles']?['display_name'],
         authorAvatarUrl: json['profiles']?['avatar_url'],

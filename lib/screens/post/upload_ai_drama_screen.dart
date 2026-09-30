@@ -13,13 +13,23 @@ import '../../widgets/guest_gate.dart';
 import '../../widgets/upload_progress_card.dart';
 import '../../widgets/xfile_preview_image.dart';
 
-/// Upload flow for AI Short Drama episodes — deliberately a separate
-/// screen from CreatePostScreen rather than one more mode bolted onto
-/// it: a drama upload always has a series + episode number and never
-/// needs the caption-writing AI tools (hook check, voice check,
-/// caption variants) that screen is built around, so sharing it would
-/// mean threading a growing set of "only if this is a drama" branches
-/// through logic that has nothing to do with series.
+/// Upload flow for a Title — a Short Drama/Series/AI Film episode, or a
+/// standalone Movie/Short Film — deliberately a separate screen from
+/// CreatePostScreen rather than one more mode bolted onto it: this flow
+/// always has a title/price/genre and never needs the caption-writing
+/// AI tools (hook check, voice check, caption variants) that screen is
+/// built around, so sharing it would mean threading a growing set of
+/// "only if this is a title" branches through logic that has nothing
+/// to do with series.
+///
+/// One content model underneath all five content types (see
+/// series.dart's kContentType* constants): every Title is still a
+/// `series` row, every uploaded video is still a `posts` row with
+/// series_id + episode_number set. A Movie/Short Film is simply a
+/// Title with exactly one episode — same upload path, same Bunny
+/// pipeline, same paywall, just without the "pick an existing
+/// series"/multi-episode framing, which is why kSingleAssetContentTypes
+/// branches the form below rather than needing a second screen.
 class UploadAiDramaScreen extends StatefulWidget {
   const UploadAiDramaScreen({super.key});
 
@@ -40,6 +50,18 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   final _newSeriesDescription = TextEditingController();
   final _newSeriesPrice = TextEditingController(text: '20');
   String _newSeriesGenre = kDefaultDramaGenre;
+
+  // What kind of Title this upload creates — see series.dart's
+  // kContentType* constants. Changing this changes which genre list is
+  // offered (kDramaGenres vs kGeneralGenres) and, for Movie/Short Film,
+  // hides the multi-episode series picker entirely (see
+  // _isSingleAsset below).
+  String _contentType = kContentTypeShortDrama;
+  String _orientation = kOrientationVertical;
+
+  bool get _isSingleAsset => kSingleAssetContentTypes.contains(_contentType);
+  List<String> get _genresForContentType =>
+      _contentType == kContentTypeShortDrama ? kDramaGenres : kGeneralGenres;
 
   List<Series> _mySeries = [];
   bool _loadingSeries = true;
@@ -126,6 +148,28 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
     });
   }
 
+  /// Movie/Short Film are always a brand-new, single-video Title — no
+  /// "pick an existing series" step exists for them (see
+  /// _isSingleAsset), so switching into one of those types forces the
+  /// same state _startNewSeries sets up manually for the others.
+  /// Also resets the genre to the first item of whichever list now
+  /// applies, so switching content types can never leave a Short-Drama
+  /// genre selected while browsing the general genre list (or the
+  /// reverse) — _genresForContentType only ever offers one of the two
+  /// lists at a time.
+  void _selectContentType(String contentType) {
+    setState(() {
+      _contentType = contentType;
+      if (kSingleAssetContentTypes.contains(contentType)) {
+        _selectedSeries = null;
+        _creatingNewSeries = true;
+        _nextEpisodeNumber = 1;
+      }
+      final genres = contentType == kContentTypeShortDrama ? kDramaGenres : kGeneralGenres;
+      if (!genres.contains(_newSeriesGenre)) _newSeriesGenre = genres.first;
+    });
+  }
+
   Future<void> _pickVideo() async {
     final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
     if (picked != null) setState(() => _video = picked);
@@ -176,12 +220,13 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   Future<void> _submit() async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    final contentLabel = kContentTypeLabels[_contentType]!;
     if (_video == null) {
       setState(() => _error = 'Add a video first');
       return;
     }
     if (_creatingNewSeries && _newSeriesTitle.text.trim().isEmpty) {
-      setState(() => _error = 'Give your new series a title');
+      setState(() => _error = 'Give your $contentLabel a title');
       return;
     }
     if (!_creatingNewSeries && _selectedSeries == null) {
@@ -196,7 +241,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       setState(() => _error = 'Confirm you own the rights to this video before publishing');
       return;
     }
-    if (!await GuestGate.allow(context, action: 'upload a Short Drama')) return;
+    if (!await GuestGate.allow(context, action: 'upload a $contentLabel')) return;
 
     setState(() {
       _posting = true;
@@ -213,6 +258,8 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
           description: _newSeriesDescription.text.trim(),
           coinPricePerEpisode: price.clamp(1, 100000),
           genre: _newSeriesGenre,
+          contentType: _contentType,
+          orientation: _orientation,
         );
       } else {
         series = _selectedSeries!;
@@ -313,19 +360,21 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
       }
 
       if (!mounted) return;
+      final whatWasPublished =
+          _isSingleAsset ? '"${series.title}"' : 'Episode $episodeNumber of "${series.title}"';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             scheduledFor != null
-                ? 'Episode $episodeNumber of "${series.title}" is scheduled for ${_formatScheduledFor(scheduledFor)}'
-                : 'Episode $episodeNumber of "${series.title}" is live 🎬',
+                ? '$whatWasPublished is scheduled for ${_formatScheduledFor(scheduledFor)}'
+                : '$whatWasPublished is live 🎬',
           ),
         ),
       );
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Could not upload episode: $e');
+      setState(() => _error = 'Could not upload $contentLabel: $e');
     } finally {
       if (mounted) setState(() { _posting = false; _uploading = false; });
     }
@@ -334,15 +383,16 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
   @override
   Widget build(BuildContext context) {
     final busy = _posting || _uploading;
+    final contentLabel = kContentTypeLabels[_contentType]!;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.background,
         title: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.auto_awesome, size: 18, color: AppColors.secondary),
-            SizedBox(width: 8),
-            Text('Upload Short Drama'),
+          children: [
+            const Icon(Icons.auto_awesome, size: 18, color: AppColors.secondary),
+            const SizedBox(width: 8),
+            Text('Upload $contentLabel'),
           ],
         ),
       ),
@@ -351,6 +401,36 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const Text('CONTENT TYPE', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: kContentTypeLabels.entries.map((entry) => _GenreChip(
+                    label: entry.value,
+                    selected: _contentType == entry.key,
+                    onTap: busy ? null : () => _selectContentType(entry.key),
+                  )).toList(),
+            ),
+            const SizedBox(height: 14),
+            const Text('ORIENTATION', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _GenreChip(
+                  label: 'Vertical (9:16)',
+                  selected: _orientation == kOrientationVertical,
+                  onTap: busy ? null : () => setState(() => _orientation = kOrientationVertical),
+                ),
+                const SizedBox(width: 8),
+                _GenreChip(
+                  label: 'Landscape (16:9)',
+                  selected: _orientation == kOrientationLandscape,
+                  onTap: busy ? null : () => setState(() => _orientation = kOrientationLandscape),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
             GestureDetector(
               onTap: busy ? null : _pickVideo,
               child: Container(
@@ -367,7 +447,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                           children: [
                             Icon(Icons.movie_creation_outlined, size: 36, color: AppColors.secondary),
                             SizedBox(height: 8),
-                            Text('Choose your episode video', style: TextStyle(color: AppColors.textSecondary)),
+                            Text('Choose your video', style: TextStyle(color: AppColors.textSecondary)),
                           ],
                         ),
                       )
@@ -426,12 +506,16 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            const Text('SERIES', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+            Text(_isSingleAsset ? 'TITLE' : 'SERIES', style: const TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             if (_loadingSeries)
               const Center(child: CircularProgressIndicator(color: AppColors.secondary))
             else ...[
-              if (_mySeries.isNotEmpty) ...[
+              // Movie/Short Film are always a new, single-video Title —
+              // no "pick an existing series" step (see _selectContentType),
+              // so this picker only makes sense for the multi-episode
+              // content types.
+              if (!_isSingleAsset && _mySeries.isNotEmpty) ...[
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -454,7 +538,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                   controller: _newSeriesTitle,
                   enabled: !busy,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(hintText: 'New series title'),
+                  decoration: InputDecoration(hintText: _isSingleAsset ? 'Title' : 'New series title'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -462,7 +546,9 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                   enabled: !busy,
                   maxLines: 2,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(hintText: 'What is this series about? (optional)'),
+                  decoration: InputDecoration(
+                    hintText: _isSingleAsset ? 'What is this about? (optional)' : 'What is this series about? (optional)',
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -470,9 +556,9 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                   enabled: !busy,
                   keyboardType: TextInputType.number,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: 'Coins to unlock one episode',
-                    prefixIcon: Icon(Icons.monetization_on_outlined, color: AppColors.coin, size: 18),
+                  decoration: InputDecoration(
+                    hintText: _isSingleAsset ? 'Coins to unlock this ${contentLabel.toLowerCase()}' : 'Coins to unlock one episode',
+                    prefixIcon: const Icon(Icons.monetization_on_outlined, color: AppColors.coin, size: 18),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -481,17 +567,19 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: kDramaGenres.map((g) => _GenreChip(
+                  children: _genresForContentType.map((g) => _GenreChip(
                         label: g,
                         selected: _newSeriesGenre == g,
                         onTap: busy ? null : () => setState(() => _newSeriesGenre = g),
                       )).toList(),
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  'This episode will be Episode 1. The first $kFreeEpisodeCount episodes of every series are free to watch.',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
-                ),
+                if (!_isSingleAsset) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'This episode will be Episode 1. The first $kFreeEpisodeCount episodes of every series are free to watch.',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+                  ),
+                ],
               ] else if (_selectedSeries != null) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -591,7 +679,9 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary),
               child: busy
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(_scheduledFor != null ? 'Schedule Episode' : 'Publish Episode'),
+                  : Text(_scheduledFor != null
+                      ? 'Schedule ${_isSingleAsset ? contentLabel : 'Episode'}'
+                      : 'Publish ${_isSingleAsset ? contentLabel : 'Episode'}'),
             ),
           ],
         ),

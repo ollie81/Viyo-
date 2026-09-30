@@ -102,7 +102,7 @@ class PostService {
   static Future<List<Post>> getFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('is_private', false)
         .eq('is_archived', false)
         .order('created_at', ascending: false)
@@ -164,7 +164,7 @@ class PostService {
 
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .inFilter('user_id', followedIds)
         .eq('is_private', false)
         .eq('is_archived', false)
@@ -185,7 +185,7 @@ class PostService {
   static Future<List<Post>> getUserPosts(String userId) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('user_id', userId)
         .order('is_pinned', ascending: false)
         .order('created_at', ascending: false);
@@ -201,7 +201,7 @@ class PostService {
     if (ids.isEmpty) return [];
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .inFilter('id', ids);
     return _withLikedByMe((data as List).map((e) => Post.fromJson(e)).toList());
   }
@@ -211,7 +211,7 @@ class PostService {
   static Future<List<Post>> getPublicUserPosts(String userId) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('user_id', userId)
         .eq('is_private', false)
         .eq('is_archived', false)
@@ -236,7 +236,7 @@ class PostService {
   static Future<List<Post>> getVideoFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('post_type', 'video')
         .order('created_at', ascending: false)
         .range(offset, offset + limit - 1);
@@ -260,7 +260,7 @@ class PostService {
   static Future<List<Post>> getDiscoverPosts({int limit = 40}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('is_private', false)
         .eq('is_archived', false)
         .not('media_url', 'is', null)
