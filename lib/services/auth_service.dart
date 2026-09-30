@@ -52,8 +52,26 @@ class AuthService {
   static Future<UserResponse> upgradeToFullAccount({
     required String email,
     required String password,
-  }) {
-    return _client.auth.updateUser(UserAttributes(email: email, password: password));
+  }) async {
+    final response = await _client.auth.updateUser(UserAttributes(email: email, password: password));
+
+    // updateUser() flips is_anonymous to false server-side and patches
+    // the local User object immediately (which is why isGuest reads
+    // false right away) — but the session's already-issued JWT still
+    // carries the old is_anonymous: true claim until a new one is
+    // minted. Every backend call gated by get_current_user_id_no_guest
+    // (unlocking an episode, uploading a video, anything coin/AI-
+    // related) decodes that same bearer token, not the local User
+    // object, so without forcing a refresh here it kept 403ing with
+    // "Create an account to use this feature" right after someone had
+    // just done exactly that. Best-effort: on failure, the natural
+    // refresh on next launch/token-expiry still picks up the corrected
+    // claim, so this never blocks the upgrade itself from succeeding.
+    try {
+      await _client.auth.refreshSession();
+    } catch (_) {}
+
+    return response;
   }
 
   /// Auto-creates a minimal profile for a fresh guest session so the rest
