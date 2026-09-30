@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/post.dart';
 import '../../models/series.dart';
+import '../../services/bunny_stream_service.dart';
 import '../../services/post_service.dart';
 import '../../services/scheduled_release_service.dart';
 import '../../services/series_service.dart';
@@ -222,14 +223,45 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         _uploading = true;
         _uploadProgress = 0;
       });
-      final mediaUrl = await PostService.uploadMediaWithProgress(
-        _video!,
-        userId,
-        onProgress: (p) {
-          if (mounted) setState(() => _uploadProgress = p);
-        },
-      );
+
+      // Bunny Stream first — the episode's bytes go straight to Bunny,
+      // never through our backend — falling back to the existing
+      // Supabase Storage path only when Bunny isn't configured on the
+      // backend yet (503). Any other Bunny failure surfaces as a normal
+      // upload failure below instead of silently downgrading to
+      // Supabase after wasting the upload time. See
+      // create_post_screen.dart's _submit for the same pattern.
+      String mediaUrl;
+      String? videoProvider;
+      String? bunnyVideoId;
+      String? videoStatus;
+      try {
+        final creds = await BunnyStreamService.createUploadCredentials(
+          _caption.text.trim().isEmpty ? 'Viyo episode' : _caption.text.trim(),
+        );
+        await BunnyStreamService.uploadVideo(
+          _video!,
+          creds,
+          onProgress: (p) {
+            if (mounted) setState(() => _uploadProgress = p);
+          },
+        );
+        mediaUrl = creds.playbackUrl;
+        videoProvider = 'bunny';
+        bunnyVideoId = creds.videoId;
+        videoStatus = 'processing';
+      } on BunnyNotConfiguredException {
+        mediaUrl = await PostService.uploadMediaWithProgress(
+          _video!,
+          userId,
+          onProgress: (p) {
+            if (mounted) setState(() => _uploadProgress = p);
+          },
+        );
+      }
       if (mounted) setState(() => _uploading = false);
+      // Always a small JPEG to Supabase Storage regardless of which
+      // provider hosts the video itself — see create_post_screen.dart.
       final thumbnailUrl = _customThumbnail != null
           ? await PostService.uploadMediaWithProgress(_customThumbnail!, userId)
           : await PostService.generateAndUploadVideoThumbnail(_video!, userId);
@@ -253,7 +285,21 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         seriesId: series.id,
         episodeNumber: episodeNumber,
         isPrivate: scheduledFor != null,
+        videoProvider: videoProvider,
+        bunnyVideoId: bunnyVideoId,
+        videoStatus: videoStatus,
       );
+
+      // Bunny still needs time to finish encoding after the upload
+      // itself completes — poll in the background and flip the
+      // episode's status once it's ready (or failed), same as
+      // create_post_screen.dart's _submit.
+      if (bunnyVideoId != null) {
+        BunnyStreamService.waitForReady(bunnyVideoId).then((status) async {
+          if (status == null) return;
+          await PostService.updateVideoStatus(episode.id, status.failed ? 'failed' : 'ready');
+        }).catchError((_) {});
+      }
 
       if (scheduledFor != null) {
         // Notification is deferred until ScheduledReleaseService

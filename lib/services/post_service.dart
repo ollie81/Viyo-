@@ -433,22 +433,44 @@ class PostService {
     // create the real row now, flip this to false once the scheduled
     // time passes.
     bool isPrivate = false,
+    // Set only for a video uploaded through Bunny Stream (see
+    // BunnyStreamService) — null/omitted for every photo/text post and
+    // for a video that fell back to the existing Supabase Storage path.
+    // Sent conditionally, and retried without them below, so posting
+    // still works before the video_provider/bunny_video_id/video_status
+    // columns exist on `posts` — same pattern as referral_code/
+    // referred_by on profiles earlier.
+    String? videoProvider,
+    String? bunnyVideoId,
+    String? videoStatus,
   }) async {
-    final inserted = await _client
-        .from('posts')
-        .insert({
-          'user_id': userId,
-          'post_type': type.name,
-          'caption': caption,
-          'media_url': mediaUrl,
-          'thumbnail_url': thumbnailUrl,
-          'duration_seconds': durationSeconds,
-          'is_private': isPrivate,
-          if (seriesId != null) 'series_id': seriesId,
-          if (episodeNumber != null) 'episode_number': episodeNumber,
-        })
-        .select()
-        .single();
+    final row = {
+      'user_id': userId,
+      'post_type': type.name,
+      'caption': caption,
+      'media_url': mediaUrl,
+      'thumbnail_url': thumbnailUrl,
+      'duration_seconds': durationSeconds,
+      'is_private': isPrivate,
+      if (seriesId != null) 'series_id': seriesId,
+      if (episodeNumber != null) 'episode_number': episodeNumber,
+    };
+    final bunnyFields = {
+      if (videoProvider != null) 'video_provider': videoProvider,
+      if (bunnyVideoId != null) 'bunny_video_id': bunnyVideoId,
+      if (videoStatus != null) 'video_status': videoStatus,
+    };
+
+    Map<String, dynamic> inserted;
+    try {
+      inserted = await _client.from('posts').insert({...row, ...bunnyFields}).select().single();
+    } catch (e) {
+      if (bunnyFields.isEmpty || !e.toString().contains('column')) rethrow;
+      // The video_provider/bunny_video_id/video_status columns haven't
+      // been migrated onto `posts` yet — retry without them rather than
+      // failing the whole post.
+      inserted = await _client.from('posts').insert(row).select().single();
+    }
 
     // Award coins for posting via RPC (server-side, tamper-proof).
     await _client.rpc('award_post_creation', params: {
@@ -460,6 +482,20 @@ class PostService {
     AnalyticsService.track('post_created', properties: {'post_type': type.name});
 
     return Post.fromJson(inserted);
+  }
+
+  /// Flips a Bunny-hosted post's processing status once Bunny finishes
+  /// encoding (or fails) — called from a background poll kicked off
+  /// right after createPost (see create_post_screen.dart/
+  /// upload_ai_drama_screen.dart), not from the UI's critical path, so a
+  /// slow Bunny encode never blocks publishing. Best-effort: RLS already
+  /// restricts this to the post's own owner, and there's nothing useful
+  /// to show the user if the flip itself fails — the post already
+  /// published; it just stays showing as "processing" a bit longer.
+  static Future<void> updateVideoStatus(String postId, String status) async {
+    try {
+      await _client.from('posts').update({'video_status': status}).eq('id', postId);
+    } catch (_) {}
   }
 
   /// Deletes a post: removes the media file(s) from storage first, then

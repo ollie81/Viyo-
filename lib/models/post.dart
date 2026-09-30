@@ -51,7 +51,28 @@ class Post {
   // server-side in episodes.py regardless of what this says.
   final bool unlockedByMe;
 
+  // Which service actually hosts this post's video FILE — mediaUrl and
+  // thumbnailUrl above are populated exactly the same way either way
+  // (a plain network URL the player already knows how to use), this
+  // just says where that URL points. Null/'supabase' for every post
+  // made before Bunny Stream existed (see bunny_stream_service.dart);
+  // 'bunny' only for one uploaded through that new path. Read
+  // opportunistically — never sent on insert unless non-null (see
+  // PostService.createPost), so posting still works before the
+  // video_provider/bunny_video_id/video_status columns are migrated.
+  final String? videoProvider;
+  final String? bunnyVideoId;
+  // 'processing' | 'ready' | 'failed' | null. Only meaningful when
+  // videoProvider == 'bunny' — a Supabase-hosted video has no
+  // processing step, so this stays null for those. While 'processing',
+  // mediaUrl already holds Bunny's deterministic playback URL, but the
+  // file behind it doesn't exist yet and would 404 — players gate on
+  // this rather than just trying to play immediately.
+  final String? videoStatus;
+
   bool get isEpisode => seriesId != null;
+  bool get isVideoProcessing => videoStatus == 'processing';
+  bool get isVideoFailed => videoStatus == 'failed';
 
   Post({
     required this.id,
@@ -78,6 +99,9 @@ class Post {
     this.authorAvatarUrl,
     this.likedByMe = false,
     this.unlockedByMe = false,
+    this.videoProvider,
+    this.bunnyVideoId,
+    this.videoStatus,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -105,6 +129,9 @@ class Post {
         authorAvatarUrl: json['profiles']?['avatar_url'],
         likedByMe: json['liked_by_me'] ?? false,
         unlockedByMe: json['unlocked_by_me'] ?? false,
+        videoProvider: json['video_provider'],
+        bunnyVideoId: json['bunny_video_id'],
+        videoStatus: json['video_status'],
       );
   Post copyWith({
     String? id,
@@ -129,6 +156,9 @@ class Post {
     String? authorAvatarUrl,
     bool? likedByMe,
     bool? unlockedByMe,
+    String? videoProvider,
+    String? bunnyVideoId,
+    String? videoStatus,
   }) {
     return Post(
       id: id ?? this.id,
@@ -153,6 +183,9 @@ class Post {
       authorAvatarUrl: authorAvatarUrl ?? this.authorAvatarUrl,
       likedByMe: likedByMe ?? this.likedByMe,
       unlockedByMe: unlockedByMe ?? this.unlockedByMe,
+      videoProvider: videoProvider ?? this.videoProvider,
+      bunnyVideoId: bunnyVideoId ?? this.bunnyVideoId,
+      videoStatus: videoStatus ?? this.videoStatus,
     );
   }
 }
