@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../../models/post.dart';
+import '../../services/bunny_stream_service.dart';
+import '../../services/post_service.dart';
 import '../../theme/app_theme.dart';
 
 enum ViyoMediaType { photo, video }
@@ -23,6 +25,9 @@ class ViyoPostMedia {
   // Supabase-hosted video.
   final bool isVideoProcessing;
   final bool isVideoFailed;
+  // Needed only to self-heal a stuck "processing" video by polling
+  // Bunny directly — see _CreatorMediaPageState._pollBunnyStatus.
+  final String? bunnyVideoId;
 
   const ViyoPostMedia({
     required this.id,
@@ -38,6 +43,7 @@ class ViyoPostMedia {
     this.commentCount = 0,
     this.isVideoProcessing = false,
     this.isVideoFailed = false,
+    this.bunnyVideoId,
   });
 
   factory ViyoPostMedia.fromPost(Post post) => ViyoPostMedia(
@@ -56,6 +62,7 @@ class ViyoPostMedia {
         commentCount: post.commentCount,
         isVideoProcessing: post.isVideoProcessing,
         isVideoFailed: post.isVideoFailed,
+        bunnyVideoId: post.bunnyVideoId,
       );
 }
 
@@ -198,6 +205,11 @@ class _CreatorMediaPage extends StatefulWidget {
 class _CreatorMediaPageState extends State<_CreatorMediaPage> {
   VideoPlayerController? _video;
   bool _liked = false;
+  // Set only if this page's own self-heal poll (see _pollBunnyStatus)
+  // finds the video failed — widget.post.isVideoFailed itself can't
+  // change here, since it's the same immutable snapshot this page was
+  // built with. Same pattern as video_feed_screen.dart's _VideoPage.
+  bool _processingFailedOverride = false;
 
   @override
   void initState() {
@@ -207,6 +219,33 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
         !widget.post.isVideoProcessing &&
         !widget.post.isVideoFailed) {
       _initVideo();
+    } else if (widget.post.type == ViyoMediaType.video &&
+        widget.post.isVideoProcessing &&
+        widget.post.bunnyVideoId != null) {
+      _pollBunnyStatus();
+    }
+  }
+
+  /// Self-heals a video stuck showing "Processing…" — see the matching
+  /// method/comment on video_feed_screen.dart's _VideoPageState for why
+  /// this is needed (the one-shot poll from upload time only runs while
+  /// that screen's tab stays open).
+  Future<void> _pollBunnyStatus() async {
+    final videoId = widget.post.bunnyVideoId;
+    if (videoId == null) return;
+    try {
+      final status = await BunnyStreamService.waitForReady(videoId);
+      if (!mounted || status == null) return;
+      await PostService.updateVideoStatus(widget.post.id, status.failed ? 'failed' : 'ready');
+      if (!mounted) return;
+      if (status.failed) {
+        setState(() => _processingFailedOverride = true);
+      } else {
+        _initVideo();
+      }
+    } catch (_) {
+      // Best-effort — worst case this viewer still sees "Processing…"
+      // and the next person to open it tries again.
     }
   }
 
@@ -362,7 +401,14 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
         ),
       );
     }
-    if (widget.post.isVideoProcessing || widget.post.isVideoFailed) {
+    // Checked before isVideoProcessing/isVideoFailed below: those read
+    // widget.post's original (possibly stale) videoStatus, but once
+    // _pollBunnyStatus's self-heal actually gets a controller playing,
+    // that takes priority over a status snapshot that's since gone
+    // stale — same reasoning as video_feed_screen.dart's own `ready`
+    // check running before its processing/failed branches.
+    final ready = _video != null && _video!.value.isInitialized;
+    if (!ready && (widget.post.isVideoProcessing || _processingFailedOverride || widget.post.isVideoFailed)) {
       return Stack(
         alignment: Alignment.center,
         children: [
@@ -370,7 +416,7 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
             Image.network(widget.post.thumbnailUrl!, fit: BoxFit.contain),
           Column(
             mainAxisSize: MainAxisSize.min,
-            children: widget.post.isVideoFailed
+            children: (widget.post.isVideoFailed || _processingFailedOverride)
                 ? const [
                     Icon(Icons.error_outline, color: Colors.white54, size: 44),
                     SizedBox(height: 8),
