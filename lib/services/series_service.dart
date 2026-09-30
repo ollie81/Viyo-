@@ -27,19 +27,33 @@ class SeriesService {
     String? coverImageUrl,
     int coinPricePerEpisode = 20,
     String genre = kDefaultDramaGenre,
+    // Sent conditionally, and retried without them below, so creating
+    // a title still works before the content_type/orientation columns
+    // are migrated — same pattern as PostService.createPost's Bunny
+    // fields.
+    String? contentType,
+    String? orientation,
   }) async {
-    final inserted = await _client
-        .from('series')
-        .insert({
-          'user_id': userId,
-          'title': title,
-          'description': description,
-          'cover_image_url': coverImageUrl,
-          'coin_price_per_episode': coinPricePerEpisode,
-          'genre': genre,
-        })
-        .select()
-        .single();
+    final row = {
+      'user_id': userId,
+      'title': title,
+      'description': description,
+      'cover_image_url': coverImageUrl,
+      'coin_price_per_episode': coinPricePerEpisode,
+      'genre': genre,
+    };
+    final extraFields = {
+      if (contentType != null) 'content_type': contentType,
+      if (orientation != null) 'orientation': orientation,
+    };
+
+    Map<String, dynamic> inserted;
+    try {
+      inserted = await _client.from('series').insert({...row, ...extraFields}).select().single();
+    } catch (e) {
+      if (extraFields.isEmpty || !e.toString().contains('column')) rethrow;
+      inserted = await _client.from('series').insert(row).select().single();
+    }
     return Series.fromJson(inserted);
   }
 
@@ -274,7 +288,7 @@ class SeriesService {
   static Future<List<Post>> getSeriesEpisodes(String seriesId, {bool includePrivate = false}) async {
     var query = _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('series_id', seriesId);
     if (!includePrivate) {
       query = query.eq('is_private', false);
@@ -329,7 +343,7 @@ class SeriesService {
   static Future<List<Post>> getTrendingAiDramas({int limit = 20}) async {
     final data = await _client
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode)')
+        .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')
         .eq('is_private', false)
         .eq('is_archived', false)
         .not('series_id', 'is', null)

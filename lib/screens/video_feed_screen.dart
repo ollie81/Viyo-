@@ -547,7 +547,14 @@ class _VideoPageState extends State<_VideoPage> {
                 ? _lockedMedia()
                 : ready
                     ? FittedBox(
-                        fit: BoxFit.cover,
+                        // Landscape content (movies/full-length shows)
+                        // shows full-frame letterboxed instead of
+                        // getting cropped to fill a vertical screen —
+                        // the black Container behind this already
+                        // provides the letterbox bars. Vertical
+                        // dramas/shorts keep the existing edge-to-edge
+                        // cover behavior, unchanged.
+                        fit: post.isLandscapeVideo ? BoxFit.contain : BoxFit.cover,
                         child: SizedBox(
                           width: c!.value.size.width,
                           height: c.value.size.height,

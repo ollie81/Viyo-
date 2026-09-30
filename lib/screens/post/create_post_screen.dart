@@ -69,7 +69,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Future<void> _pickMedia(ImageSource source, {required bool video}) async {
     final picker = ImagePicker();
     final XFile? picked = video
-        ? await picker.pickVideo(source: source, maxDuration: const Duration(seconds: 30))
+        ? await picker.pickVideo(source: source, maxDuration: const Duration(seconds: 60))
         : await picker.pickImage(source: source);
     if (picked != null) {
       setState(() {
@@ -356,7 +356,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         caption: caption,
         mediaUrl: mediaUrl,
         thumbnailUrl: thumbnailUrl,
-        durationSeconds: postType == PostType.video ? 30 : null,
+        durationSeconds: postType == PostType.video ? 60 : null,
         videoProvider: videoProvider,
         bunnyVideoId: bunnyVideoId,
         videoStatus: videoStatus,
@@ -464,7 +464,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 const SizedBox(width: 8),
                 _typeChip('Photo', PostType.photo),
                 const SizedBox(width: 8),
-                _typeChip('Video (30s)', PostType.video),
+                _typeChip('Video (60s)', PostType.video),
               ],
             ),
             const SizedBox(height: 16),

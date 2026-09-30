@@ -30,6 +30,26 @@ class Series {
   // reasoning: computed, not cached, so it can never drift out of sync).
   final int episodeCount;
 
+  // What kind of title this is (see the kContentType* constants below)
+  // and which way its video is shot. Both null until the content_type/
+  // orientation columns exist on `series` — read opportunistically
+  // (see fromJson) rather than sent unconditionally on insert, same
+  // "inert until migrated" posture as `status` above. Null reads as
+  // 'short_drama'/'vertical' everywhere (see the effective* getters)
+  // so every series created before these columns existed keeps
+  // behaving exactly as it always did.
+  final String? contentType;
+  final String? orientation;
+
+  String get effectiveContentType => contentType ?? kContentTypeShortDrama;
+  String get effectiveOrientation => orientation ?? kOrientationVertical;
+
+  // A Movie/Short Film is one uploaded video, not a multi-episode
+  // series — see kSingleAssetContentTypes for what that changes in the
+  // upload flow and the paywall (episodes.py's _is_free_episode).
+  bool get isSingleAsset => kSingleAssetContentTypes.contains(effectiveContentType);
+  bool get isLandscape => effectiveOrientation == kOrientationLandscape;
+
   Series({
     required this.id,
     required this.userId,
@@ -44,6 +64,8 @@ class Series {
     this.authorAvatarUrl,
     this.episodeCount = 0,
     this.status,
+    this.contentType,
+    this.orientation,
   });
 
   factory Series.fromJson(Map<String, dynamic> json, {int episodeCount = 0}) => Series(
@@ -60,6 +82,8 @@ class Series {
         authorAvatarUrl: json['profiles']?['avatar_url'],
         episodeCount: episodeCount,
         status: json['status'] as String?,
+        contentType: json['content_type'] as String?,
+        orientation: json['orientation'] as String?,
       );
 
   Series copyWith({int? episodeCount, String? coverImageUrl, String? status}) => Series(
@@ -76,6 +100,8 @@ class Series {
         status: status ?? this.status,
         authorAvatarUrl: authorAvatarUrl,
         episodeCount: episodeCount ?? this.episodeCount,
+        contentType: contentType,
+        orientation: orientation,
       );
 }
 
@@ -107,6 +133,56 @@ const kDramaGenres = <String>[
   'Male Lead',
   'Female Lead',
   'LGBTQ+',
+];
+
+// Content type ids stored on `series.content_type` — what kind of
+// title this is. Drives three things: which genre list the upload
+// screen offers (kDramaGenres vs kGeneralGenres below), whether it's a
+// multi-episode series or a single uploaded video (see
+// kSingleAssetContentTypes), and the paywall's free-episode carve-out
+// (episodes.py's _is_free_episode — mirrored client-side same as
+// every other cross-repo constant here).
+const kContentTypeShortDrama = 'short_drama';
+const kContentTypeSeries = 'series';
+const kContentTypeMovie = 'movie';
+const kContentTypeShortFilm = 'short_film';
+const kContentTypeAiFilm = 'ai_film';
+
+// Display order + label for the upload screen's content-type picker.
+const Map<String, String> kContentTypeLabels = {
+  kContentTypeShortDrama: 'Short Drama',
+  kContentTypeSeries: 'Series',
+  kContentTypeMovie: 'Movie',
+  kContentTypeShortFilm: 'Short Film',
+  kContentTypeAiFilm: 'AI Film',
+};
+
+// Movie and Short Film are a single uploaded video, not a multi-episode
+// series: the upload screen skips the "pick an existing series /
+// episode number" step for these and always starts a new title, and
+// the backend never applies the first-N-episodes-free carve-out to
+// them (there's no episode 4 to ever reach) — they're priced from the
+// first watch, same as any already-unlocked episode.
+const kSingleAssetContentTypes = {kContentTypeMovie, kContentTypeShortFilm};
+
+const kOrientationVertical = 'vertical';
+const kOrientationLandscape = 'landscape';
+
+/// Genre list for every content type except Short Drama, which keeps
+/// using kDramaGenres unchanged below — this app's whole existing
+/// Dramas tab/genre-filter UI is built around that exact list, and
+/// nothing about broadening Viyo's content model requires touching it.
+const kGeneralGenres = <String>[
+  'Action',
+  'Drama',
+  'Comedy',
+  'Romance',
+  'Thriller',
+  'Horror',
+  'Sci-Fi',
+  'Fantasy',
+  'Documentary',
+  'Family',
 ];
 
 /// Episodes 1..freeEpisodeCount of every series are free to watch;
