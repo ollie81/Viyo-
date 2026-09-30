@@ -12,11 +12,14 @@ class ViyoGlassBottomNav extends StatelessWidget {
     required this.onTap,
   });
 
+  // Missions used to have its own tab here — dropped to get back to a
+  // normal 5-tab bar; it's still reachable from Wallet's "Earn Coins"
+  // button and the insufficient-coins sheet, both of which already
+  // linked to it before this change.
   static const _items = [
     (Icons.home_outlined, Icons.home_rounded, 'Home'),
     (Icons.explore_outlined, Icons.explore_rounded, 'Discover'),
     (Icons.add_rounded, Icons.add_rounded, 'Post'),
-    (Icons.flag_outlined, Icons.flag_rounded, 'Missions'),
     (Icons.person_outline_rounded, Icons.person_rounded, 'Profile'),
     // Sparkle matches the drama visual language already used everywhere
     // else in the app (SeriesPosterCard, the video feed's series badge,

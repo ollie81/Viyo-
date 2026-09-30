@@ -20,11 +20,14 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  // Missions dropped out of the tab bar (see ViyoGlassBottomNav) — the
+  // "Create / Join Challenge" menu option below now pushes it as its
+  // own screen instead of switching to a tab that no longer exists,
+  // the same way "AI Short Drama" already worked.
   final _screens = const [
     FeedScreen(),
     SearchScreen(),
     CreatePostScreen(),
-    MissionsScreen(),
     ProfileScreen(),
     DramaHomeScreen(),
   ];
@@ -52,7 +55,9 @@ class _HomeShellState extends State<HomeShell> {
         );
         break;
       case CreateMenuChoice.challenge:
-        setState(() => _index = 3);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const MissionsScreen()),
+        );
         break;
     }
   }
