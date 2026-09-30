@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/post.dart';
+import '../services/bunny_stream_service.dart';
 import '../services/post_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
@@ -308,6 +309,11 @@ class _VideoPageState extends State<_VideoPage> {
   bool _initError = false;
   bool _unlocking = false;
   bool _showUpNext = false;
+  // Set only if this page's own self-heal poll (see _pollBunnyStatus)
+  // finds the video failed — post.isVideoFailed itself can't change
+  // here, since widget.post is the same immutable snapshot this page
+  // was built with.
+  bool _processingFailedOverride = false;
 
   // Throttles WatchProgressService writes — video_player's listener
   // fires far too often (essentially every frame) to persist on every
@@ -339,8 +345,40 @@ class _VideoPageState extends State<_VideoPage> {
     // video_status before ever trying to play it.
     if (!widget.isLocked && !widget.post.isVideoProcessing && !widget.post.isVideoFailed) {
       _initialize();
+    } else if (!widget.isLocked && widget.post.isVideoProcessing && widget.post.bunnyVideoId != null) {
+      _pollBunnyStatus();
     }
     if (widget.isActive) widget.onBecameActive();
+  }
+
+  /// Self-heals a video stuck showing "Processing…" — the one-shot poll
+  /// kicked off at upload time (see the upload screens' _submit) only
+  /// runs while that screen's browser tab stays open and active; if the
+  /// creator navigated away, closed the tab, or a mobile browser
+  /// suspended it before Bunny finished encoding, video_status never
+  /// got flipped, and this post would otherwise stay stuck showing
+  /// "Processing…" forever even though Bunny itself finished within a
+  /// minute or two. Re-checking here means the next time *anyone* opens
+  /// this video, it self-heals instead of depending on that first tab.
+  Future<void> _pollBunnyStatus() async {
+    final videoId = widget.post.bunnyVideoId;
+    if (videoId == null) return;
+    try {
+      final status = await BunnyStreamService.waitForReady(videoId);
+      if (!mounted || status == null) return;
+      await PostService.updateVideoStatus(widget.post.id, status.failed ? 'failed' : 'ready');
+      if (!mounted) return;
+      if (status.failed) {
+        setState(() => _processingFailedOverride = true);
+      } else {
+        // Bunny's done — start playback immediately instead of making
+        // this viewer back out and reopen the video.
+        _initialize();
+      }
+    } catch (_) {
+      // Best-effort — worst case this viewer still sees "Processing…"
+      // and the next person to open it tries again.
+    }
   }
 
   Future<void> _initialize() async {
@@ -561,9 +599,9 @@ class _VideoPageState extends State<_VideoPage> {
                           child: VideoPlayer(c),
                         ),
                       )
-                    : post.isVideoProcessing
+                    : post.isVideoProcessing && !_processingFailedOverride
                         ? _videoProcessing()
-                        : post.isVideoFailed
+                        : post.isVideoFailed || _processingFailedOverride
                             ? _videoError(message: 'This video failed to process')
                             : post.thumbnailUrl != null
                                 ? CachedNetworkImage(
