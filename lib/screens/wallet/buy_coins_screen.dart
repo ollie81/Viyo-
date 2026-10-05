@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../constants/supabase_constants.dart';
 import '../../services/coin_purchase_service.dart';
-import '../../services/google_play_purchase_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -21,11 +21,15 @@ enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy }
 /// Android is a special case: Google Play policy requires any digital
 /// good consumed inside an app distributed through Google Play to be
 /// sold via Play Billing, not a third-party processor — offering both
-/// is itself a policy violation (anti-steering), not just unnecessary.
-/// So on Android specifically, this skips straight to Google Play
-/// Billing (see google_play_purchase_service.dart) instead of showing
-/// the Stripe/Paystack/Flutterwave/Lemon Squeezy picker below, which
-/// only web ever sees.
+/// is itself a policy violation (anti-steering). Rather than set up
+/// Play Billing (its own Play Console products, service account, and
+/// Google's 15-30% cut), this sends Android users to buy coins on the
+/// web app instead — a purchase that happens entirely outside the
+/// Android app is simply not something Play Billing policy reaches.
+/// Same Supabase account, so the balance is already updated by the
+/// time they come back. See GooglePlayPurchaseService for the Play
+/// Billing path this replaced — left in place, unused, in case that
+/// trade-off ever flips back.
 class BuyCoinsScreen extends StatefulWidget {
   const BuyCoinsScreen({super.key});
 
@@ -106,7 +110,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     if (_purchasingPackageId != null) return;
 
     if (_isAndroidNative) {
-      await _buyWithGooglePlay(package);
+      await _buyOnWeb(package);
       return;
     }
 
@@ -246,23 +250,25 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     }
   }
 
-  /// Android-only purchase path — Google Play Billing handles both the
-  /// payment UI and the "did it actually succeed" confirmation itself,
-  /// so unlike Stripe/the hosted-checkout providers there's no separate
-  /// polling step: GooglePlayPurchaseService.buy only resolves once the
-  /// backend has already verified the purchase with Google and credited
-  /// the coins.
-  Future<void> _buyWithGooglePlay(CoinPackage package) async {
+  /// Android purchase path — opens the web app in the system browser
+  /// instead of starting a Play Billing flow (see this screen's module
+  /// comment for why). Same account, same Supabase balance: once they
+  /// buy on web and come back, _waitForCredit-style polling isn't even
+  /// needed here since re-opening this screen re-fetches the balance
+  /// fresh — this just closes the sheet and points them there.
+  Future<void> _buyOnWeb(CoinPackage package) async {
     setState(() => _purchasingPackageId = package.id);
     try {
-      final coins = await GooglePlayPurchaseService.buy(package.id);
-      if (!mounted) return;
-      _showToast('+$coins coins added! 🪙');
-      Navigator.of(context).pop(true);
-    } catch (e) {
-      if (!mounted) return;
-      if (!e.toString().contains('canceled')) {
-        _showToast('Purchase failed: $e');
+      final opened = await launchUrl(
+        Uri.parse(WebAppConstants.baseUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        if (mounted) _showToast('Could not open the browser.');
+        return;
+      }
+      if (mounted) {
+        _showToast('Log in and buy coins on the web — your balance updates here too.');
       }
     } finally {
       if (mounted) setState(() => _purchasingPackageId = null);
@@ -318,6 +324,29 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
                           'Coins power AI features, post boosts, and Discover Spotlight.',
                           style: TextStyle(color: AppColors.textSecondary),
                         ),
+                        if (_isAndroidNative) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.coin.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.coin.withOpacity(0.35)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.open_in_new, size: 16, color: AppColors.coin),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Tapping a package opens viyo-xi.vercel.app in your browser to pay — log in with the same account and your coins show up back here.',
+                                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         ..._packages.map((p) => Padding(
                               padding: const EdgeInsets.only(bottom: 12),

@@ -20,6 +20,13 @@ class AiBackendConstants {
   // static const String baseUrl = 'http://10.0.2.2:8000';
 }
 
+/// The Flutter web build's own live URL (see buy_coins_screen.dart) —
+/// Android sends coin purchases here instead of through Google Play
+/// Billing (see that screen's module comment for why).
+class WebAppConstants {
+  static const String baseUrl = 'https://viyo-xi.vercel.app';
+}
+
 /// Crash/error reporting (see main.dart). Leave blank to run with
 /// crash reporting disabled — SentryFlutter.init() no-ops on an empty
 /// DSN rather than failing, so this is safe to ship unset.
