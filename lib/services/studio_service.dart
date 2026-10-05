@@ -57,6 +57,21 @@ class StudioScenesResult {
   StudioScenesResult({required this.scenes, this.costUsdCents = 0});
 }
 
+class StudioAssembleResult {
+  final String previewVideoUrl;
+  final int durationSeconds;
+
+  StudioAssembleResult({required this.previewVideoUrl, required this.durationSeconds});
+}
+
+class StudioPublishResult {
+  final String postId;
+  final String mediaUrl;
+  final String videoStatus;
+
+  StudioPublishResult({required this.postId, required this.mediaUrl, required this.videoStatus});
+}
+
 /// Talks to viyo_ai's studio.py — Viyo Studio's admin-only script,
 /// casting and location-image endpoints, gated by the same shared
 /// X-Admin-Key header every other admin surface in this app uses (see
@@ -366,6 +381,65 @@ class StudioService {
     return StudioVoicePreviewResult(
       audioUrl: data['audio_url'],
       costUsdCents: (data['cost_usd_cents'] as num).toInt(),
+    );
+  }
+
+  /// Renders this episode's scenes into one 9:16 MP4 and uploads it for
+  /// preview — doesn't touch Bunny or publish anything yet. [musicUrl]
+  /// is optional and admin-supplied (a track they already have the
+  /// rights to use); omit it for no background music.
+  static Future<StudioAssembleResult> assembleEpisode(
+    String adminKey,
+    String seriesId,
+    int episodeNumber, {
+    String? musicUrl,
+  }) async {
+    final res = await http.post(
+      Uri.parse(
+        '${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/episode/$episodeNumber/assemble',
+      ),
+      headers: _headers(adminKey),
+      body: jsonEncode({if (musicUrl != null && musicUrl.isNotEmpty) 'music_url': musicUrl}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not assemble episode (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioAssembleResult(
+      previewVideoUrl: data['preview_video_url'],
+      durationSeconds: (data['duration_seconds'] as num).toInt(),
+    );
+  }
+
+  /// Pushes the already-assembled preview to Bunny Stream and creates
+  /// the real episode post — this is the actual "go live" action.
+  static Future<StudioPublishResult> publishEpisode(
+    String adminKey,
+    String seriesId,
+    int episodeNumber, {
+    required String previewVideoUrl,
+    required int durationSeconds,
+    String? caption,
+  }) async {
+    final res = await http.post(
+      Uri.parse(
+        '${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/episode/$episodeNumber/publish',
+      ),
+      headers: _headers(adminKey),
+      body: jsonEncode({
+        'preview_video_url': previewVideoUrl,
+        'duration_seconds': durationSeconds,
+        if (caption != null && caption.isNotEmpty) 'caption': caption,
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not publish episode (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioPublishResult(
+      postId: data['post_id'],
+      mediaUrl: data['media_url'],
+      videoStatus: data['video_status'],
     );
   }
 

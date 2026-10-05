@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/studio_scene.dart';
 import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
+import 'viyo_studio_publish_screen.dart';
 
 const _cameraShots = ['wide', 'medium', 'close-up'];
 
@@ -199,6 +200,23 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         title: Text('Scenes · ${widget.seriesTitle}', overflow: TextOverflow.ellipsis),
+        actions: [
+          if (_scenes.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.publish_outlined),
+              tooltip: 'Continue to Publish',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ViyoStudioPublishScreen(
+                    adminKey: widget.adminKey,
+                    seriesId: widget.seriesId,
+                    seriesTitle: widget.seriesTitle,
+                    episodeNumber: _episodeNumber,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
