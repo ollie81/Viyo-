@@ -5,6 +5,7 @@ import '../../../models/studio_location.dart';
 import '../../../services/series_service.dart';
 import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
+import 'viyo_studio_voices_screen.dart';
 
 /// Viyo Studio, Phase 1: paste a script, get back an editable cast of
 /// characters (with a generated reference portrait each) and
@@ -200,6 +201,17 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _goToVoices() {
+    final seriesId = _selectedSeriesId;
+    if (seriesId == null || _adminKey == null) return;
+    final title = _series.firstWhere((s) => s.id == seriesId, orElse: () => _series.first).title;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ViyoStudioVoicesScreen(adminKey: _adminKey!, seriesId: seriesId, seriesTitle: title),
+      ),
+    );
   }
 
   @override
@@ -518,6 +530,15 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
           if (_saveMessage != null) ...[
             const SizedBox(height: 10),
             Text(_saveMessage!, style: const TextStyle(color: AppColors.success, fontSize: 13)),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _goToVoices,
+                icon: const Icon(Icons.record_voice_over, size: 18),
+                label: const Text('Continue to Voices'),
+              ),
+            ),
           ],
         ],
       ),

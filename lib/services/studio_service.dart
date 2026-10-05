@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/studio_character.dart';
 import '../models/studio_location.dart';
+import '../models/studio_voice.dart';
 
 /// Result of analyzing a script — not yet saved anywhere; the admin
 /// edits these in memory, regenerates images, then calls
@@ -30,6 +31,22 @@ class StudioSpendToday {
 
   double get spentUsd => spentUsdCents / 100;
   double get capUsd => capUsdCents / 100;
+}
+
+class StudioCastResult {
+  final List<StudioCharacter> characters;
+  final List<StudioLocation> locations;
+
+  StudioCastResult({required this.characters, required this.locations});
+}
+
+/// Not persisted — the admin can audition as many voices as they like
+/// before committing one via [StudioService.setCharacterVoice].
+class StudioVoicePreviewResult {
+  final String audioUrl;
+  final int costUsdCents;
+
+  StudioVoicePreviewResult({required this.audioUrl, required this.costUsdCents});
 }
 
 /// Talks to viyo_ai's studio.py — Viyo Studio's admin-only script,
@@ -132,6 +149,96 @@ class StudioService {
           .toList(),
       costUsdCents: 0,
     );
+  }
+
+  /// Reads back a series' already-saved cast — used by the Voices
+  /// screen (Phase 2), which operates on persisted character rows
+  /// rather than the in-memory draft the Analyze/Save flow (Phase 1)
+  /// works with.
+  static Future<StudioCastResult> getCast(String adminKey, String seriesId) async {
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/cast'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not load cast (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioCastResult(
+      characters: ((data['characters'] as List?) ?? [])
+          .map((c) => StudioCharacter.fromJson(c as Map<String, dynamic>))
+          .toList(),
+      locations: ((data['locations'] as List?) ?? [])
+          .map((l) => StudioLocation.fromJson(l as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  static Future<List<StudioVoice>> listVoices(String adminKey) async {
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/voices'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not load voices (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ((data['voices'] as List?) ?? []).map((v) => StudioVoice.fromJson(v as Map<String, dynamic>)).toList();
+  }
+
+  static Future<StudioVoicePreviewResult> previewVoice(
+    String adminKey,
+    String characterId,
+    String voiceName, {
+    String? sampleText,
+  }) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/character/$characterId/voice-preview'),
+      headers: _headers(adminKey),
+      body: jsonEncode({
+        'voice_name': voiceName,
+        if (sampleText != null && sampleText.isNotEmpty) 'sample_text': sampleText,
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not preview voice (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioVoicePreviewResult(
+      audioUrl: data['audio_url'],
+      costUsdCents: (data['cost_usd_cents'] as num).toInt(),
+    );
+  }
+
+  /// Persists [voiceName] as this character's permanent voice — unlike
+  /// [previewVoice], this is what every future episode's dialogue
+  /// audio (Phase 3) will read back.
+  static Future<void> setCharacterVoice(String adminKey, String characterId, String voiceName) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/character/$characterId/voice'),
+      headers: _headers(adminKey),
+      body: jsonEncode({'voice_name': voiceName}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not save voice (${res.statusCode})');
+    }
+  }
+
+  /// Free local-heuristic auto-assignment for every character in the
+  /// series that doesn't already have a voice — no Gemini call, no
+  /// cost. Returns the full updated cast.
+  static Future<List<StudioCharacter>> assignVoices(String adminKey, String seriesId) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/assign-voices'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not auto-assign voices (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ((data['characters'] as List?) ?? [])
+        .map((c) => StudioCharacter.fromJson(c as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<StudioSpendToday> spendToday(String adminKey) async {

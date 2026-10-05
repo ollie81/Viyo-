@@ -11,6 +11,7 @@ class StudioCharacter {
   final String clothing;
   final String personality;
   final String? portraitUrl;
+  final String? voiceId;
 
   const StudioCharacter({
     this.id,
@@ -21,6 +22,7 @@ class StudioCharacter {
     required this.clothing,
     required this.personality,
     this.portraitUrl,
+    this.voiceId,
   });
 
   factory StudioCharacter.fromJson(Map<String, dynamic> json) => StudioCharacter(
@@ -32,6 +34,7 @@ class StudioCharacter {
         clothing: json['clothing'] ?? '',
         personality: json['personality'] ?? '',
         portraitUrl: json['portrait_url'] as String?,
+        voiceId: json['voice_id'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -42,6 +45,7 @@ class StudioCharacter {
         'clothing': clothing,
         'personality': personality,
         'portrait_url': portraitUrl,
+        'voice_id': voiceId,
       };
 
   StudioCharacter copyWith({
@@ -52,6 +56,7 @@ class StudioCharacter {
     String? clothing,
     String? personality,
     String? portraitUrl,
+    String? voiceId,
   }) =>
       StudioCharacter(
         id: id,
@@ -62,5 +67,6 @@ class StudioCharacter {
         clothing: clothing ?? this.clothing,
         personality: personality ?? this.personality,
         portraitUrl: portraitUrl ?? this.portraitUrl,
+        voiceId: voiceId ?? this.voiceId,
       );
 }
