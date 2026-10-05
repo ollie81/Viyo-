@@ -41,11 +41,12 @@ class StudioSceneLine {
         audioUrl: json['audio_url'] as String?,
       );
 
-  StudioSceneLine copyWith({String? text, String? audioUrl}) => StudioSceneLine(
+  StudioSceneLine copyWith({String? text, String? audioUrl, String? characterId, String? characterName}) =>
+      StudioSceneLine(
         id: id,
         sortOrder: sortOrder,
-        characterId: characterId,
-        characterName: characterName,
+        characterId: characterId ?? this.characterId,
+        characterName: characterName ?? this.characterName,
         text: text ?? this.text,
         audioUrl: audioUrl ?? this.audioUrl,
       );

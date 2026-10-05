@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import '../../../models/studio_character.dart';
 import '../../../models/studio_scene.dart';
 import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
@@ -41,6 +42,7 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
   bool _loading = true;
   String? _error;
   List<StudioScene> _scenes = [];
+  List<StudioCharacter> _characters = [];
   int _sessionCostCents = 0;
 
   bool _splitting = false;
@@ -55,6 +57,21 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
   void initState() {
     super.initState();
     _loadScenes();
+    _loadCast();
+  }
+
+  /// The series' saved cast, so a dialogue line Viyo Studio couldn't
+  /// match to a character automatically can offer a pick-list instead
+  /// of just failing when audio generation is attempted.
+  Future<void> _loadCast() async {
+    try {
+      final cast = await StudioService.getCast(widget.adminKey, widget.seriesId);
+      if (!mounted) return;
+      setState(() => _characters = cast.characters);
+    } catch (_) {
+      // Non-fatal — the dropdown fallback just won't have options yet;
+      // the rest of the screen still works.
+    }
   }
 
   @override
@@ -157,6 +174,30 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     setState(() => _savingLine.add(line.id));
     try {
       final updated = await StudioService.editLine(widget.adminKey, line.id, text: line.text);
+      if (!mounted) return;
+      setState(() => _scenes[sceneIndex] = _scenes[sceneIndex].withLineAt(lineIndex, updated));
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    } finally {
+      if (mounted) setState(() => _savingLine.remove(line.id));
+    }
+  }
+
+  /// Assigns [character] to a line Viyo Studio couldn't match on its
+  /// own — the dropdown fallback for when the script's speaker name
+  /// doesn't resolve to anyone in the cast, instead of only finding
+  /// out when "Generate audio" fails with an error.
+  Future<void> _assignLineCharacter(int sceneIndex, int lineIndex, StudioCharacter character) async {
+    final line = _scenes[sceneIndex].lines[lineIndex];
+    setState(() => _savingLine.add(line.id));
+    try {
+      final updated = await StudioService.editLine(
+        widget.adminKey,
+        line.id,
+        characterId: character.id,
+        characterName: character.name,
+      );
       if (!mounted) return;
       setState(() => _scenes[sceneIndex] = _scenes[sceneIndex].withLineAt(lineIndex, updated));
     } catch (e) {
@@ -498,10 +539,58 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     );
   }
 
+  /// Inline fallback for a dialogue line Viyo Studio couldn't match to
+  /// a cast member on its own — picking a character here saves it right
+  /// away, same as the error it replaces would have told the admin to
+  /// do manually via Edit.
+  Widget _characterPicker(int sceneIndex, int lineIndex, StudioSceneLine line) {
+    final savingLine = _savingLine.contains(line.id);
+    return DropdownButton<String>(
+      isExpanded: true,
+      value: null,
+      hint: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded, size: 13, color: AppColors.coin),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              line.characterName.isEmpty ? 'Pick character' : line.characterName,
+              style: const TextStyle(fontSize: 11, color: AppColors.coin),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      underline: const SizedBox.shrink(),
+      dropdownColor: AppColors.surface,
+      icon: savingLine
+          ? const Padding(
+              padding: EdgeInsets.only(left: 2),
+              child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          : const Icon(Icons.arrow_drop_down, size: 16, color: AppColors.textMuted),
+      items: _characters
+          .where((c) => c.id != null)
+          .map((c) => DropdownMenuItem(
+                value: c.id,
+                child: Text(c.name, style: const TextStyle(fontSize: 12, color: Colors.white)),
+              ))
+          .toList(),
+      onChanged: savingLine
+          ? null
+          : (id) {
+              final character = _characters.firstWhere((c) => c.id == id);
+              _assignLineCharacter(sceneIndex, lineIndex, character);
+            },
+    );
+  }
+
   Widget _lineRow(int sceneIndex, int lineIndex, StudioSceneLine line) {
     final audioBusy = _generatingAudio.contains(line.id);
     final savingLine = _savingLine.contains(line.id);
     final hasAudio = line.audioUrl != null;
+    final unmatched = line.characterId == null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -509,14 +598,19 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 72,
+            width: 92,
             child: Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                line.characterName,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
-                overflow: TextOverflow.ellipsis,
-              ),
+              padding: const EdgeInsets.only(top: 4),
+              child: unmatched
+                  ? _characterPicker(sceneIndex, lineIndex, line)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        line.characterName,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
             ),
           ),
           Expanded(
@@ -546,9 +640,11 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                 ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2))
                 : IconButton(
                     icon: Icon(hasAudio ? Icons.replay_circle_filled_outlined : Icons.graphic_eq, size: 18),
-                    color: AppColors.primary,
-                    onPressed: () => _generateLineAudio(sceneIndex, lineIndex),
-                    tooltip: hasAudio ? 'Regenerate audio' : 'Generate audio',
+                    color: unmatched ? AppColors.textMuted : AppColors.primary,
+                    onPressed: unmatched ? null : () => _generateLineAudio(sceneIndex, lineIndex),
+                    tooltip: unmatched
+                        ? 'Pick a character above first'
+                        : (hasAudio ? 'Regenerate audio' : 'Generate audio'),
                   ),
           ),
           if (hasAudio)

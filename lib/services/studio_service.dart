@@ -358,11 +358,21 @@ class StudioService {
     return StudioImageResult(imageUrl: data['image_url'], costUsdCents: (data['cost_usd_cents'] as num).toInt());
   }
 
-  static Future<StudioSceneLine> editLine(String adminKey, String lineId, {String? text}) async {
+  static Future<StudioSceneLine> editLine(
+    String adminKey,
+    String lineId, {
+    String? text,
+    String? characterId,
+    String? characterName,
+  }) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/line/$lineId/edit'),
       headers: _headers(adminKey),
-      body: jsonEncode({if (text != null) 'text': text}),
+      body: jsonEncode({
+        if (text != null) 'text': text,
+        if (characterId != null) 'character_id': characterId,
+        if (characterName != null) 'character_name': characterName,
+      }),
     );
     if (res.statusCode != 200) {
       throw Exception(_errorDetail(res) ?? 'Could not save line edit (${res.statusCode})');
