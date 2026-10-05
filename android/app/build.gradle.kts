@@ -29,11 +29,34 @@ android {
         versionName = flutter.versionName
     }
 
+    // Real release signing, sourced entirely from env vars (never a
+    // committed file) — same "secrets live in GitHub Actions, not the
+    // repo" convention main.yml's own --dart-define secrets already
+    // follow. Falls back to the debug key when those aren't set (a
+    // local `flutter run --release`, or a CI run before the 4 secrets
+    // below are configured) so this never hard-fails the build; it
+    // just produces a debug-signed APK like before in that case.
+    val hasReleaseSigning = !System.getenv("ANDROID_KEYSTORE_BASE64").isNullOrBlank()
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                val keystoreBytes = java.util.Base64.getDecoder()
+                    .decode(System.getenv("ANDROID_KEYSTORE_BASE64"))
+                val decodedKeystoreFile = File(project.buildDir, "release-signing.keystore")
+                decodedKeystoreFile.parentFile.mkdirs()
+                decodedKeystoreFile.writeBytes(keystoreBytes)
+
+                storeFile = decodedKeystoreFile
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (hasReleaseSigning) "release" else "debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
