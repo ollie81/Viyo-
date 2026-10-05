@@ -4,6 +4,7 @@ import '../../../models/studio_character.dart';
 import '../../../models/studio_voice.dart';
 import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
+import 'viyo_studio_scenes_screen.dart';
 
 /// Viyo Studio, Phase 2: assign each saved character a distinct
 /// text-to-speech voice. Operates on an already-saved series' cast
@@ -142,6 +143,21 @@ class _ViyoStudioVoicesScreenState extends State<ViyoStudioVoicesScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         title: Text('Voices · ${widget.seriesTitle}', overflow: TextOverflow.ellipsis),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.movie_filter_outlined),
+            tooltip: 'Continue to Scenes',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ViyoStudioScenesScreen(
+                  adminKey: widget.adminKey,
+                  seriesId: widget.seriesId,
+                  seriesTitle: widget.seriesTitle,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

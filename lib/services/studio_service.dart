@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/studio_character.dart';
 import '../models/studio_location.dart';
+import '../models/studio_scene.dart';
 import '../models/studio_voice.dart';
 
 /// Result of analyzing a script — not yet saved anywhere; the admin
@@ -47,6 +48,13 @@ class StudioVoicePreviewResult {
   final int costUsdCents;
 
   StudioVoicePreviewResult({required this.audioUrl, required this.costUsdCents});
+}
+
+class StudioScenesResult {
+  final List<StudioScene> scenes;
+  final int costUsdCents;
+
+  StudioScenesResult({required this.scenes, this.costUsdCents = 0});
 }
 
 /// Talks to viyo_ai's studio.py — Viyo Studio's admin-only script,
@@ -253,6 +261,111 @@ class StudioService {
     return StudioSpendToday(
       spentUsdCents: (data['spent_usd_cents'] as num).toInt(),
       capUsdCents: (data['cap_usd_cents'] as num).toInt(),
+    );
+  }
+
+  /// Splits one specific episode's script into saved scenes and
+  /// dialogue lines — unlike analyzeScript (Phase 1), this persists
+  /// immediately (see studio.py's split_scenes docstring) rather than
+  /// returning a draft the admin saves later.
+  static Future<StudioScenesResult> splitScenes(
+    String adminKey,
+    String seriesId,
+    int episodeNumber,
+    String script,
+  ) async {
+    final res = await http.post(
+      Uri.parse(
+        '${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/episode/$episodeNumber/split-scenes',
+      ),
+      headers: _headers(adminKey),
+      body: jsonEncode({'script': script}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not split scenes (${res.statusCode})');
+    }
+    return _scenesResultFromResponse(res);
+  }
+
+  static Future<StudioScenesResult> getScenes(String adminKey, String seriesId, int episodeNumber) async {
+    final res = await http.get(
+      Uri.parse(
+        '${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/episode/$episodeNumber/scenes',
+      ),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not load scenes (${res.statusCode})');
+    }
+    return _scenesResultFromResponse(res);
+  }
+
+  static StudioScenesResult _scenesResultFromResponse(http.Response res) {
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioScenesResult(
+      scenes: ((data['scenes'] as List?) ?? []).map((s) => StudioScene.fromJson(s as Map<String, dynamic>)).toList(),
+      costUsdCents: (data['cost_usd_cents'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static Future<StudioScene> editScene(
+    String adminKey,
+    String sceneId, {
+    String? visualDescription,
+    String? cameraShot,
+    String? locationName,
+  }) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/scene/$sceneId/edit'),
+      headers: _headers(adminKey),
+      body: jsonEncode({
+        if (visualDescription != null) 'visual_description': visualDescription,
+        if (cameraShot != null) 'camera_shot': cameraShot,
+        if (locationName != null) 'location_name': locationName,
+      }),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not save scene edit (${res.statusCode})');
+    }
+    return StudioScene.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<StudioImageResult> generateSceneImage(String adminKey, String sceneId) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/scene/$sceneId/image'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not generate scene image (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioImageResult(imageUrl: data['image_url'], costUsdCents: (data['cost_usd_cents'] as num).toInt());
+  }
+
+  static Future<StudioSceneLine> editLine(String adminKey, String lineId, {String? text}) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/line/$lineId/edit'),
+      headers: _headers(adminKey),
+      body: jsonEncode({if (text != null) 'text': text}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not save line edit (${res.statusCode})');
+    }
+    return StudioSceneLine.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  static Future<StudioVoicePreviewResult> generateLineAudio(String adminKey, String lineId) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/line/$lineId/audio'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not generate line audio (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioVoicePreviewResult(
+      audioUrl: data['audio_url'],
+      costUsdCents: (data['cost_usd_cents'] as num).toInt(),
     );
   }
 
