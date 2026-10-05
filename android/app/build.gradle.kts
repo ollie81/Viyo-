@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -40,9 +42,9 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
-                val keystoreBytes = java.util.Base64.getDecoder()
+                val keystoreBytes = Base64.getDecoder()
                     .decode(System.getenv("ANDROID_KEYSTORE_BASE64"))
-                val decodedKeystoreFile = File(project.buildDir, "release-signing.keystore")
+                val decodedKeystoreFile = File(project.layout.buildDirectory.get().asFile, "release-signing.keystore")
                 decodedKeystoreFile.parentFile.mkdirs()
                 decodedKeystoreFile.writeBytes(keystoreBytes)
 
