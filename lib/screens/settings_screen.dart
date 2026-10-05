@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
 import 'admin/moderation_review_screen.dart';
+import 'admin/studio/viyo_studio_screen.dart';
 import 'auth/login_screen.dart';
 import 'copyright_screen.dart';
 import 'invite_screen.dart';
@@ -15,6 +16,39 @@ import 'privacy_screen.dart';
 // Same inbox as copyright_screen.dart's takedown contact — one address
 // for both since there's no separate support team to split them across.
 const _supportEmail = 'olli1234x@gmail.com';
+
+void _showAdminToolsSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppColors.background,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.shield_outlined),
+            title: const Text('Moderation'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModerationReviewScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome),
+            title: const Text('Viyo Studio'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ViyoStudioScreen()));
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
 
 Future<void> _emailSupport(BuildContext context, {required String subject}) async {
   final uri = Uri(scheme: 'mailto', path: _supportEmail, query: 'subject=${Uri.encodeComponent(subject)}');
@@ -114,13 +148,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.background,
-        // Long-press to reach the moderation review screen — not a
-        // real access control (the admin key it asks for next is),
-        // just enough that a regular user never stumbles into it.
+        // Long-press to reach the admin tools (Moderation, Viyo Studio)
+        // — not a real access control (the admin key each one asks
+        // for next is), just enough that a regular user never stumbles
+        // into either.
         title: GestureDetector(
-          onLongPress: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ModerationReviewScreen()),
-          ),
+          onLongPress: () => _showAdminToolsSheet(context),
           child: const Text('Settings'),
         ),
       ),
