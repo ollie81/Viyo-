@@ -5,12 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../constants/supabase_constants.dart';
 import '../../services/coin_purchase_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/rewarded_ad_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/viyo_toast.dart';
+import '../mission_screen.dart';
 
 enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy }
 
@@ -21,15 +22,13 @@ enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy }
 /// Android is a special case: Google Play policy requires any digital
 /// good consumed inside an app distributed through Google Play to be
 /// sold via Play Billing, not a third-party processor — offering both
-/// is itself a policy violation (anti-steering). Rather than set up
-/// Play Billing (its own Play Console products, service account, and
-/// Google's 15-30% cut), this sends Android users to buy coins on the
-/// web app instead — a purchase that happens entirely outside the
-/// Android app is simply not something Play Billing policy reaches.
-/// Same Supabase account, so the balance is already updated by the
-/// time they come back. See GooglePlayPurchaseService for the Play
-/// Billing path this replaced — left in place, unused, in case that
-/// trade-off ever flips back.
+/// is itself a policy violation (anti-steering), and so is just
+/// linking out to pay on the web instead, unless enrolled in Google's
+/// separate (region-limited, still revenue-shared) External Offers
+/// program. Rather than risk that, Android shows no purchase option
+/// at all — only the free ways to earn coins (ads, missions, daily
+/// check-in) — until real Play Billing gets built. See
+/// GooglePlayPurchaseService for that path, left in place unused.
 class BuyCoinsScreen extends StatefulWidget {
   const BuyCoinsScreen({super.key});
 
@@ -51,11 +50,18 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
   // polling the balance, same as Stripe's payment sheet closing does.
   int? _hostedCheckoutExpectedCoins;
 
+  bool _watchingAd = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    // No purchase UI on Android (see module comment) — nothing to load.
+    if (_isAndroidNative) {
+      _loading = false;
+    } else {
+      _load();
+    }
   }
 
   @override
@@ -108,11 +114,6 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
 
   Future<void> _buy(CoinPackage package) async {
     if (_purchasingPackageId != null) return;
-
-    if (_isAndroidNative) {
-      await _buyOnWeb(package);
-      return;
-    }
 
     final provider = await _pickProvider();
     if (provider == null) return;
@@ -250,28 +251,22 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     }
   }
 
-  /// Android purchase path — opens the web app in the system browser
-  /// instead of starting a Play Billing flow (see this screen's module
-  /// comment for why). Same account, same Supabase balance: once they
-  /// buy on web and come back, _waitForCredit-style polling isn't even
-  /// needed here since re-opening this screen re-fetches the balance
-  /// fresh — this just closes the sheet and points them there.
-  Future<void> _buyOnWeb(CoinPackage package) async {
-    setState(() => _purchasingPackageId = package.id);
+  /// Android's only coin-earning action on this screen — same
+  /// RewardedAdService flow as the wallet screen's own "Watch Ad for
+  /// Free Coins" button.
+  Future<void> _watchAd() async {
+    setState(() => _watchingAd = true);
     try {
-      final opened = await launchUrl(
-        Uri.parse(WebAppConstants.baseUrl),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened) {
-        if (mounted) _showToast('Could not open the browser.');
-        return;
+      final coins = await RewardedAdService.showAndClaim();
+      if (coins != null) {
+        _showToast('+$coins coins — thanks for watching! 🎬');
+      } else {
+        _showToast('No ad available right now — try again in a bit');
       }
-      if (mounted) {
-        _showToast('Log in and buy coins on the web — your balance updates here too.');
-      }
+    } catch (e) {
+      _showToast('$e');
     } finally {
-      if (mounted) setState(() => _purchasingPackageId = null);
+      if (mounted) setState(() => _watchingAd = false);
     }
   }
 
@@ -317,51 +312,103 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
                         ],
                       ),
                     )
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      children: [
-                        const Text(
-                          'Coins power AI features, post boosts, and Discover Spotlight.',
-                          style: TextStyle(color: AppColors.textSecondary),
-                        ),
-                        if (_isAndroidNative) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.coin.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.coin.withOpacity(0.35)),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.open_in_new, size: 16, color: AppColors.coin),
-                                SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Tapping a package opens viyo-xi.vercel.app in your browser to pay — log in with the same account and your coins show up back here.',
-                                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
-                                  ),
-                                ),
-                              ],
-                            ),
+                  : _isAndroidNative
+                      ? _AndroidNoPurchaseView(
+                          watchingAd: _watchingAd,
+                          onWatchAd: _watchAd,
+                          onOpenMissions: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const MissionsScreen()),
                           ),
-                        ],
-                        const SizedBox(height: 16),
-                        ..._packages.map((p) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _PackageCard(
-                                package: p,
-                                purchasing: _purchasingPackageId == p.id,
-                                disabled: _purchasingPackageId != null,
-                                onTap: () => _buy(p),
-                              ),
-                            )),
-                      ],
-                    ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                          children: [
+                            const Text(
+                              'Coins power AI features, post boosts, and Discover Spotlight.',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 16),
+                            ..._packages.map((p) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _PackageCard(
+                                    package: p,
+                                    purchasing: _purchasingPackageId == p.id,
+                                    disabled: _purchasingPackageId != null,
+                                    onTap: () => _buy(p),
+                                  ),
+                                )),
+                          ],
+                        ),
           if (_toast != null) ViyoToast(message: _toast!),
         ],
       ),
+    );
+  }
+}
+
+/// What Android sees on this screen instead of a purchase flow — no
+/// digital-good purchase UI at all (see this file's module comment),
+/// just the free ways to earn coins that already exist elsewhere in
+/// the app.
+class _AndroidNoPurchaseView extends StatelessWidget {
+  final bool watchingAd;
+  final VoidCallback onWatchAd;
+  final VoidCallback onOpenMissions;
+
+  const _AndroidNoPurchaseView({
+    required this.watchingAd,
+    required this.onWatchAd,
+    required this.onOpenMissions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: AppTheme.card(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.monetization_on_outlined, color: AppColors.coin, size: 18),
+                  SizedBox(width: 8),
+                  Text('Buying coins isn\'t available here yet', style: TextStyle(fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Watch ads, complete missions, or check in daily to earn coins for free in the meantime.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: watchingAd ? null : onWatchAd,
+                  icon: const Icon(Icons.smart_display_outlined, size: 18),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.coin,
+                    foregroundColor: AppColors.background,
+                  ),
+                  label: Text(watchingAd ? 'Loading ad...' : 'Watch Ad for Free Coins'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: onOpenMissions,
+                  child: const Text('See Missions'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
