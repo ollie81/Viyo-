@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/studio_character.dart';
+import '../models/studio_episode_status.dart';
 import '../models/studio_location.dart';
 import '../models/studio_scene.dart';
 import '../models/studio_voice.dart';
@@ -441,6 +442,22 @@ class StudioService {
       mediaUrl: data['media_url'],
       videoStatus: data['video_status'],
     );
+  }
+
+  /// Per-episode Studio progress (scenes split / images done / audio
+  /// done / published) for the home screen's status badges.
+  static Future<List<StudioEpisodeStatus>> getEpisodeStatuses(String adminKey, String seriesId) async {
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/$seriesId/episodes'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not load episode status (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ((data['episodes'] as List?) ?? [])
+        .map((e) => StudioEpisodeStatus.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static String? _errorDetail(http.Response res) {

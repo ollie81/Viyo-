@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../models/series.dart';
 import '../../../models/studio_character.dart';
 import '../../../models/studio_location.dart';
@@ -7,30 +9,36 @@ import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
 import 'viyo_studio_voices_screen.dart';
 
+/// Local-only autosave for an in-progress, not-yet-saved script draft
+/// — see _saveDraftLocally. Scoped to the device, not synced anywhere;
+/// good enough for a single admin's "don't lose my work if I close
+/// the app before hitting Save" safety net.
+const _draftPrefsKey = 'viyo_studio_draft_v1';
+
 /// Viyo Studio, Phase 1: paste a script, get back an editable cast of
 /// characters (with a generated reference portrait each) and
 /// locations (with a generated reference image each), then save that
 /// cast onto a series for later episodes to reuse.
 ///
-/// Not linked from the app's normal navigation — reached only via the
-/// hidden long-press on the Settings screen title (same spot
-/// ModerationReviewScreen uses), which is enough friction that a
-/// regular user won't stumble into it; the real protection is the
-/// admin key itself, asked for every time rather than persisted to
-/// disk. See studio_service.dart / viyo_ai's studio.py for why this is
-/// admin-only rather than creator-facing for now.
+/// Reached from ViyoStudioHomeScreen, which already asked for the
+/// admin key — either fresh ("New Script") or continuing a specific
+/// series's already-saved cast ([preselectedSeriesId], which loads
+/// that cast in for editing instead of starting blank).
 class ViyoStudioScreen extends StatefulWidget {
-  const ViyoStudioScreen({super.key});
+  final String adminKey;
+  final String? preselectedSeriesId;
+
+  const ViyoStudioScreen({super.key, required this.adminKey, this.preselectedSeriesId});
 
   @override
   State<ViyoStudioScreen> createState() => _ViyoStudioScreenState();
 }
 
 class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
-  final _keyController = TextEditingController();
   final _scriptController = TextEditingController();
-  String? _adminKey;
-  String? _unlockError;
+
+  bool _loadingExisting = false;
+  bool _restoredDraft = false;
 
   bool _analyzing = false;
   String? _analyzeError;
@@ -53,40 +61,31 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
   final Set<String> _generatingImages = {};
 
   @override
+  void initState() {
+    super.initState();
+    _selectedSeriesId = widget.preselectedSeriesId;
+    _loadSpendToday();
+    _loadSeries();
+    if (widget.preselectedSeriesId != null) {
+      _loadExistingCast(widget.preselectedSeriesId!);
+    } else {
+      _restoreDraftIfAny();
+    }
+  }
+
+  @override
   void dispose() {
-    _keyController.dispose();
     _scriptController.dispose();
     super.dispose();
   }
 
-  Future<void> _unlock() async {
-    final key = _keyController.text.trim();
-    if (key.isEmpty) return;
-    setState(() {
-      _adminKey = key;
-      _unlockError = null;
-    });
-    await _loadSpendToday();
-    await _loadSeries();
-  }
-
   Future<void> _loadSpendToday() async {
-    if (_adminKey == null) return;
     try {
-      final spend = await StudioService.spendToday(_adminKey!);
+      final spend = await StudioService.spendToday(widget.adminKey);
       if (!mounted) return;
       setState(() => _spendToday = spend);
-    } catch (e) {
-      if (!mounted) return;
-      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      if (message.contains('Invalid admin key')) {
-        setState(() {
-          _adminKey = null;
-          _unlockError = message;
-        });
-      }
-      // Any other failure (e.g. Studio not configured yet) just leaves
-      // the spend bar blank — not worth blocking the whole screen over.
+    } catch (_) {
+      // Non-fatal — just leaves the spend bar blank.
     }
   }
 
@@ -97,7 +96,9 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
       if (!mounted) return;
       setState(() {
         _series = series;
-        _selectedSeriesId ??= series.isNotEmpty ? series.first.id : null;
+        if (_selectedSeriesId == null || !series.any((s) => s.id == _selectedSeriesId)) {
+          _selectedSeriesId = series.isNotEmpty ? series.first.id : null;
+        }
       });
     } catch (_) {
       // Non-fatal — the admin can still analyze/regenerate without a
@@ -108,15 +109,101 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     }
   }
 
+  Future<void> _loadExistingCast(String seriesId) async {
+    setState(() => _loadingExisting = true);
+    try {
+      final cast = await StudioService.getCast(widget.adminKey, seriesId);
+      if (!mounted) return;
+      setState(() {
+        _characters = cast.characters;
+        _locations = cast.locations;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Could not load existing cast: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');
+    } finally {
+      if (mounted) setState(() => _loadingExisting = false);
+    }
+  }
+
+  Future<void> _restoreDraftIfAny() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftPrefsKey);
+      if (raw == null) return;
+      final draft = jsonDecode(raw) as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _scriptController.text = draft['script'] ?? '';
+        _characters = ((draft['characters'] as List?) ?? [])
+            .map((c) => StudioCharacter.fromJson(c as Map<String, dynamic>))
+            .toList();
+        _locations = ((draft['locations'] as List?) ?? [])
+            .map((l) => StudioLocation.fromJson(l as Map<String, dynamic>))
+            .toList();
+        _sessionCostCents = (draft['sessionCostCents'] as num?)?.toInt() ?? 0;
+        final draftSeriesId = draft['selectedSeriesId'] as String?;
+        if (draftSeriesId != null) _selectedSeriesId = draftSeriesId;
+        _restoredDraft = _scriptController.text.isNotEmpty || _characters.isNotEmpty || _locations.isNotEmpty;
+      });
+    } catch (_) {
+      // A corrupt/old-shape draft isn't worth failing the screen over
+      // — just start blank.
+    }
+  }
+
+  Future<void> _saveDraftLocally() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasContent = _scriptController.text.isNotEmpty || _characters.isNotEmpty || _locations.isNotEmpty;
+      if (!hasContent) {
+        await prefs.remove(_draftPrefsKey);
+        return;
+      }
+      await prefs.setString(
+        _draftPrefsKey,
+        jsonEncode({
+          'script': _scriptController.text,
+          'characters': _characters.map((c) => c.toJson()).toList(),
+          'locations': _locations.map((l) => l.toJson()).toList(),
+          'sessionCostCents': _sessionCostCents,
+          'selectedSeriesId': _selectedSeriesId,
+        }),
+      );
+    } catch (_) {
+      // Best-effort — losing the autosave write is better handled by
+      // just trying again next change than by surfacing an error for
+      // a background safety net the admin didn't explicitly ask for.
+    }
+  }
+
+  Future<void> _clearDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_draftPrefsKey);
+    } catch (_) {}
+  }
+
+  void _discardDraft() {
+    setState(() {
+      _scriptController.clear();
+      _characters = [];
+      _locations = [];
+      _sessionCostCents = 0;
+      _restoredDraft = false;
+    });
+    _clearDraft();
+  }
+
   Future<void> _analyzeScript() async {
     final script = _scriptController.text.trim();
-    if (script.isEmpty || _adminKey == null) return;
+    if (script.isEmpty) return;
     setState(() {
       _analyzing = true;
       _analyzeError = null;
     });
     try {
-      final result = await StudioService.analyzeScript(_adminKey!, script);
+      final result = await StudioService.analyzeScript(widget.adminKey, script);
       if (!mounted) return;
       setState(() {
         _characters = result.characters;
@@ -125,6 +212,7 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
         _saveMessage = null;
       });
       await _loadSpendToday();
+      await _saveDraftLocally();
     } catch (e) {
       if (!mounted) return;
       setState(() => _analyzeError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
@@ -137,13 +225,14 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     final key = 'char_$index';
     setState(() => _generatingImages.add(key));
     try {
-      final result = await StudioService.generateCharacterPortrait(_adminKey!, _characters[index]);
+      final result = await StudioService.generateCharacterPortrait(widget.adminKey, _characters[index]);
       if (!mounted) return;
       setState(() {
         _characters[index] = _characters[index].copyWith(portraitUrl: result.imageUrl);
         _sessionCostCents += result.costUsdCents;
       });
       await _loadSpendToday();
+      await _saveDraftLocally();
     } catch (e) {
       if (!mounted) return;
       _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
@@ -156,13 +245,14 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     final key = 'loc_$index';
     setState(() => _generatingImages.add(key));
     try {
-      final result = await StudioService.generateLocationImage(_adminKey!, _locations[index]);
+      final result = await StudioService.generateLocationImage(widget.adminKey, _locations[index]);
       if (!mounted) return;
       setState(() {
         _locations[index] = _locations[index].copyWith(referenceImageUrl: result.imageUrl);
         _sessionCostCents += result.costUsdCents;
       });
       await _loadSpendToday();
+      await _saveDraftLocally();
     } catch (e) {
       if (!mounted) return;
       _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
@@ -173,14 +263,14 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
 
   Future<void> _saveCast() async {
     final seriesId = _selectedSeriesId;
-    if (seriesId == null || _adminKey == null) return;
+    if (seriesId == null) return;
     setState(() {
       _saving = true;
       _saveMessage = null;
     });
     try {
       final saved = await StudioService.saveCast(
-        _adminKey!,
+        widget.adminKey,
         seriesId,
         characters: _characters,
         locations: _locations,
@@ -190,7 +280,9 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
         _characters = saved.characters;
         _locations = saved.locations;
         _saveMessage = 'Saved ${saved.characters.length} characters and ${saved.locations.length} locations.';
+        _restoredDraft = false;
       });
+      await _clearDraft();
     } catch (e) {
       if (!mounted) return;
       _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
@@ -205,11 +297,11 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
 
   void _goToVoices() {
     final seriesId = _selectedSeriesId;
-    if (seriesId == null || _adminKey == null) return;
+    if (seriesId == null) return;
     final title = _series.firstWhere((s) => s.id == seriesId, orElse: () => _series.first).title;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ViyoStudioVoicesScreen(adminKey: _adminKey!, seriesId: seriesId, seriesTitle: title),
+        builder: (_) => ViyoStudioVoicesScreen(adminKey: widget.adminKey, seriesId: seriesId, seriesTitle: title),
       ),
     );
   }
@@ -218,37 +310,7 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Viyo Studio')),
-      body: _adminKey == null ? _keyPrompt() : _content(),
-    );
-  }
-
-  Widget _keyPrompt() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.auto_awesome, size: 40, color: AppColors.textMuted),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _keyController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Admin key'),
-              onSubmitted: (_) => _unlock(),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(onPressed: _unlock, child: const Text('Unlock')),
-            ),
-            if (_unlockError != null) ...[
-              const SizedBox(height: 12),
-              Text(_unlockError!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-            ],
-          ],
-        ),
-      ),
+      body: _loadingExisting ? const Center(child: CircularProgressIndicator()) : _content(),
     );
   }
 
@@ -260,6 +322,10 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           _spendBar(),
+          if (_restoredDraft) ...[
+            const SizedBox(height: 10),
+            _draftBanner(),
+          ],
           const SizedBox(height: 16),
           _scriptInput(),
           if (_characters.isNotEmpty || _locations.isNotEmpty) ...[
@@ -282,6 +348,27 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
             const SizedBox(height: 20),
             _saveSection(),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _draftBanner() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.coin.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.coin.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.history, size: 16, color: AppColors.coin),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Restored an unsaved draft from earlier.', style: TextStyle(fontSize: 12.5)),
+          ),
+          TextButton(onPressed: _discardDraft, child: const Text('Discard', style: TextStyle(fontSize: 12))),
         ],
       ),
     );
@@ -326,6 +413,7 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
             minLines: 6,
             style: const TextStyle(color: Colors.white, fontSize: 13),
             decoration: const InputDecoration(hintText: 'Paste the full episode or series script here...'),
+            onChanged: (_) => _saveDraftLocally(),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -362,33 +450,34 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _editField('Name', c.name, (v) => setState(() => _characters[index] = c.copyWith(name: v))),
+                _editField('Name', c.name, (v) => _updateCharacter(index, c.copyWith(name: v))),
                 Row(
                   children: [
                     Expanded(
-                      child: _editField(
-                          'Age', c.age, (v) => setState(() => _characters[index] = c.copyWith(age: v))),
+                      child: _editField('Age', c.age, (v) => _updateCharacter(index, c.copyWith(age: v))),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _editField('Gender', c.gender,
-                          (v) => setState(() => _characters[index] = c.copyWith(gender: v))),
+                      child: _editField('Gender', c.gender, (v) => _updateCharacter(index, c.copyWith(gender: v))),
                     ),
                   ],
                 ),
-                _editField('Appearance', c.appearance,
-                    (v) => setState(() => _characters[index] = c.copyWith(appearance: v)),
+                _editField('Appearance', c.appearance, (v) => _updateCharacter(index, c.copyWith(appearance: v)),
                     maxLines: 2),
-                _editField('Clothing', c.clothing,
-                    (v) => setState(() => _characters[index] = c.copyWith(clothing: v))),
-                _editField('Personality', c.personality,
-                    (v) => setState(() => _characters[index] = c.copyWith(personality: v))),
+                _editField('Clothing', c.clothing, (v) => _updateCharacter(index, c.copyWith(clothing: v))),
+                _editField(
+                    'Personality', c.personality, (v) => _updateCharacter(index, c.copyWith(personality: v))),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _updateCharacter(int index, StudioCharacter updated) {
+    setState(() => _characters[index] = updated);
+    _saveDraftLocally();
   }
 
   Widget _locationCard(int index, StudioLocation l) {
@@ -406,20 +495,18 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _editField('Name', l.name, (v) => setState(() => _locations[index] = l.copyWith(name: v))),
-                _editField('Description', l.description,
-                    (v) => setState(() => _locations[index] = l.copyWith(description: v)),
+                _editField('Name', l.name, (v) => _updateLocation(index, l.copyWith(name: v))),
+                _editField('Description', l.description, (v) => _updateLocation(index, l.copyWith(description: v)),
                     maxLines: 2),
                 Row(
                   children: [
                     Expanded(
-                      child: _editField('Time of day', l.timeOfDay,
-                          (v) => setState(() => _locations[index] = l.copyWith(timeOfDay: v))),
+                      child: _editField(
+                          'Time of day', l.timeOfDay, (v) => _updateLocation(index, l.copyWith(timeOfDay: v))),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _editField(
-                          'Mood', l.mood, (v) => setState(() => _locations[index] = l.copyWith(mood: v))),
+                      child: _editField('Mood', l.mood, (v) => _updateLocation(index, l.copyWith(mood: v))),
                     ),
                   ],
                 ),
@@ -429,6 +516,11 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
         ],
       ),
     );
+  }
+
+  void _updateLocation(int index, StudioLocation updated) {
+    setState(() => _locations[index] = updated);
+    _saveDraftLocally();
   }
 
   Widget _referenceImage(String? url, {required bool busy, required VoidCallback onGenerate, bool tall = false}) {
@@ -517,7 +609,10 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
               items: _series
                   .map((s) => DropdownMenuItem(value: s.id, child: Text(s.title, overflow: TextOverflow.ellipsis)))
                   .toList(),
-              onChanged: (v) => setState(() => _selectedSeriesId = v),
+              onChanged: (v) {
+                setState(() => _selectedSeriesId = v);
+                _saveDraftLocally();
+              },
             ),
           const SizedBox(height: 12),
           SizedBox(
