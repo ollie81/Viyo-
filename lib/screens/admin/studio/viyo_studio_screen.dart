@@ -6,7 +6,9 @@ import '../../../models/studio_character.dart';
 import '../../../models/studio_location.dart';
 import '../../../services/series_service.dart';
 import '../../../services/studio_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
+import 'drama_details_dialog.dart';
 import 'viyo_studio_voices_screen.dart';
 
 /// Local-only autosave for an in-progress, not-yet-saved script draft
@@ -106,6 +108,69 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
       // picker shows an empty state and a retry button instead).
     } finally {
       if (mounted) setState(() => _loadingSeries = false);
+    }
+  }
+
+  /// Creates a brand-new drama right from Studio — previously the
+  /// only way to create a series at all was the regular video-upload
+  /// flow, so an admin generating a drama end-to-end in Studio had
+  /// nowhere to give it a name until an episode was ready to publish.
+  Future<void> _createNewDrama() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    final details = await showDramaDetailsDialog(context, title: 'New Drama', confirmLabel: 'Create');
+    if (details == null) return;
+    try {
+      final series = await SeriesService.createSeries(
+        userId: userId,
+        title: details.title,
+        description: details.description,
+        genre: details.genre,
+        contentType: kContentTypeShortDrama,
+        orientation: kOrientationVertical,
+      );
+      if (!mounted) return;
+      setState(() {
+        _series = [series, ..._series];
+        _selectedSeriesId = series.id;
+      });
+      await _saveDraftLocally();
+      _showSnack('Created "${series.title}".');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Could not create drama: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');
+    }
+  }
+
+  Future<void> _editSelectedDrama() async {
+    final seriesId = _selectedSeriesId;
+    if (seriesId == null) return;
+    final current = _series.firstWhere((s) => s.id == seriesId);
+    final details = await showDramaDetailsDialog(
+      context,
+      initialTitle: current.title,
+      initialGenre: current.genre,
+      initialDescription: current.description,
+      title: 'Edit Drama',
+      confirmLabel: 'Save',
+    );
+    if (details == null) return;
+    try {
+      final updated = await SeriesService.updateSeries(
+        seriesId,
+        title: details.title,
+        description: details.description,
+        genre: details.genre,
+      );
+      if (!mounted) return;
+      setState(() {
+        final index = _series.indexWhere((s) => s.id == seriesId);
+        if (index != -1) _series[index] = updated.copyWith(episodeCount: _series[index].episodeCount);
+      });
+      _showSnack('Saved "${updated.title}".');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Could not save drama: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');
     }
   }
 
@@ -587,8 +652,18 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Save to series', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Expanded(child: Text('Save to series', style: TextStyle(fontWeight: FontWeight.w700))),
+              TextButton.icon(
+                onPressed: _createNewDrama,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('New Drama', style: TextStyle(fontSize: 12.5)),
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
           if (_loadingSeries)
             const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)))
           else if (_series.isEmpty)
@@ -601,18 +676,31 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
               ],
             )
           else
-            DropdownButtonFormField<String>(
-              value: _selectedSeriesId,
-              isExpanded: true,
-              dropdownColor: AppColors.surface,
-              decoration: const InputDecoration(labelText: 'Series'),
-              items: _series
-                  .map((s) => DropdownMenuItem(value: s.id, child: Text(s.title, overflow: TextOverflow.ellipsis)))
-                  .toList(),
-              onChanged: (v) {
-                setState(() => _selectedSeriesId = v);
-                _saveDraftLocally();
-              },
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedSeriesId,
+                    isExpanded: true,
+                    dropdownColor: AppColors.surface,
+                    decoration: const InputDecoration(labelText: 'Series'),
+                    items: _series
+                        .map((s) => DropdownMenuItem(value: s.id, child: Text(s.title, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (v) {
+                      setState(() => _selectedSeriesId = v);
+                      _saveDraftLocally();
+                    },
+                  ),
+                ),
+                if (_selectedSeriesId != null)
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    tooltip: 'Edit drama name/genre',
+                    onPressed: _editSelectedDrama,
+                  ),
+              ],
             ),
           const SizedBox(height: 12),
           SizedBox(

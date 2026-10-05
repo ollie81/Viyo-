@@ -4,6 +4,7 @@ import '../../../models/studio_episode_status.dart';
 import '../../../services/series_service.dart';
 import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
+import 'drama_details_dialog.dart';
 import 'viyo_studio_scenes_screen.dart';
 import 'viyo_studio_screen.dart';
 import 'viyo_studio_voices_screen.dart';
@@ -141,6 +142,31 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
         .then((_) => _load());
   }
 
+  Future<void> _editDrama(Series series) async {
+    final details = await showDramaDetailsDialog(
+      context,
+      initialTitle: series.title,
+      initialGenre: series.genre,
+      initialDescription: series.description,
+      title: 'Edit Drama',
+      confirmLabel: 'Save',
+    );
+    if (details == null) return;
+    try {
+      await SeriesService.updateSeries(
+        series.id,
+        title: details.title,
+        description: details.description,
+        genre: details.genre,
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save: $message')));
+    }
+  }
+
   void _continueScenes(Series series) {
     Navigator.of(context)
         .push(MaterialPageRoute(
@@ -245,7 +271,25 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(s.series.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  s.series.title,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              InkWell(
+                onTap: () => _editDrama(s.series),
+                borderRadius: BorderRadius.circular(16),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.edit_outlined, size: 16, color: AppColors.textMuted),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
