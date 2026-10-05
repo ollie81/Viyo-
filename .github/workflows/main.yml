@@ -42,13 +42,21 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flutter build apk --release \
+          flutter build apk --release --split-per-abi \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=AI_BACKEND_URL=${{ secrets.AI_BACKEND_URL }}
 
       - name: Upload APK
+        # --split-per-abi above produces one APK per CPU architecture
+        # instead of a single "fat" one bundling all three — a real
+        # phone only ever runs one of them, so without this flag two
+        # thirds of the download is native code for architectures that
+        # device will never use. app-arm64-v8a-release.apk is the one
+        # that matters (every Android phone sold in the last several
+        # years); the armeabi-v7a/x86_64 ones come along too in case
+        # they're ever needed (an old 32-bit phone, an emulator).
         uses: actions/upload-artifact@v4
         with:
           name: viyo-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk   # ✅ Removed 'flutter_app/'
+          path: build/app/outputs/flutter-apk/app-*-release.apk
