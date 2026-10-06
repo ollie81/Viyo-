@@ -12,6 +12,11 @@ class StudioSceneCharacterRef {
         characterId: json['character_id'] as String?,
         name: json['name'] ?? '',
       );
+
+  Map<String, dynamic> toJson() => {'character_id': characterId, 'name': name};
+
+  StudioSceneCharacterRef copyWith({String? characterId, String? name}) =>
+      StudioSceneCharacterRef(characterId: characterId ?? this.characterId, name: name ?? this.name);
 }
 
 /// One line of dialogue within a [StudioScene].
@@ -108,6 +113,7 @@ class StudioScene {
     String? visualDescription,
     String? imageUrl,
     String? videoUrl,
+    List<StudioSceneCharacterRef>? characters,
     List<StudioSceneLine>? lines,
   }) =>
       StudioScene(
@@ -116,7 +122,7 @@ class StudioScene {
         locationId: locationId,
         locationName: locationName ?? this.locationName,
         cameraShot: cameraShot ?? this.cameraShot,
-        characters: characters,
+        characters: characters ?? this.characters,
         visualDescription: visualDescription ?? this.visualDescription,
         imageUrl: imageUrl ?? this.imageUrl,
         videoUrl: videoUrl ?? this.videoUrl,

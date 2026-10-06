@@ -365,6 +365,53 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     }
   }
 
+  /// The "characters present" chip for a scene is a snapshot taken at
+  /// split time — unlike a dialogue line's own character_id, nothing
+  /// re-matches it later, so a scene split before the name matcher got
+  /// smarter (or one the matcher is still ambiguous about) keeps
+  /// showing "unmatched" forever unless fixed by hand. Tapping an
+  /// unmatched chip opens this picker to do that.
+  Future<void> _pickCharacterForScene(int sceneIndex, int charIndex) async {
+    if (_characters.isEmpty) {
+      _showSnack('No cast loaded yet — try again in a moment.');
+      return;
+    }
+    final picked = await showModalBottomSheet<StudioCharacter>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _characters
+              .map((c) => ListTile(
+                    title: Text(c.name, style: const TextStyle(color: Colors.white)),
+                    onTap: () => Navigator.pop(ctx, c),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await _assignSceneCharacter(sceneIndex, charIndex, picked);
+  }
+
+  Future<void> _assignSceneCharacter(int sceneIndex, int charIndex, StudioCharacter character) async {
+    final scene = _scenes[sceneIndex];
+    final updatedCharacters = List<StudioSceneCharacterRef>.from(scene.characters);
+    updatedCharacters[charIndex] = updatedCharacters[charIndex].copyWith(characterId: character.id);
+    setState(() => _savingScene.add(scene.id));
+    try {
+      final updated = await StudioService.editScene(widget.adminKey, scene.id, characters: updatedCharacters);
+      if (!mounted) return;
+      setState(() => _scenes[sceneIndex] = updated.copyWith(lines: scene.lines));
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    } finally {
+      if (mounted) setState(() => _savingScene.remove(scene.id));
+    }
+  }
+
   /// Assigns [character] to a line Viyo Studio couldn't match on its
   /// own — the dropdown fallback for when the script's speaker name
   /// doesn't resolve to anyone in the cast, instead of only finding
@@ -651,17 +698,25 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
-                      children: scene.characters
-                          .map(
-                            (c) => Chip(
-                              label: Text(c.name, style: const TextStyle(fontSize: 11)),
-                              backgroundColor: c.characterId == null ? AppColors.coin.withOpacity(0.15) : AppColors.background,
-                              side: BorderSide(color: c.characterId == null ? AppColors.coin : AppColors.surfaceBorder),
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          )
-                          .toList(),
+                      children: scene.characters.asMap().entries.map((entry) {
+                        final c = entry.value;
+                        final unmatched = c.characterId == null;
+                        final chip = Chip(
+                          label: Text(
+                            unmatched ? '${c.name} ?' : c.name,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          backgroundColor: unmatched ? AppColors.coin.withOpacity(0.15) : AppColors.background,
+                          side: BorderSide(color: unmatched ? AppColors.coin : AppColors.surfaceBorder),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        );
+                        if (!unmatched) return chip;
+                        return GestureDetector(
+                          onTap: () => _pickCharacterForScene(index, entry.key),
+                          child: chip,
+                        );
+                      }).toList(),
                     ),
                     const SizedBox(height: 6),
                     Align(

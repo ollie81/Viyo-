@@ -368,6 +368,7 @@ class StudioService {
     String? visualDescription,
     String? cameraShot,
     String? locationName,
+    List<StudioSceneCharacterRef>? characters,
   }) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/scene/$sceneId/edit'),
@@ -376,6 +377,7 @@ class StudioService {
         if (visualDescription != null) 'visual_description': visualDescription,
         if (cameraShot != null) 'camera_shot': cameraShot,
         if (locationName != null) 'location_name': locationName,
+        if (characters != null) 'characters': characters.map((c) => c.toJson()).toList(),
       }),
     );
     if (res.statusCode != 200) {
