@@ -45,6 +45,11 @@ dependencies:
   # from the phone's own storage — image_picker is scoped to the
   # camera/photo & video gallery, not general files.
   file_picker: ^8.1.2
+  # Viyo Studio: a scratch file for the assembled-episode download
+  # button, handed to share_plus so the admin can save it to their
+  # phone — already resolved transitively, declared directly since
+  # the publish screen calls getTemporaryDirectory() itself.
+  path_provider: ^2.1.5
   image_cropper: ^8.1.0
   video_player: ^2.9.1
   video_thumbnail: ^0.5.3

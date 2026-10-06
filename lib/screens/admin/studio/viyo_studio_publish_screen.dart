@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../../services/studio_service.dart';
 import '../../../theme/app_theme.dart';
@@ -46,6 +51,12 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
   bool _uploadingMusic = false;
   String? _musicFileName;
 
+  bool _downloading = false;
+
+  List<String> _thumbnailCandidates = [];
+  String? _selectedThumbnailUrl;
+  bool _uploadingThumbnail = false;
+
   bool _publishing = false;
   String? _publishError;
   StudioPublishResult? _published;
@@ -80,6 +91,8 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
       setState(() {
         _assembled = result;
         _videoController = controller;
+        _thumbnailCandidates = result.thumbnailCandidates;
+        _selectedThumbnailUrl = result.thumbnailCandidates.isNotEmpty ? result.thumbnailCandidates.first : null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -116,6 +129,64 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
     }
   }
 
+  /// Lets the admin use a cover image that isn't one of the
+  /// auto-extracted candidates — uploads it and selects it.
+  Future<void> _pickAndUploadThumbnail() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    final picked = result?.files.single;
+    if (picked == null || picked.bytes == null) return;
+
+    setState(() => _uploadingThumbnail = true);
+    try {
+      final thumbnailUrl = await StudioService.uploadThumbnail(widget.adminKey, picked.bytes!, picked.name);
+      if (!mounted) return;
+      setState(() {
+        _thumbnailCandidates = [thumbnailUrl, ..._thumbnailCandidates];
+        _selectedThumbnailUrl = thumbnailUrl;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingThumbnail = false);
+    }
+  }
+
+  /// Saves the assembled preview to the phone before publishing — e.g.
+  /// to check it looks right on a real device, or to keep a copy.
+  /// Downloads the bytes, writes them to a scratch file, then hands
+  /// that off to the system share sheet (share_plus), which is what
+  /// lets the admin actually choose where it lands (Files, Downloads,
+  /// Photos) — Flutter has no direct "save to device storage" call of
+  /// its own without a platform-specific gallery plugin.
+  Future<void> _downloadPreview() async {
+    final assembled = _assembled;
+    if (assembled == null) return;
+    setState(() => _downloading = true);
+    try {
+      final res = await http.get(Uri.parse(assembled.previewVideoUrl));
+      if (res.statusCode != 200) {
+        throw Exception('Could not download video (${res.statusCode})');
+      }
+      final dir = await getTemporaryDirectory();
+      final fileName = '${widget.seriesTitle.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')}'
+          '_ep${widget.episodeNumber}.mp4';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(res.bodyBytes);
+      if (!mounted) return;
+      await Share.shareXFiles([XFile(file.path)], text: fileName);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
   Future<void> _publish() async {
     final assembled = _assembled;
     if (assembled == null) return;
@@ -131,6 +202,7 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
         previewVideoUrl: assembled.previewVideoUrl,
         durationSeconds: assembled.durationSeconds,
         caption: _captionController.text.trim(),
+        thumbnailUrl: _selectedThumbnailUrl,
       );
       if (!mounted) return;
       setState(() => _published = result);
@@ -157,6 +229,8 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
             if (_assembled != null) ...[
               const SizedBox(height: 16),
               _previewSection(),
+              const SizedBox(height: 16),
+              _thumbnailSection(),
               const SizedBox(height: 16),
               _publishSection(),
             ],
@@ -239,7 +313,18 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Preview', style: TextStyle(fontWeight: FontWeight.w700)),
+          Row(
+            children: [
+              const Expanded(child: Text('Preview', style: TextStyle(fontWeight: FontWeight.w700))),
+              TextButton.icon(
+                onPressed: _downloading ? null : _downloadPreview,
+                icon: _downloading
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.download_outlined, size: 16),
+                label: Text(_downloading ? 'Saving...' : 'Save to phone', style: const TextStyle(fontSize: 12.5)),
+              ),
+            ],
+          ),
           const SizedBox(height: 10),
           if (controller != null && controller.value.isInitialized)
             Center(
@@ -276,6 +361,97 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _thumbnailSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.card(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Thumbnail', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text(
+            'Picked automatically from a few frames of the episode — pick the one '
+            'that\'ll make someone scrolling the feed actually tap in, or upload your own.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 110,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                ..._thumbnailCandidates.map((url) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _thumbnailTile(url),
+                    )),
+                _uploadThumbnailTile(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _thumbnailTile(String url) {
+    final selected = url == _selectedThumbnailUrl;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedThumbnailUrl = url),
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: selected ? AppColors.primary : Colors.transparent, width: 2.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(url, fit: BoxFit.cover),
+                if (selected)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                      child: const Icon(Icons.check, size: 12, color: Colors.white),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _uploadThumbnailTile() {
+    return GestureDetector(
+      onTap: _uploadingThumbnail ? null : _pickAndUploadThumbnail,
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: DottedBorderBox(
+          child: _uploadingThumbnail
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              : const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted, size: 22),
+                      SizedBox(height: 4),
+                      Text('Upload', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                    ],
+                  ),
+                ),
+        ),
       ),
     );
   }
@@ -335,4 +511,44 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
       ),
     );
   }
+}
+
+/// A plain dashed-border box for the "upload your own thumbnail" tile
+/// — CustomPaint instead of a package since this is the only place in
+/// the app that needs one.
+class DottedBorderBox extends StatelessWidget {
+  final Widget child;
+  const DottedBorderBox({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DashedBorderPainter(),
+      child: child,
+    );
+  }
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.textMuted.withOpacity(0.5)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    final rrect = RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(8));
+    final path = Path()..addRRect(rrect);
+    const dashWidth = 5.0;
+    const dashSpace = 4.0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        canvas.drawPath(metric.extractPath(distance, distance + dashWidth), paint);
+        distance += dashWidth + dashSpace;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -71,8 +71,13 @@ class StudioScenesResult {
 class StudioAssembleResult {
   final String previewVideoUrl;
   final int durationSeconds;
+  final List<String> thumbnailCandidates;
 
-  StudioAssembleResult({required this.previewVideoUrl, required this.durationSeconds});
+  StudioAssembleResult({
+    required this.previewVideoUrl,
+    required this.durationSeconds,
+    this.thumbnailCandidates = const [],
+  });
 }
 
 class StudioPublishResult {
@@ -508,7 +513,25 @@ class StudioService {
     return StudioAssembleResult(
       previewVideoUrl: data['preview_video_url'],
       durationSeconds: (data['duration_seconds'] as num).toInt(),
+      thumbnailCandidates: ((data['thumbnail_candidates'] as List?) ?? []).cast<String>(),
     );
+  }
+
+  /// Uploads a thumbnail image that isn't one of assembleEpisode's
+  /// auto-extracted candidates (e.g. a cover image made elsewhere),
+  /// for the same thumbnailUrl slot in [publishEpisode].
+  static Future<String> uploadThumbnail(String adminKey, Uint8List bytes, String filename) async {
+    final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/thumbnail');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['X-Admin-Key'] = adminKey
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamedResponse = await request.send();
+    final res = await http.Response.fromStream(streamedResponse);
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not upload thumbnail (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['thumbnail_url'] as String;
   }
 
   /// Pushes the already-assembled preview to Bunny Stream and creates
@@ -520,6 +543,7 @@ class StudioService {
     required String previewVideoUrl,
     required int durationSeconds,
     String? caption,
+    String? thumbnailUrl,
   }) async {
     final res = await http.post(
       Uri.parse(
@@ -530,6 +554,7 @@ class StudioService {
         'preview_video_url': previewVideoUrl,
         'duration_seconds': durationSeconds,
         if (caption != null && caption.isNotEmpty) 'caption': caption,
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) 'thumbnail_url': thumbnailUrl,
       }),
     );
     if (res.statusCode != 200) {
@@ -557,6 +582,22 @@ class StudioService {
     return ((data['episodes'] as List?) ?? [])
         .map((e) => StudioEpisodeStatus.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Removes a wrongly-published episode (wrong series, a test run,
+  /// anything that shouldn't have gone out as a real drama) — deletes
+  /// the Bunny video and the posts row server-side via the admin key,
+  /// not PostService.deletePost's client-side RLS path, since a
+  /// Studio-published post's owner is the series' own designated
+  /// account rather than whoever is holding the admin key.
+  static Future<void> deletePost(String adminKey, String postId) async {
+    final res = await http.delete(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/post/$postId'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not delete post (${res.statusCode})');
+    }
   }
 
   static String? _errorDetail(http.Response res) {

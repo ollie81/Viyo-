@@ -176,6 +176,43 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
         .then((_) => _load());
   }
 
+  /// Removes a wrongly-published episode (wrong series, a test run,
+  /// anything that shouldn't have gone out as a real drama) — the
+  /// admin key lets this bypass PostService.deletePost's owner-only
+  /// RLS, since a Studio-published post's owner is the series' own
+  /// designated account, not whoever is holding the admin key.
+  Future<void> _deleteEpisode(StudioEpisodeStatus e) async {
+    final postId = e.postId;
+    if (postId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Delete episode?'),
+        content: Text(
+          'Removes Episode ${e.episodeNumber} from the Dramas feed and its video from Bunny. '
+          'This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await StudioService.deletePost(_adminKey!, postId);
+      await _load();
+    } catch (err) {
+      if (!mounted) return;
+      final message = err.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not delete: $message')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -305,10 +342,7 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
               if (s.episodes.isEmpty)
                 _statusChip(label: 'Scenes: not started', done: false)
               else
-                ...s.episodes.map((e) => _statusChip(
-                      label: 'Ep ${e.episodeNumber}: ${e.published ? 'published' : (e.imagesDone && e.audioDone ? 'ready' : '${e.sceneCount} scenes')}',
-                      done: e.published,
-                    )),
+                ...s.episodes.map((e) => _episodeChip(e)),
             ],
           ),
           const SizedBox(height: 12),
@@ -340,6 +374,28 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _episodeChip(StudioEpisodeStatus e) {
+    final chip = _statusChip(
+      label: 'Ep ${e.episodeNumber}: ${e.published ? 'published' : (e.imagesDone && e.audioDone ? 'ready' : '${e.sceneCount} scenes')}',
+      done: e.published,
+    );
+    if (!e.published || e.postId == null) return chip;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        chip,
+        InkWell(
+          onTap: () => _deleteEpisode(e),
+          borderRadius: BorderRadius.circular(12),
+          child: const Padding(
+            padding: EdgeInsets.only(left: 2),
+            child: Icon(Icons.delete_outline, size: 15, color: AppColors.danger),
+          ),
+        ),
+      ],
     );
   }
 

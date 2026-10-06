@@ -7,6 +7,7 @@ class StudioEpisodeStatus {
   final bool imagesDone;
   final bool audioDone;
   final bool published;
+  final String? postId;
 
   const StudioEpisodeStatus({
     required this.episodeNumber,
@@ -14,6 +15,7 @@ class StudioEpisodeStatus {
     required this.imagesDone,
     required this.audioDone,
     required this.published,
+    this.postId,
   });
 
   factory StudioEpisodeStatus.fromJson(Map<String, dynamic> json) => StudioEpisodeStatus(
@@ -22,5 +24,6 @@ class StudioEpisodeStatus {
         imagesDone: json['images_done'] ?? false,
         audioDone: json['audio_done'] ?? false,
         published: json['published'] ?? false,
+        postId: json['post_id'] as String?,
       );
 }
