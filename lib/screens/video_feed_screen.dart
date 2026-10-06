@@ -415,6 +415,12 @@ class _VideoPageState extends State<_VideoPage> {
   bool _initError = false;
   bool _unlocking = false;
   bool _showUpNext = false;
+  // True only during the one-retry window in _initialize() below, after
+  // the stored URL has already failed but before the corrected one has
+  // been tried — keeps build() showing a spinner through that gap
+  // instead of flashing the terminal "Video unavailable" state for a
+  // retry that's still genuinely in flight.
+  bool _retrying = false;
   // Set only if this page's own self-heal poll (see _pollBunnyStatus)
   // finds the video failed — post.isVideoFailed itself can't change
   // here, since widget.post is the same immutable snapshot this page
@@ -517,14 +523,17 @@ class _VideoPageState extends State<_VideoPage> {
       // actually has (bunny_stream.py's _pick_resolution) — worth one
       // retry before calling this video genuinely broken.
       final videoId = widget.post.bunnyVideoId;
-      BunnyVideoStatus? status;
-      if (videoId != null) {
-        try {
-          status = await BunnyStreamService.getStatus(videoId);
-        } catch (_) {}
-      }
-      if (status == null || !status.ready || status.playbackUrl == url) {
+      if (videoId == null) {
         if (mounted) setState(() => _initError = true);
+        return;
+      }
+      if (mounted) setState(() => _retrying = true);
+      BunnyVideoStatus? status;
+      try {
+        status = await BunnyStreamService.getStatus(videoId);
+      } catch (_) {}
+      if (status == null || !status.ready || status.playbackUrl == url) {
+        if (mounted) setState(() { _retrying = false; _initError = true; });
         return;
       }
       unawaited(PostService.updateVideoStatus(widget.post.id, 'ready', mediaUrl: status.playbackUrl));
@@ -533,9 +542,10 @@ class _VideoPageState extends State<_VideoPage> {
         await controller.initialize();
       } catch (_) {
         await controller.dispose();
-        if (mounted) setState(() => _initError = true);
+        if (mounted) setState(() { _retrying = false; _initError = true; });
         return;
       }
+      if (mounted) setState(() => _retrying = false);
     }
 
     try {
@@ -750,7 +760,19 @@ class _VideoPageState extends State<_VideoPage> {
                         ? _videoProcessing()
                         : post.isVideoFailed || _processingFailedOverride
                             ? _videoError(message: 'This video failed to process')
-                            : post.thumbnailUrl != null
+                            // Checked before the thumbnail below on purpose:
+                            // a Bunny-hosted thumbnail can 404 for the exact
+                            // same reason the video URL does (see
+                            // _initialize's own comment) while this retry is
+                            // still in flight, and CachedNetworkImage's own
+                            // errorWidget would otherwise flash the same
+                            // "Video unavailable" state for a video that's
+                            // actually about to start playing fine.
+                            : _retrying
+                                ? const Center(
+                                    child: CircularProgressIndicator(color: AppColors.primary),
+                                  )
+                                : post.thumbnailUrl != null
                                 ? CachedNetworkImage(
                                     imageUrl: post.thumbnailUrl!,
                                     fit: BoxFit.cover,
