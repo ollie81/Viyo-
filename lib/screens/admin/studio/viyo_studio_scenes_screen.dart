@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import '../../../models/studio_character.dart';
 import '../../../models/studio_scene.dart';
 import '../../../services/studio_service.dart';
@@ -7,6 +8,109 @@ import '../../../theme/app_theme.dart';
 import 'viyo_studio_publish_screen.dart';
 
 const _cameraShots = ['wide', 'medium', 'close-up'];
+
+/// Full-screen playback for a single scene's Veo clip — tapped from
+/// its thumbnail badge. Same VideoPlayerController pattern as the
+/// Publish screen's episode preview, just scoped to one scene instead
+/// of the assembled episode.
+class _ScenePreviewDialog extends StatefulWidget {
+  final String videoUrl;
+  final String title;
+
+  const _ScenePreviewDialog({required this.videoUrl, required this.title});
+
+  @override
+  State<_ScenePreviewDialog> createState() => _ScenePreviewDialogState();
+}
+
+class _ScenePreviewDialogState extends State<_ScenePreviewDialog> {
+  VideoPlayerController? _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
+      await controller.initialize();
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() => _controller = controller..play());
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(28),
+              child: Text(
+                'Could not load video: $_error',
+                style: const TextStyle(color: AppColors.danger),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else if (controller != null && controller.value.isInitialized)
+            AspectRatio(
+              aspectRatio: 9 / 16,
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  controller.value.isPlaying ? controller.pause() : controller.play();
+                }),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(controller),
+                    AnimatedBuilder(
+                      animation: controller,
+                      builder: (_, __) => controller.value.isPlaying
+                          ? const SizedBox.shrink()
+                          : const Icon(Icons.play_arrow, size: 54, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.all(40),
+              child: CircularProgressIndicator(),
+            ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Viyo Studio, Phase 3: split one episode's script into scenes, then
 /// generate each scene's 9:16 image (conditioned on that episode's
@@ -500,6 +604,15 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                 hasVideo: scene.videoUrl != null,
                 videoBusy: videoBusy,
                 onGenerateVideo: () => _confirmAndGenerateSceneVideo(index),
+                onPlayVideo: scene.videoUrl == null
+                    ? null
+                    : () => showDialog(
+                          context: context,
+                          builder: (_) => _ScenePreviewDialog(
+                            videoUrl: scene.videoUrl!,
+                            title: 'Scene ${index + 1}',
+                          ),
+                        ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -579,35 +692,50 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     bool hasVideo = false,
     required bool videoBusy,
     required VoidCallback onGenerateVideo,
+    VoidCallback? onPlayVideo,
   }) {
     const width = 84.0;
     const height = 149.0;
     return Column(
       children: [
-        Stack(
-          children: [
-            Container(
-              width: width,
-              height: height,
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: hasVideo ? AppColors.primary : AppColors.surfaceBorder),
-                image: url != null ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
-              ),
-              child: url == null ? const Icon(Icons.image_outlined, color: AppColors.textMuted, size: 22) : null,
-            ),
-            if (hasVideo)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                  child: const Icon(Icons.videocam, size: 11, color: Colors.black),
+        GestureDetector(
+          onTap: onPlayVideo,
+          child: Stack(
+            children: [
+              Container(
+                width: width,
+                height: height,
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: hasVideo ? AppColors.primary : AppColors.surfaceBorder),
+                  image: url != null ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
                 ),
+                child: url == null ? const Icon(Icons.image_outlined, color: AppColors.textMuted, size: 22) : null,
               ),
-          ],
+              if (hasVideo) ...[
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                    child: const Icon(Icons.videocam, size: 11, color: Colors.black),
+                  ),
+                ),
+                Container(
+                  width: width,
+                  height: height,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.play_circle_fill, size: 28, color: Colors.white),
+                ),
+              ],
+            ],
+          ),
         ),
         const SizedBox(height: 6),
         SizedBox(
