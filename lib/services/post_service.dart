@@ -492,9 +492,20 @@ class PostService {
   /// restricts this to the post's own owner, and there's nothing useful
   /// to show the user if the flip itself fails — the post already
   /// published; it just stays showing as "processing" a bit longer.
-  static Future<void> updateVideoStatus(String postId, String status) async {
+  /// [mediaUrl], when given, overwrites the post's stored playback URL
+  /// too — needed because the URL saved at upload time guesses a Bunny
+  /// MP4 Fallback resolution before Bunny has encoded anything, and
+  /// that guess 404s for any video Bunny ends up encoding below that
+  /// resolution. By the time status flips to "ready"/"failed", Bunny's
+  /// own per-video availableResolutions is known (see bunny_stream.py's
+  /// _pick_resolution), so callers pass the corrected URL from that
+  /// same status response here instead of leaving the bad guess in place.
+  static Future<void> updateVideoStatus(String postId, String status, {String? mediaUrl}) async {
     try {
-      await _client.from('posts').update({'video_status': status}).eq('id', postId);
+      await _client.from('posts').update({
+        'video_status': status,
+        if (mediaUrl != null) 'media_url': mediaUrl,
+      }).eq('id', postId);
     } catch (_) {}
   }
 

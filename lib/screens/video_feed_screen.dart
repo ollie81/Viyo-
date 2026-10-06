@@ -472,14 +472,21 @@ class _VideoPageState extends State<_VideoPage> {
     try {
       final status = await BunnyStreamService.waitForReady(videoId);
       if (!mounted || status == null) return;
-      await PostService.updateVideoStatus(widget.post.id, status.failed ? 'failed' : 'ready');
+      await PostService.updateVideoStatus(
+        widget.post.id,
+        status.failed ? 'failed' : 'ready',
+        mediaUrl: status.failed ? null : status.playbackUrl,
+      );
       if (!mounted) return;
       if (status.failed) {
         setState(() => _processingFailedOverride = true);
       } else {
         // Bunny's done — start playback immediately instead of making
-        // this viewer back out and reopen the video.
-        _initialize();
+        // this viewer back out and reopen the video. Uses status's own
+        // freshly-resolved URL, not widget.post.mediaUrl — that's still
+        // the pre-encode guess from upload time (see _initialize's own
+        // comment on _resolvedMediaUrl).
+        _initialize(urlOverride: status.playbackUrl);
       }
     } catch (_) {
       // Best-effort — worst case this viewer still sees "Processing…"
@@ -487,17 +494,51 @@ class _VideoPageState extends State<_VideoPage> {
     }
   }
 
-  Future<void> _initialize() async {
-    final url = widget.post.mediaUrl;
+  Future<void> _initialize({String? urlOverride}) async {
+    final url = urlOverride ?? widget.post.mediaUrl;
     if (url == null || url.trim().isEmpty) {
       if (mounted) setState(() => _initError = true);
       return;
     }
 
-    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    var controller = VideoPlayerController.networkUrl(Uri.parse(url));
 
     try {
       await controller.initialize();
+    } catch (_) {
+      await controller.dispose();
+      // The URL stored on this post (play_<N>p.mp4 at a fixed guessed
+      // resolution — see bunny_stream.py's own module comment) 404s
+      // whenever Bunny encoded this video's source below that
+      // resolution, which never self-heals on its own: video_status
+      // already reads "ready", so the self-heal poll above never even
+      // runs for it. Bunny itself finished long ago, so re-checking
+      // status now returns a corrected URL at a resolution this video
+      // actually has (bunny_stream.py's _pick_resolution) — worth one
+      // retry before calling this video genuinely broken.
+      final videoId = widget.post.bunnyVideoId;
+      BunnyVideoStatus? status;
+      if (videoId != null) {
+        try {
+          status = await BunnyStreamService.getStatus(videoId);
+        } catch (_) {}
+      }
+      if (status == null || !status.ready || status.playbackUrl == url) {
+        if (mounted) setState(() => _initError = true);
+        return;
+      }
+      unawaited(PostService.updateVideoStatus(widget.post.id, 'ready', mediaUrl: status.playbackUrl));
+      controller = VideoPlayerController.networkUrl(Uri.parse(status.playbackUrl));
+      try {
+        await controller.initialize();
+      } catch (_) {
+        await controller.dispose();
+        if (mounted) setState(() => _initError = true);
+        return;
+      }
+    }
+
+    try {
       await controller.setLooping(!widget.autoAdvance);
       await controller.setVolume(_muted ? 0 : 1);
 

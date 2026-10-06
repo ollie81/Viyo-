@@ -371,7 +371,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (bunnyVideoId != null) {
         BunnyStreamService.waitForReady(bunnyVideoId).then((status) async {
           if (status == null) return;
-          await PostService.updateVideoStatus(post.id, status.failed ? 'failed' : 'ready');
+          await PostService.updateVideoStatus(
+            post.id,
+            status.failed ? 'failed' : 'ready',
+            mediaUrl: status.failed ? null : status.playbackUrl,
+          );
         }).catchError((_) {});
       }
 

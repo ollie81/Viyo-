@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../../models/post.dart';
@@ -236,12 +238,16 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
     try {
       final status = await BunnyStreamService.waitForReady(videoId);
       if (!mounted || status == null) return;
-      await PostService.updateVideoStatus(widget.post.id, status.failed ? 'failed' : 'ready');
+      await PostService.updateVideoStatus(
+        widget.post.id,
+        status.failed ? 'failed' : 'ready',
+        mediaUrl: status.failed ? null : status.playbackUrl,
+      );
       if (!mounted) return;
       if (status.failed) {
         setState(() => _processingFailedOverride = true);
       } else {
-        _initVideo();
+        _initVideo(urlOverride: status.playbackUrl);
       }
     } catch (_) {
       // Best-effort — worst case this viewer still sees "Processing…"
@@ -249,10 +255,38 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
     }
   }
 
-  Future<void> _initVideo() async {
-    final controller = VideoPlayerController.networkUrl(Uri.parse(widget.post.mediaUrl));
+  Future<void> _initVideo({String? urlOverride}) async {
+    final url = urlOverride ?? widget.post.mediaUrl;
+    var controller = VideoPlayerController.networkUrl(Uri.parse(url));
     try {
       await controller.initialize();
+    } catch (_) {
+      await controller.dispose();
+      // Same self-heal as video_feed_screen.dart's _initialize: the
+      // stored URL guesses a fixed Bunny MP4 Fallback resolution before
+      // Bunny has encoded anything, and 404s for any video Bunny ends
+      // up encoding below that resolution — which never self-corrects
+      // on its own since video_status already reads "ready" here.
+      // Re-checking status now returns the resolution Bunny actually
+      // generated for this video.
+      final videoId = widget.post.bunnyVideoId;
+      BunnyVideoStatus? status;
+      if (videoId != null) {
+        try {
+          status = await BunnyStreamService.getStatus(videoId);
+        } catch (_) {}
+      }
+      if (status == null || !status.ready || status.playbackUrl == url) return;
+      unawaited(PostService.updateVideoStatus(widget.post.id, 'ready', mediaUrl: status.playbackUrl));
+      controller = VideoPlayerController.networkUrl(Uri.parse(status.playbackUrl));
+      try {
+        await controller.initialize();
+      } catch (_) {
+        await controller.dispose();
+        return;
+      }
+    }
+    try {
       await controller.setLooping(true);
       if (!mounted) {
         await controller.dispose();
