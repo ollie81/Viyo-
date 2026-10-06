@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
+import '../models/series.dart';
 import '../models/studio_character.dart';
 import '../models/studio_episode_status.dart';
 import '../models/studio_location.dart';
@@ -195,6 +196,35 @@ class StudioService {
       locations: ((data['locations'] as List?) ?? [])
           .map((l) => StudioLocation.fromJson(l as Map<String, dynamic>))
           .toList(),
+    );
+  }
+
+  /// Renames/edits a drama's title, description or genre. Routed
+  /// through this admin-gated backend endpoint rather than a direct
+  /// Supabase update: `series`' update policy is owner-only, and a
+  /// drama shown in Studio may well have been created under a
+  /// different session than whoever's running Studio today, which
+  /// would make a direct client write silently no-op (0 rows matched).
+  static Future<Series> updateDramaDetails(
+    String adminKey,
+    Series current, {
+    required String title,
+    required String description,
+    required String genre,
+  }) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/${current.id}/details'),
+      headers: _headers(adminKey),
+      body: jsonEncode({'title': title, 'description': description, 'genre': genre}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not save drama details (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return current.copyWith(
+      title: data['title'] as String?,
+      description: data['description'] as String?,
+      genre: data['genre'] as String?,
     );
   }
 

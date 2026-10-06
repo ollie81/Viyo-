@@ -156,8 +156,9 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     );
     if (details == null) return;
     try {
-      final updated = await SeriesService.updateSeries(
-        seriesId,
+      final updated = await StudioService.updateDramaDetails(
+        widget.adminKey,
+        current,
         title: details.title,
         description: details.description,
         genre: details.genre,
@@ -165,7 +166,7 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
       if (!mounted) return;
       setState(() {
         final index = _series.indexWhere((s) => s.id == seriesId);
-        if (index != -1) _series[index] = updated.copyWith(episodeCount: _series[index].episodeCount);
+        if (index != -1) _series[index] = updated;
       });
       _showSnack('Saved "${updated.title}".');
     } catch (e) {

@@ -70,24 +70,6 @@ class SeriesService {
     await _client.from('series').update({'status': status}).eq('id', seriesId);
   }
 
-  /// Owner-only edit of a series' title/description/genre — same
-  /// direct RLS-scoped write as updateStatus above, for the same
-  /// reason (only ever called by the series' own owner).
-  static Future<Series> updateSeries(
-    String seriesId, {
-    String? title,
-    String? description,
-    String? genre,
-  }) async {
-    final updates = {
-      if (title != null) 'title': title,
-      if (description != null) 'description': description,
-      if (genre != null) 'genre': genre,
-    };
-    final updated = await _client.from('series').update(updates).eq('id', seriesId).select().single();
-    return Series.fromJson(updated);
-  }
-
   /// True per-series follow (`series_follows`) — distinct from the
   /// creator-level `follows` table used elsewhere in the app. A viewer
   /// can follow a specific series without following everything else

@@ -153,8 +153,9 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
     );
     if (details == null) return;
     try {
-      await SeriesService.updateSeries(
-        series.id,
+      await StudioService.updateDramaDetails(
+        _adminKey!,
+        series,
         title: details.title,
         description: details.description,
         genre: details.genre,

@@ -86,14 +86,22 @@ class Series {
         orientation: json['orientation'] as String?,
       );
 
-  Series copyWith({int? episodeCount, String? coverImageUrl, String? status}) => Series(
+  Series copyWith({
+    int? episodeCount,
+    String? coverImageUrl,
+    String? status,
+    String? title,
+    String? description,
+    String? genre,
+  }) =>
+      Series(
         id: id,
         userId: userId,
-        title: title,
-        description: description,
+        title: title ?? this.title,
+        description: description ?? this.description,
         coverImageUrl: coverImageUrl ?? this.coverImageUrl,
         coinPricePerEpisode: coinPricePerEpisode,
-        genre: genre,
+        genre: genre ?? this.genre,
         createdAt: createdAt,
         authorUsername: authorUsername,
         authorDisplayName: authorDisplayName,
