@@ -409,7 +409,12 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
           ],
         ),
       ),
-      body: SingleChildScrollView(
+      // Without SafeArea, the Publish button at the bottom of this long
+      // form renders right up against the screen edge — the on-screen
+      // nav bar some phones show (gesture pill or 3-button) then sits
+      // on top of it, same as every other full-screen form in this app
+      // (login/onboarding/signup screens all wrap body in SafeArea).
+      body: SafeArea(child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -699,7 +704,7 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 }
