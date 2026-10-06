@@ -192,6 +192,51 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     });
   }
 
+  /// Lets the owner of a drama episode (or any other video post) delete
+  /// it straight from the feed they're actually watching it in, instead
+  /// of needing to find it again in their profile grid — the same
+  /// owner-only, RLS-enforced PostService.deletePost profile_screen.dart
+  /// already uses, just reachable from here too.
+  Future<void> _deletePost(Post post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Delete this episode?'),
+        content: const Text("This can't be undone — it'll be removed from the Dramas feed for everyone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await PostService.deletePost(post);
+      if (!mounted) return;
+      setState(() => _posts = _posts.where((p) => p.id != post.id).toList());
+      if (_posts.isEmpty) {
+        Navigator.of(context).pop();
+        return;
+      }
+      if (_currentIndex >= _posts.length) {
+        setState(() => _currentIndex = _posts.length - 1);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) _pageController.jumpToPage(_currentIndex);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete: ${friendlyErrorMessage(e)}')),
+      );
+    }
+  }
+
   Future<void> _unlockEpisode(Post post) async {
     if (!await GuestGate.allow(context, action: 'unlock this episode')) return;
     try {
@@ -310,6 +355,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                       onOpenProfile: () => _openProfile(post),
                       onBecameActive: () => _recordView(post),
                       onUnlock: () => _unlockEpisode(post),
+                      onDelete: () => _deletePost(post),
                     );
                   },
                 ),
@@ -337,6 +383,7 @@ class _VideoPage extends StatefulWidget {
   final VoidCallback onOpenProfile;
   final VoidCallback onBecameActive;
   final Future<void> Function() onUnlock;
+  final VoidCallback onDelete;
 
   const _VideoPage({
     super.key,
@@ -353,6 +400,7 @@ class _VideoPage extends StatefulWidget {
     required this.onOpenProfile,
     required this.onBecameActive,
     required this.onUnlock,
+    required this.onDelete,
   });
 
   @override
@@ -807,6 +855,15 @@ class _VideoPageState extends State<_VideoPage> {
                   label: 'Share',
                   onTap: widget.onShare,
                 ),
+                if (post.userId == SupabaseService.currentUserId) ...[
+                  const SizedBox(height: 18),
+                  _ActionIcon(
+                    icon: Icons.delete_outline,
+                    color: Colors.white,
+                    label: 'Delete',
+                    onTap: widget.onDelete,
+                  ),
+                ],
               ],
             ),
           ),
