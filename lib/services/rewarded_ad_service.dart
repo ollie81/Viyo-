@@ -8,12 +8,21 @@ import 'coin_service.dart';
 /// coins" option offered from the wallet and the insufficient-coins
 /// sheet.
 ///
-/// The ad unit ids below are Google's own public TEST ids: they always
-/// fill with a test creative and never show (or pay out for) a real
-/// ad. Swap these for this app's real AdMob rewarded ad unit ids
-/// before a store release — shipping test ids to production risks the
-/// AdMob account, and shipping real ids into this sandbox risks
-/// invalid-traffic flags, so the two must never be mixed.
+/// Uses RewardedInterstitialAd rather than plain RewardedAd: Viyo's
+/// AdMob account has a "Rewarded Interstitial" ad unit created for
+/// this app, not a plain "Rewarded" one (the two are different ad
+/// unit formats that each need their own matching SDK class — a
+/// Rewarded Interstitial ad unit id fails to load through
+/// RewardedAd.load). The two classes' load/show API is otherwise
+/// identical, including onUserEarnedReward, so nothing else about this
+/// service's own behavior changes — this still only ever shows when
+/// the viewer explicitly taps "Watch Ad", same as a plain rewarded ad.
+///
+/// The Android ad unit id below is Viyo's real one; the iOS id is
+/// still Google's public TEST id (always serves a test creative, never
+/// a real ad) since Viyo doesn't have an iOS AdMob app set up yet —
+/// swap it in once one exists, following the same steps used for
+/// Android.
 ///
 /// google_mobile_ads has no web implementation, and Platform.isIOS
 /// below (dart:io) throws outright on web — every public method here
@@ -21,12 +30,12 @@ import 'coin_service.dart';
 /// from shared (mobile + web) screens like the wallet or the
 /// insufficient-coins sheet without a platform check at each call site.
 class RewardedAdService {
-  static const _testAndroidUnitId = 'ca-app-pub-3940256099942544/5224354917';
+  static const _androidUnitId = 'ca-app-pub-4006935524883605/4402469307';
   static const _testIosUnitId = 'ca-app-pub-3940256099942544/1712485313';
 
-  static String get _adUnitId => Platform.isIOS ? _testIosUnitId : _testAndroidUnitId;
+  static String get _adUnitId => Platform.isIOS ? _testIosUnitId : _androidUnitId;
 
-  static RewardedAd? _preloaded;
+  static RewardedInterstitialAd? _preloaded;
   static bool _loading = false;
 
   /// Preloads the next ad so tapping "Watch Ad" doesn't have to wait on
@@ -37,10 +46,10 @@ class RewardedAdService {
   static void preload() {
     if (kIsWeb || _preloaded != null || _loading) return;
     _loading = true;
-    RewardedAd.load(
+    RewardedInterstitialAd.load(
       adUnitId: _adUnitId,
       request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
+      rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _preloaded = ad;
           _loading = false;
@@ -95,12 +104,12 @@ class RewardedAdService {
     }
   }
 
-  static Future<RewardedAd?> _loadNow() async {
-    final completer = Completer<RewardedAd?>();
-    RewardedAd.load(
+  static Future<RewardedInterstitialAd?> _loadNow() async {
+    final completer = Completer<RewardedInterstitialAd?>();
+    RewardedInterstitialAd.load(
       adUnitId: _adUnitId,
       request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
+      rewardedInterstitialAdLoadCallback: RewardedInterstitialAdLoadCallback(
         onAdLoaded: (ad) => completer.complete(ad),
         onAdFailedToLoad: (error) => completer.complete(null),
       ),
