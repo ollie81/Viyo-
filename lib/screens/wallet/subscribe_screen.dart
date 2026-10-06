@@ -220,6 +220,12 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
             subtitle: 'Best value for regular watching',
             highlighted: true,
           ),
+          const SizedBox(height: 12),
+          _planCard(
+            plan: 'yearly',
+            title: 'Yearly',
+            subtitle: 'Biggest savings — less than 6 months\' worth',
+          ),
         ],
       ],
     );
@@ -276,7 +282,11 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
             const Text("You're a Viyo Premium member", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             const SizedBox(height: 8),
             Text(
-              status.plan == 'weekly' ? 'Weekly plan' : 'Monthly plan',
+              switch (status.plan) {
+                'weekly' => 'Weekly plan',
+                'yearly' => 'Yearly plan',
+                _ => 'Monthly plan',
+              },
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             if (renewsAt != null) ...[
