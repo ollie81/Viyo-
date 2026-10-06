@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import '../models/series.dart';
@@ -426,6 +427,24 @@ class StudioService {
       durationSeconds: (data['duration_seconds'] as num).toInt(),
       costUsdCents: (data['cost_usd_cents'] as num).toInt(),
     );
+  }
+
+  /// Uploads a background-music file the admin already has the rights
+  /// to use (e.g. downloaded from Suno) and returns a URL that can be
+  /// fed straight into [assembleEpisode]'s musicUrl — no external
+  /// hosting needed, unlike pasting an arbitrary URL.
+  static Future<String> uploadMusic(String adminKey, Uint8List bytes, String filename) async {
+    final uri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/music');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['X-Admin-Key'] = adminKey
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamedResponse = await request.send();
+    final res = await http.Response.fromStream(streamedResponse);
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not upload music (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['music_url'] as String;
   }
 
   static Future<StudioSceneLine> editLine(

@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../../../services/studio_service.dart';
@@ -42,6 +43,9 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
   StudioAssembleResult? _assembled;
   VideoPlayerController? _videoController;
 
+  bool _uploadingMusic = false;
+  String? _musicFileName;
+
   bool _publishing = false;
   String? _publishError;
   StudioPublishResult? _published;
@@ -82,6 +86,33 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
       setState(() => _assembleError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
     } finally {
       if (mounted) setState(() => _assembling = false);
+    }
+  }
+
+  /// Lets the admin pick an audio file straight from their phone (e.g.
+  /// one they just downloaded from Suno) instead of needing to host it
+  /// somewhere and paste a URL — uploads it and fills the URL field
+  /// with the real, Studio-hosted result.
+  Future<void> _pickAndUploadMusic() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio, withData: true);
+    final picked = result?.files.single;
+    if (picked == null || picked.bytes == null) return;
+
+    setState(() => _uploadingMusic = true);
+    try {
+      final musicUrl = await StudioService.uploadMusic(widget.adminKey, picked.bytes!, picked.name);
+      if (!mounted) return;
+      setState(() {
+        _musicUrlController.text = musicUrl;
+        _musicFileName = picked.name;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingMusic = false);
     }
   }
 
@@ -151,11 +182,30 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
               labelText: 'Background music URL (optional)',
               hintText: 'A track you already have the rights to use',
             ),
+            onChanged: (_) => setState(() => _musicFileName = null),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _uploadingMusic ? null : _pickAndUploadMusic,
+              icon: _uploadingMusic
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.file_upload_outlined, size: 16),
+              label: Text(
+                _uploadingMusic
+                    ? 'Uploading...'
+                    : (_musicFileName != null ? 'Uploaded: $_musicFileName' : 'Upload music from phone'),
+                style: const TextStyle(fontSize: 12.5),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
           const SizedBox(height: 6),
           const Text(
             'Leave blank for no music. There\'s no bundled music library — '
-            'sound effects aren\'t generated either.',
+            'sound effects aren\'t generated either. Upload a track you already '
+            'have the rights to use, or paste a URL above.',
             style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
           ),
           const SizedBox(height: 12),

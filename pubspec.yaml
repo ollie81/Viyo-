@@ -41,6 +41,10 @@ dependencies:
   # wrapping picks in dart:io's File) so upload code works on web too,
   # where File is unavailable at runtime.
   cross_file: ^0.3.5
+  # Viyo Studio: picking an arbitrary audio file (background music)
+  # from the phone's own storage — image_picker is scoped to the
+  # camera/photo & video gallery, not general files.
+  file_picker: ^8.1.2
   image_cropper: ^8.1.0
   video_player: ^2.9.1
   video_thumbnail: ^0.5.3
