@@ -410,10 +410,25 @@ class _TrendingDramaCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            CachedNetworkImage(
-              imageUrl: post.thumbnailUrl ?? post.mediaUrl ?? '',
-              fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => Container(
+            if (post.thumbnailUrl != null)
+              CachedNetworkImage(
+                imageUrl: post.thumbnailUrl!,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.secondary.withOpacity(0.22), AppColors.surface],
+                    ),
+                  ),
+                ),
+              )
+            else
+              // No thumbnail — never fall back to loading post.mediaUrl
+              // (the raw video file) through this image widget; see
+              // post_card.dart's own identical fix for why.
+              Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -422,7 +437,6 @@ class _TrendingDramaCard extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
             const Positioned(
               top: 0, left: 0, right: 0,
               child: DecoratedBox(
@@ -535,15 +549,27 @@ class _DiscoverTile extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              RetryableNetworkImage(
-                imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Shimmer.fromColors(
-                  baseColor: AppColors.surfaceBorder,
-                  highlightColor: AppColors.surface,
-                  child: Container(color: Colors.white),
+              if (post.thumbnailUrl != null)
+                RetryableNetworkImage(
+                  imageUrl: post.thumbnailUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Shimmer.fromColors(
+                    baseColor: AppColors.surfaceBorder,
+                    highlightColor: AppColors.surface,
+                    child: Container(color: Colors.white),
+                  ),
+                )
+              else
+                // No thumbnail — never fall back to loading post.mediaUrl
+                // (the raw video file) through this image widget; see
+                // post_card.dart's own identical fix for why.
+                Container(
+                  color: AppColors.surfaceBorder,
+                  child: const Icon(
+                    Icons.movie_outlined,
+                    color: AppColors.textMuted,
+                  ),
                 ),
-              ),
               // Bottom gradient so the like-count/caption row stays legible
               // over any thumbnail, bright or dark.
               const Positioned(

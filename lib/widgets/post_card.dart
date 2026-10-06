@@ -198,22 +198,42 @@ class PostCard extends StatelessWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                    CachedNetworkImage(
-                      imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Shimmer.fromColors(
-                        baseColor: AppColors.surfaceBorder,
-                        highlightColor: AppColors.surface,
-                        child: Container(color: Colors.white),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
+                    if (post.thumbnailUrl != null)
+                      CachedNetworkImage(
+                        imageUrl: post.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Shimmer.fromColors(
+                          baseColor: AppColors.surfaceBorder,
+                          highlightColor: AppColors.surface,
+                          child: Container(color: Colors.white),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppColors.surfaceBorder,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      )
+                    else
+                      // No thumbnail (an older post from before thumbnail
+                      // generation was reliable, or generation silently
+                      // failed at upload time) — this used to fall back to
+                      // loading post.mediaUrl, the raw video file, through
+                      // this same image widget. That decode always fails
+                      // (a video file isn't an image), and web's image
+                      // renderer handles that failure far less gracefully
+                      // than native: instead of the errorWidget above, it
+                      // tends to render solid black with nothing on it.
+                      // A plain placeholder here is honest about there
+                      // being no real thumbnail, on every platform.
+                      Container(
                         color: AppColors.surfaceBorder,
                         child: const Icon(
-                          Icons.broken_image_outlined,
+                          Icons.movie_outlined,
                           color: AppColors.textMuted,
                         ),
                       ),
-                    ),
                     // Play button overlay on video posts so creators
                     // always know a post is a video at a glance. A
                     // locked episode shows a lock instead — tapping

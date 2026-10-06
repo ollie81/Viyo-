@@ -832,9 +832,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (!isText)
+            if (!isText && post.thumbnailUrl != null)
               CachedNetworkImage(
-                imageUrl: post.thumbnailUrl ?? post.mediaUrl!,
+                imageUrl: post.thumbnailUrl!,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Shimmer.fromColors(
                   baseColor: AppColors.surfaceBorder,
@@ -847,6 +847,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Icons.broken_image_outlined,
                     color: AppColors.textMuted,
                   ),
+                ),
+              )
+            else if (!isText)
+              // No thumbnail — never fall back to loading post.mediaUrl
+              // (the raw video file) through this image widget; see
+              // post_card.dart's own identical fix for why.
+              Container(
+                color: AppColors.surfaceBorder,
+                child: const Icon(
+                  Icons.movie_outlined,
+                  color: AppColors.textMuted,
                 ),
               )
             else
