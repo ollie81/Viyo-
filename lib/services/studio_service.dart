@@ -26,6 +26,14 @@ class StudioImageResult {
   StudioImageResult({required this.imageUrl, required this.costUsdCents});
 }
 
+class StudioVideoResult {
+  final String videoUrl;
+  final int durationSeconds;
+  final int costUsdCents;
+
+  StudioVideoResult({required this.videoUrl, required this.durationSeconds, required this.costUsdCents});
+}
+
 class StudioSpendToday {
   final int spentUsdCents;
   final int capUsdCents;
@@ -386,6 +394,36 @@ class StudioService {
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return StudioImageResult(imageUrl: data['image_url'], costUsdCents: (data['cost_usd_cents'] as num).toInt());
+  }
+
+  /// Generates a real Veo 3.1 Lite video clip for this scene, animating
+  /// its already-generated image — the optional per-scene upgrade from
+  /// the default Ken Burns zoom/pan. Veo is an async render on Google's
+  /// end (their own docs give up to ~6 minutes at peak), and the
+  /// backend holds the request open while it polls, so this needs a
+  /// generous timeout rather than the plain default the other calls
+  /// here get away with.
+  static Future<StudioVideoResult> generateSceneVideo(
+    String adminKey,
+    String sceneId, {
+    int durationSeconds = 8,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/scene/$sceneId/video'),
+          headers: _headers(adminKey),
+          body: jsonEncode({'duration_seconds': durationSeconds}),
+        )
+        .timeout(const Duration(minutes: 6));
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not generate scene video (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioVideoResult(
+      videoUrl: data['video_url'],
+      durationSeconds: (data['duration_seconds'] as num).toInt(),
+      costUsdCents: (data['cost_usd_cents'] as num).toInt(),
+    );
   }
 
   static Future<StudioSceneLine> editLine(

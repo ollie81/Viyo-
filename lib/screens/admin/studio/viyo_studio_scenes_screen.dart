@@ -49,6 +49,7 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
   bool _showSplitForm = false;
 
   final Set<String> _generatingImages = {};
+  final Set<String> _generatingVideo = {};
   final Set<String> _generatingAudio = {};
   final Set<String> _savingScene = {};
   final Set<String> _savingLine = {};
@@ -166,6 +167,82 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
       _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
     } finally {
       if (mounted) setState(() => _generatingImages.remove(scene.id));
+    }
+  }
+
+  /// Veo costs real money per second (unlike every other Studio call,
+  /// which is a flat cent or two) and takes minutes rather than
+  /// seconds, so this always confirms the exact cost and duration
+  /// first instead of generating on a single tap like the image/audio
+  /// buttons do.
+  Future<void> _confirmAndGenerateSceneVideo(int index) async {
+    final scene = _scenes[index];
+    if (scene.imageUrl == null) {
+      _showSnack('Generate this scene\'s image first — Veo needs it as a starting frame.');
+      return;
+    }
+    final duration = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        var selected = 8;
+        return StatefulBuilder(
+          builder: (ctx, setState) => AlertDialog(
+            backgroundColor: AppColors.surface,
+            title: const Text('Generate real video (Veo)'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Animates this scene\'s image into a real video clip instead of the usual zoom/pan. '
+                  'This can take a few minutes and costs real money, unlike everything else in Studio.',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 14),
+                const Text('Clip length', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [4, 6, 8].map((d) {
+                    final isSelected = d == selected;
+                    return ChoiceChip(
+                      label: Text('${d}s  ·  \$${(d * 0.05).toStringAsFixed(2)}'),
+                      selected: isSelected,
+                      onSelected: (_) => setState(() => selected = d),
+                      selectedColor: AppColors.primary.withOpacity(0.25),
+                      labelStyle: TextStyle(color: isSelected ? AppColors.primary : Colors.white, fontSize: 12.5),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, selected),
+                child: const Text('Generate'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (duration == null) return;
+
+    setState(() => _generatingVideo.add(scene.id));
+    try {
+      final result = await StudioService.generateSceneVideo(widget.adminKey, scene.id, durationSeconds: duration);
+      if (!mounted) return;
+      setState(() {
+        _scenes[index] = scene.copyWith(videoUrl: result.videoUrl);
+        _sessionCostCents += result.costUsdCents;
+      });
+      _showSnack('Scene ${index + 1} now has a real video clip.');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    } finally {
+      if (mounted) setState(() => _generatingVideo.remove(scene.id));
     }
   }
 
@@ -404,6 +481,7 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
 
   Widget _sceneCard(int index, StudioScene scene) {
     final imageBusy = _generatingImages.contains(scene.id);
+    final videoBusy = _generatingVideo.contains(scene.id);
     final savingScene = _savingScene.contains(scene.id);
 
     return Container(
@@ -415,7 +493,14 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sceneImage(scene.imageUrl, busy: imageBusy, onGenerate: () => _generateSceneImage(index)),
+              _sceneImage(
+                scene.imageUrl,
+                busy: imageBusy,
+                onGenerate: () => _generateSceneImage(index),
+                hasVideo: scene.videoUrl != null,
+                videoBusy: videoBusy,
+                onGenerateVideo: () => _confirmAndGenerateSceneVideo(index),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -487,21 +572,42 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     );
   }
 
-  Widget _sceneImage(String? url, {required bool busy, required VoidCallback onGenerate}) {
+  Widget _sceneImage(
+    String? url, {
+    required bool busy,
+    required VoidCallback onGenerate,
+    bool hasVideo = false,
+    required bool videoBusy,
+    required VoidCallback onGenerateVideo,
+  }) {
     const width = 84.0;
     const height = 149.0;
     return Column(
       children: [
-        Container(
-          width: width,
-          height: height,
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.surfaceBorder),
-            image: url != null ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
-          ),
-          child: url == null ? const Icon(Icons.image_outlined, color: AppColors.textMuted, size: 22) : null,
+        Stack(
+          children: [
+            Container(
+              width: width,
+              height: height,
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: hasVideo ? AppColors.primary : AppColors.surfaceBorder),
+                image: url != null ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
+              ),
+              child: url == null ? const Icon(Icons.image_outlined, color: AppColors.textMuted, size: 22) : null,
+            ),
+            if (hasVideo)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                  child: const Icon(Icons.videocam, size: 11, color: Colors.black),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 6),
         SizedBox(
@@ -515,6 +621,22 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                   onPressed: onGenerate,
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
                   child: Text(url == null ? 'Generate' : 'Redo', style: const TextStyle(fontSize: 11)),
+                ),
+        ),
+        SizedBox(
+          width: width,
+          child: videoBusy
+              ? const Padding(
+                  padding: EdgeInsets.all(6),
+                  child: Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))),
+                )
+              : TextButton(
+                  onPressed: onGenerateVideo,
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                  child: Text(
+                    hasVideo ? 'Redo video' : 'Real video',
+                    style: const TextStyle(fontSize: 11, color: AppColors.primary),
+                  ),
                 ),
         ),
       ],

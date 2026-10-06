@@ -67,6 +67,11 @@ class StudioScene {
   final List<StudioSceneCharacterRef> characters;
   final String visualDescription;
   final String? imageUrl;
+  // Set once this scene has had the optional Veo upgrade — when
+  // present, assembly uses this real generated clip for the scene
+  // instead of the default Ken Burns zoom/pan on [imageUrl], so one
+  // episode can freely mix video and still-image scenes.
+  final String? videoUrl;
   final List<StudioSceneLine> lines;
 
   const StudioScene({
@@ -78,6 +83,7 @@ class StudioScene {
     required this.characters,
     required this.visualDescription,
     this.imageUrl,
+    this.videoUrl,
     required this.lines,
   });
 
@@ -92,6 +98,7 @@ class StudioScene {
             .toList(),
         visualDescription: json['visual_description'] ?? '',
         imageUrl: json['image_url'] as String?,
+        videoUrl: json['video_url'] as String?,
         lines: ((json['lines'] as List?) ?? []).map((l) => StudioSceneLine.fromJson(l as Map<String, dynamic>)).toList(),
       );
 
@@ -100,6 +107,7 @@ class StudioScene {
     String? cameraShot,
     String? visualDescription,
     String? imageUrl,
+    String? videoUrl,
     List<StudioSceneLine>? lines,
   }) =>
       StudioScene(
@@ -111,6 +119,7 @@ class StudioScene {
         characters: characters,
         visualDescription: visualDescription ?? this.visualDescription,
         imageUrl: imageUrl ?? this.imageUrl,
+        videoUrl: videoUrl ?? this.videoUrl,
         lines: lines ?? this.lines,
       );
 
