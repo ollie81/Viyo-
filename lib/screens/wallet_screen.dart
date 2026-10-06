@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../utils/coin_format.dart';
 import '../widgets/viyo_toast.dart';
 import 'wallet/buy_coins_screen.dart';
+import 'wallet/subscribe_screen.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -197,6 +198,17 @@ class _WalletScreenState extends State<WalletScreen> {
                                 onPressed: _watchingAd ? null : _watchAdForCoins,
                                 icon: const Icon(Icons.smart_display_outlined, size: 18),
                                 label: Text(_watchingAd ? 'Loading ad...' : 'Watch Ad for Free Coins'),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+                                ),
+                                icon: const Icon(Icons.workspace_premium_outlined, size: 18),
+                                label: const Text('Go Premium — Unlimited Episodes'),
                               ),
                             ),
                           ],

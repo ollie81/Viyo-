@@ -315,11 +315,26 @@ class SeriesService {
   /// Stamps unlockedByMe from a direct episode_unlocks read (RLS
   /// restricts this to the caller's own rows) — same "read your own
   /// state directly, don't round-trip through the backend for it"
-  /// pattern as PostService._withLikedByMe.
+  /// pattern as PostService._withLikedByMe. An active Viyo Premium
+  /// subscriber gets unlockedByMe=true on every episode regardless of
+  /// episode_unlocks, which is the only place this needs to be
+  /// checked — isEpisodeLocked and every screen that calls it
+  /// (video_feed_screen, series_detail_screen, post_card) already key
+  /// off unlockedByMe alone, so nothing downstream needs to know
+  /// subscriptions exist.
   static Future<List<Post>> _withUnlockState(List<Post> episodes) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null || episodes.isEmpty) return episodes;
     try {
+      final profileRow = await _client
+          .from('profiles')
+          .select('is_subscribed')
+          .eq('id', userId)
+          .maybeSingle();
+      if (profileRow != null && profileRow['is_subscribed'] == true) {
+        return episodes.map((e) => e.copyWith(unlockedByMe: true)).toList();
+      }
+
       final unlocked = await _client
           .from('episode_unlocks')
           .select('post_id')

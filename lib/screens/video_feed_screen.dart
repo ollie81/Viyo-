@@ -23,6 +23,7 @@ import '../widgets/guest_gate.dart';
 import '../widgets/insufficient_coins_sheet.dart';
 import '../widgets/up_next_overlay.dart';
 import 'profile/profile_screen.dart';
+import 'wallet/subscribe_screen.dart';
 
 /// Viyo's video feed — full-screen, immersive playback (system UI
 /// hidden, video filling the whole screen) matching every other
@@ -980,6 +981,16 @@ class _VideoPageState extends State<_VideoPage> {
                 label: Text(
                   _unlocking ? 'Unlocking...' : 'Unlock for $price coins',
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+                ),
+                child: const Text(
+                  'or go Premium for unlimited episodes',
+                  style: TextStyle(color: Colors.white70, fontSize: 12.5),
                 ),
               ),
             ],
