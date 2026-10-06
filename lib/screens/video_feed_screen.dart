@@ -11,6 +11,7 @@ import '../models/insufficient_coins_exception.dart';
 import '../models/post.dart';
 import '../models/series.dart';
 import '../services/bunny_stream_service.dart';
+import '../services/interstitial_ad_service.dart';
 import '../services/post_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
@@ -49,6 +50,17 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   bool _loading = true;
   int _currentIndex = 0;
 
+  // An interstitial shows every _interstitialEverySwipes swipes for a
+  // non-subscriber — fetched once when the feed loads (a stale value
+  // for the rest of this screen's life is fine; this gates an ad, not
+  // paid content, so it doesn't need episode_unlocks' same-second
+  // accuracy). _isSubscriber starts true so a slow/failed fetch fails
+  // closed (no ad shown) rather than open (an ad shown to a Premium
+  // subscriber who should never see one).
+  int _swipesSinceInterstitial = 0;
+  static const _interstitialEverySwipes = 4;
+  bool _isSubscriber = true;
+
   // One view recorded per post per time this screen is alive — a post
   // scrolled past and back into view again doesn't recount, but a
   // fresh screen (relaunching the app, reopening the feed) does. Lives
@@ -63,7 +75,43 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     // up, restore them on the way out — the same immersive treatment
     // every other short-form video screen uses.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    InterstitialAdService.preload();
+    _loadSubscriptionStatus();
     _load();
+  }
+
+  /// Direct Supabase read, same "read your own state, don't round-trip
+  /// through the backend for it" pattern as SeriesService's own
+  /// is_subscribed check — this just needs a plain bool, not the full
+  /// plan/renewal details SubscriptionService.getStatus() returns.
+  Future<void> _loadSubscriptionStatus() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) {
+      if (mounted) setState(() => _isSubscriber = false);
+      return;
+    }
+    try {
+      final row = await SupabaseService.client
+          .from('profiles')
+          .select('is_subscribed')
+          .eq('id', userId)
+          .maybeSingle();
+      if (mounted) setState(() => _isSubscriber = row != null && row['is_subscribed'] == true);
+    } catch (_) {
+      // Leave _isSubscriber at its fail-closed default (true — see
+      // the field's own comment) rather than risk showing an ad to an
+      // actual subscriber over a transient network error.
+    }
+  }
+
+  void _onPageChanged(int i) {
+    setState(() => _currentIndex = i);
+    if (_isSubscriber) return;
+    _swipesSinceInterstitial++;
+    if (_swipesSinceInterstitial >= _interstitialEverySwipes) {
+      _swipesSinceInterstitial = 0;
+      InterstitialAdService.showIfReady();
+    }
   }
 
   Future<List<Post>> _fetchPosts() {
@@ -235,7 +283,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
                   itemCount: _posts.length,
-                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  onPageChanged: _onPageChanged,
                   itemBuilder: (ctx, i) {
                     final post = _posts[i];
                     final locked = isEpisodeLocked(post, viewerId: SupabaseService.currentUserId);
