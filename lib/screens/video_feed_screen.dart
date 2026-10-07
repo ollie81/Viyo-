@@ -742,14 +742,26 @@ class _VideoPageState extends State<_VideoPage> {
                 ? _lockedMedia()
                 : ready
                     ? FittedBox(
-                        // Landscape content (movies/full-length shows)
+                        // Landscape content (movies/full-length shows,
+                        // or any video whose own decoded frame is wider
+                        // than it is tall — e.g. a standalone upload
+                        // that was never attached to a series, so
+                        // series.orientation isn't there to flag it)
                         // shows full-frame letterboxed instead of
                         // getting cropped to fill a vertical screen —
                         // the black Container behind this already
-                        // provides the letterbox bars. Vertical
-                        // dramas/shorts keep the existing edge-to-edge
-                        // cover behavior, unchanged.
-                        fit: post.isLandscapeVideo ? BoxFit.contain : BoxFit.cover,
+                        // provides the letterbox bars. Checking the
+                        // controller's own decoded size (not just
+                        // post.isLandscapeVideo) is what actually
+                        // catches that second case: a 640x354 video
+                        // posted outside the Studio/series flow has no
+                        // series row to carry an orientation at all, so
+                        // the metadata-only check cropped ~75% of its
+                        // width away trying to cover a vertical screen.
+                        // Vertical dramas/shorts (aspectRatio <= 1) keep
+                        // the existing edge-to-edge cover behavior,
+                        // unchanged.
+                        fit: (post.isLandscapeVideo || c!.value.aspectRatio > 1.0) ? BoxFit.contain : BoxFit.cover,
                         child: SizedBox(
                           width: c!.value.size.width,
                           height: c.value.size.height,
