@@ -131,6 +131,7 @@ class StudioService {
         'appearance': character.appearance,
         'clothing': character.clothing,
         'personality': character.personality,
+        'costume_lock': character.costumeLock,
       }),
     );
     if (res.statusCode != 200) {

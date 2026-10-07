@@ -532,6 +532,13 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
                     maxLines: 2),
                 _editField('Clothing', c.clothing, (v) => _updateCharacter(index, c.copyWith(clothing: v))),
                 _editField(
+                  'Costume lock (optional)',
+                  c.costumeLock,
+                  (v) => _updateCharacter(index, c.copyWith(costumeLock: v)),
+                  hint: 'e.g. "black designer suit jacket, white shirt, black tie" — '
+                      'reused exactly in every scene so the outfit never changes',
+                ),
+                _editField(
                     'Personality', c.personality, (v) => _updateCharacter(index, c.copyWith(personality: v))),
               ],
             ),
@@ -628,7 +635,8 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     );
   }
 
-  Widget _editField(String label, String value, ValueChanged<String> onChanged, {int maxLines = 1}) {
+  Widget _editField(String label, String value, ValueChanged<String> onChanged,
+      {int maxLines = 1, String? hint}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: TextFormField(
@@ -638,6 +646,9 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(fontSize: 11),
+          hintText: hint,
+          hintStyle: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          hintMaxLines: 2,
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         ),

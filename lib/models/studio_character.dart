@@ -12,6 +12,13 @@ class StudioCharacter {
   final String personality;
   final String? portraitUrl;
   final String? voiceId;
+  // A fixed, verbatim costume description (e.g. "black designer suit
+  // jacket, white shirt, black tie") reused as-is in every scene-image
+  // prompt this character appears in — unlike [clothing] (a looser,
+  // script-inferred wardrobe guess), this exists specifically to pin
+  // one exact outfit across every scene so it doesn't visibly drift.
+  // Empty is a real, supported choice (no lock), not a placeholder.
+  final String costumeLock;
 
   const StudioCharacter({
     this.id,
@@ -23,6 +30,7 @@ class StudioCharacter {
     required this.personality,
     this.portraitUrl,
     this.voiceId,
+    this.costumeLock = '',
   });
 
   factory StudioCharacter.fromJson(Map<String, dynamic> json) => StudioCharacter(
@@ -35,6 +43,7 @@ class StudioCharacter {
         personality: json['personality'] ?? '',
         portraitUrl: json['portrait_url'] as String?,
         voiceId: json['voice_id'] as String?,
+        costumeLock: json['costume_lock'] ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -46,6 +55,7 @@ class StudioCharacter {
         'personality': personality,
         'portrait_url': portraitUrl,
         'voice_id': voiceId,
+        'costume_lock': costumeLock,
       };
 
   StudioCharacter copyWith({
@@ -57,6 +67,7 @@ class StudioCharacter {
     String? personality,
     String? portraitUrl,
     String? voiceId,
+    String? costumeLock,
   }) =>
       StudioCharacter(
         id: id,
@@ -68,5 +79,6 @@ class StudioCharacter {
         personality: personality ?? this.personality,
         portraitUrl: portraitUrl ?? this.portraitUrl,
         voiceId: voiceId ?? this.voiceId,
+        costumeLock: costumeLock ?? this.costumeLock,
       );
 }
