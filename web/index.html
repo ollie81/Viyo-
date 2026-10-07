@@ -39,6 +39,55 @@
   <title>Viyo — Creator Boost</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Plain HTML/CSS loading screen — shown the instant the page's own
+       HTML parses, well before Flutter can paint anything at all. On a
+       slow connection the browser has to finish downloading CanvasKit
+       (a ~1.5MB third-party renderer file) and the app's own JS bundle
+       before Flutter's first frame exists; without this, that whole
+       stretch is a blank white page that reads as "broken" rather than
+       "loading". Flutter dispatches a 'flutter-first-frame' event on
+       window the moment its first real frame has painted — the tiny
+       script at the end of <body> listens for exactly that and fades
+       this out, so it disappears the instant there's something real to
+       show instead of on a guessed timer. -->
+  <style>
+    #viyo-boot-loader {
+      position: fixed;
+      inset: 0;
+      background: #0B0B1A;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.35s ease;
+    }
+    #viyo-boot-loader .wordmark {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #00E5FF;
+      text-shadow: 0 0 24px rgba(0, 229, 255, 0.35);
+    }
+    #viyo-boot-loader .spinner {
+      margin-top: 22px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.12);
+      border-top-color: #00E5FF;
+      animation: viyo-spin 0.85s linear infinite;
+    }
+    @keyframes viyo-spin {
+      to { transform: rotate(360deg); }
+    }
+    #viyo-boot-loader.viyo-boot-loader-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+
   <!-- Vercel Web Analytics — plain-HTML snippet (no npm package needed;
        this is a static Flutter web build, not a JS-framework project,
        so @vercel/analytics has nothing to install into). Also needs
@@ -50,6 +99,19 @@
   <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
+  <div id="viyo-boot-loader">
+    <div class="wordmark">Viyo</div>
+    <div class="spinner"></div>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('viyo-boot-loader');
+      if (!el) return;
+      el.classList.add('viyo-boot-loader-hidden');
+      setTimeout(function () { el.remove(); }, 400);
+    });
+  </script>
+
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
