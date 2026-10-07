@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
+import '../models/post.dart';
+import 'bunny_stream_service.dart';
 import 'supabase_service.dart';
 
 /// Server-side video metadata — real width/height/duration and a
@@ -58,5 +61,30 @@ class VideoMetadataService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Fire-and-forget: call whenever a video post is actually opened and
+  /// its width/height still read null — covers every post uploaded
+  /// before this backfill existed, and (the gap this was actually
+  /// written to close) a Bunny-hosted post that's already playing fine
+  /// today: bunny_stream.py's width/height self-heal only runs inside
+  /// get_bunny_video_status, which a healthy, already-"ready" post never
+  /// calls during normal playback — only the processing-poll and
+  /// broken-URL-retry paths did. Calling getStatus here, once, the
+  /// first time anyone actually opens such a post, is what makes that
+  /// self-heal actually fire for it. No-ops once width/height are set.
+  static void ensureDimensions(Post post) {
+    if (post.width != null && post.height != null) return;
+    if (post.bunnyVideoId != null) {
+      unawaited(_tryGetBunnyStatus(post.bunnyVideoId!));
+    } else if (post.mediaUrl != null) {
+      unawaited(probeDimensions(postId: post.id, mediaUrl: post.mediaUrl!));
+    }
+  }
+
+  static Future<void> _tryGetBunnyStatus(String videoId) async {
+    try {
+      await BunnyStreamService.getStatus(videoId);
+    } catch (_) {}
   }
 }

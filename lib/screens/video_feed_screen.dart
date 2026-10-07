@@ -15,6 +15,7 @@ import '../services/interstitial_ad_service.dart';
 import '../services/post_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
+import '../services/video_metadata_service.dart';
 import '../services/watch_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/episode_lock.dart';
@@ -559,6 +560,12 @@ class _VideoPageState extends State<_VideoPage> {
         await controller.seekTo(resumeAt);
         _lastSavedPosition = resumeAt;
       }
+
+      // Backfills width/height the first time this post is actually
+      // opened, if nothing has ever done it before — see
+      // VideoMetadataService.ensureDimensions's own comment for why
+      // this is needed even for a video that's already playing fine.
+      VideoMetadataService.ensureDimensions(widget.post);
     } catch (_) {
       // The video genuinely failed to load — this is the real
       // "unavailable" case.

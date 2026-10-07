@@ -10,6 +10,7 @@ import '../../services/bunny_stream_service.dart';
 import '../../services/interstitial_ad_service.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/video_metadata_service.dart';
 import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
 import 'post_detail_screen.dart';
@@ -161,6 +162,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _lastSavedPosition = resumeAt;
         _positionAtLastAdBreak = resumeAt;
       }
+
+      // See VideoMetadataService.ensureDimensions's own comment — this
+      // is what actually backfills width/height for a post that's
+      // already playing fine, which is most of them.
+      VideoMetadataService.ensureDimensions(widget.post);
     } catch (_) {
       await controller.dispose();
       if (mounted) setState(() => _initError = true);
