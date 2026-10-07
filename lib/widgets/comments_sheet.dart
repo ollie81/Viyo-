@@ -20,6 +20,15 @@ import 'spoiler_text.dart';
 /// own: it's a translucent overlay, so the video underneath keeps
 /// painting (and keeps playing) in whatever's left visible, the same
 /// way Instagram/TikTok's comment sheets work.
+///
+/// video_player_screen.dart's long-form player uses [CommentsPanel]
+/// directly instead — a modal sheet over a mostly-full-height player
+/// still covers nearly everything, where YouTube shrinks the video
+/// into a small fixed area and shows comments inline below it. Both
+/// call sites share the exact same loading/reply/pin/send logic; only
+/// the chrome around it (a sheet's grab handle and fixed proportion of
+/// the screen vs. an inline panel that just fills whatever space its
+/// parent gives it) differs.
 Future<void> showCommentsSheet(BuildContext context, Post post, {VoidCallback? onCommentAdded}) {
   return showModalBottomSheet(
     context: context,
@@ -28,25 +37,54 @@ Future<void> showCommentsSheet(BuildContext context, Post post, {VoidCallback? o
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
     ),
-    builder: (_) => _CommentsSheet(post: post, onCommentAdded: onCommentAdded),
+    builder: (_) => AnimatedPadding(
+      duration: const Duration(milliseconds: 100),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Expanded(child: CommentsPanel(post: post, onCommentAdded: onCommentAdded)),
+          ],
+        ),
+      ),
+    ),
   );
 }
 
-class _CommentsSheet extends StatefulWidget {
+/// The actual comments UI — list, reply threading, pin (post owner),
+/// spoiler toggle, the compose field — with no assumption about how
+/// much screen space it has beyond "whatever its parent gives it".
+/// Reused as-is by both [showCommentsSheet]'s modal and
+/// video_player_screen.dart's inline panel.
+class CommentsPanel extends StatefulWidget {
   final Post post;
-  // Fired right after a comment is actually saved — not returned as the
-  // sheet's pop result, since swiping the sheet away dismisses it with
-  // no result at all. Lets the screen underneath (still visible through
-  // the translucent overlay) bump its own comment count live instead of
-  // only catching up the next time it happens to reload from scratch.
+  // Fired right after a comment is actually saved — not returned as a
+  // sheet's pop result, since swiping a sheet away dismisses it with
+  // no result at all. Lets the screen underneath bump its own comment
+  // count live instead of only catching up on its next full reload.
   final VoidCallback? onCommentAdded;
-  const _CommentsSheet({required this.post, this.onCommentAdded});
+  // Shown as a small header row above the list — "Comments" for the
+  // sheet, or a title + close button for an inline panel that needs
+  // its own way back to the normal view. Omit for no header at all.
+  final Widget? header;
+
+  const CommentsPanel({super.key, required this.post, this.onCommentAdded, this.header});
 
   @override
-  State<_CommentsSheet> createState() => _CommentsSheetState();
+  State<CommentsPanel> createState() => _CommentsPanelState();
 }
 
-class _CommentsSheetState extends State<_CommentsSheet> {
+class _CommentsPanelState extends State<CommentsPanel> {
   final _commentCtrl = TextEditingController();
   List<Map<String, dynamic>> _comments = [];
   bool _loading = true;
@@ -145,144 +183,127 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
-
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 100),
-      padding: EdgeInsets.only(bottom: viewInsets),
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceBorder,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Comments', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-            const Divider(height: 1, color: AppColors.surfaceBorder),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                  : _comments.isEmpty
-                      ? const Center(
-                          child: Text('Be the first to comment', style: TextStyle(color: AppColors.textMuted)),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _topLevel.length,
-                          itemBuilder: (_, i) {
-                            final c = _topLevel[i];
-                            final replies = _repliesTo(c['id'] as String);
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _commentTile(c, isReply: false),
-                                  for (final r in replies)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 34, top: 10),
-                                      child: _commentTile(r, isReply: true),
-                                    ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-            ),
-            if (_replyingTo != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Replying to ${_replyingTo!['profiles']?['display_name'] ?? 'comment'}',
-                        style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
-                      ),
+    return Column(
+      children: [
+        if (widget.header != null) widget.header!,
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('Comments', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+        const Divider(height: 1, color: AppColors.surfaceBorder),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : _comments.isEmpty
+                  ? const Center(
+                      child: Text('Be the first to comment', style: TextStyle(color: AppColors.textMuted)),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _topLevel.length,
+                      itemBuilder: (_, i) {
+                        final c = _topLevel[i];
+                        final replies = _repliesTo(c['id'] as String);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _commentTile(c, isReply: false),
+                              for (final r in replies)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 34, top: 10),
+                                  child: _commentTile(r, isReply: true),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                    GestureDetector(
-                      onTap: () => setState(() => _replyingTo = null),
-                      child: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
-                    ),
-                  ],
+        ),
+        if (_replyingTo != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Replying to ${_replyingTo!['profiles']?['display_name'] ?? 'comment'}',
+                    style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                  ),
                 ),
-              ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () => setState(() => _spoilerComposing = !_spoilerComposing),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _spoilerComposing ? AppColors.secondary.withOpacity(0.18) : AppColors.surface,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: _spoilerComposing ? AppColors.secondary : AppColors.surfaceBorder,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.visibility_off_outlined,
-                              size: 12,
-                              color: _spoilerComposing ? AppColors.secondary : AppColors.textMuted,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Spoiler',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: _spoilerComposing ? AppColors.secondary : AppColors.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
+                GestureDetector(
+                  onTap: () => setState(() => _replyingTo = null),
+                  child: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () => setState(() => _spoilerComposing = !_spoilerComposing),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _spoilerComposing ? AppColors.secondary.withOpacity(0.18) : AppColors.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: _spoilerComposing ? AppColors.secondary : AppColors.surfaceBorder,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _commentCtrl,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: _replyingTo != null ? 'Write a reply...' : 'Add a comment...',
-                            ),
-                            onSubmitted: (_) => _send(),
-                          ),
+                        Icon(
+                          Icons.visibility_off_outlined,
+                          size: 12,
+                          color: _spoilerComposing ? AppColors.secondary : AppColors.textMuted,
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: _sending
-                              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.send, color: AppColors.primary),
-                          onPressed: _sending ? null : _send,
+                        const SizedBox(width: 4),
+                        Text(
+                          'Spoiler',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _spoilerComposing ? AppColors.secondary : AppColors.textMuted,
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _commentCtrl,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: _replyingTo != null ? 'Write a reply...' : 'Add a comment...',
+                        ),
+                        onSubmitted: (_) => _send(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: _sending
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.send, color: AppColors.primary),
+                      onPressed: _sending ? null : _send,
+                    ),
                   ],
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 

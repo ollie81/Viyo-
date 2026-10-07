@@ -52,6 +52,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isSubscriber = true; // fail-closed — see _loadSubscriptionStatus
   bool _isFullscreen = false;
   int _commentCount = 0;
+  // Inline, not a modal sheet — see comments_sheet.dart's own doc for
+  // why: a sheet over a player that already fills most of the screen
+  // still reads as "comments just covered the video". Toggling this
+  // instead shrinks the video to a small fixed area (same idea as
+  // YouTube's own expanded-comments view) while it keeps playing.
+  bool _showComments = false;
+  List<Post> _relatedVideos = [];
 
   Duration? _lastSavedPosition;
   static const _savePositionInterval = Duration(seconds: 3);
@@ -70,6 +77,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _commentCount = widget.post.commentCount;
     InterstitialAdService.preload();
     _loadSubscriptionStatus();
+    _loadRelatedVideos();
     PostService.recordView(widget.post.id);
     if (!widget.post.isVideoProcessing && !widget.post.isVideoFailed) {
       _initialize();
@@ -94,6 +102,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } catch (_) {
       // Leave _isSubscriber at its fail-closed default.
     }
+  }
+
+  /// "More videos" below the caption — so watching one long-form post
+  /// doesn't dead-end: a tap on another card opens it the same way
+  /// (see the routing in _buildRelatedTile below). Best-effort and
+  /// never blocks the player itself on failing.
+  Future<void> _loadRelatedVideos() async {
+    try {
+      final all = await PostService.getVideoFeed(limit: 20);
+      if (!mounted) return;
+      setState(() => _relatedVideos = all.where((p) => p.id != widget.post.id).toList());
+    } catch (_) {}
   }
 
   Future<void> _pollBunnyStatus() async {
@@ -275,20 +295,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  void _openComments() {
-    // A bottom sheet, not a full navigation — the video stays mounted
-    // and keeps playing behind it, same fix as video_feed_screen.dart's
-    // own _openComments (a full-screen route here used to leave the
-    // video playing invisibly underneath instead of actually pausing or
-    // staying visible).
-    showCommentsSheet(
-      context,
-      widget.post,
-      onCommentAdded: () {
-        if (mounted) setState(() => _commentCount++);
-      },
-    );
-  }
+  void _openComments() => setState(() => _showComments = true);
+
+  void _closeComments() => setState(() => _showComments = false);
 
   void _restoreSystemChrome() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -388,99 +397,204 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Fills all the space between the app bar and the content
-            // below instead of being tightly sized to just the video's
-            // own aspect ratio — a landscape video on a tall phone
-            // screen now letterboxes *larger*, within this whole area,
-            // rather than leaving a separate, disconnected black gap
-            // underneath the caption/actions.
+            // When comments are open the video shrinks to a small fixed
+            // band instead of disappearing behind a sheet — it keeps
+            // playing the whole time, same as YouTube's expanded-comments
+            // view. Closed, it fills all the space between the app bar
+            // and the content below, same as before.
+            _showComments
+                ? SizedBox(height: 200, child: _videoArea(post, c, ready))
+                : Expanded(child: _videoArea(post, c, ready)),
+            if (ready) _videoControlsBar(c!),
             Expanded(
-              child: GestureDetector(
-                onTap: _togglePlay,
-                child: Container(
-                  width: double.infinity,
-                  color: Colors.black,
-                  child: Center(
-                    child: AspectRatio(
-                      aspectRatio: ready ? c!.value.aspectRatio : post.displayAspectRatio,
-                      child: ready
-                          ? Stack(
-                              alignment: Alignment.center,
+              child: _showComments
+                  ? CommentsPanel(
+                      post: post,
+                      onCommentAdded: () => setState(() => _commentCount++),
+                      header: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 4, 4),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Comments',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white70),
+                              onPressed: _closeComments,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => ProfileScreen(userId: post.userId)),
+                            ),
+                            child: Row(
                               children: [
-                                VideoPlayer(c!),
-                                if (!c.value.isPlaying)
-                                  Container(
-                                    color: Colors.black26,
-                                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 56),
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: AppColors.surfaceBorder,
+                                  backgroundImage: post.authorAvatarUrl != null
+                                      ? CachedNetworkImageProvider(post.authorAvatarUrl!)
+                                      : null,
+                                  child: post.authorAvatarUrl == null
+                                      ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
+                                      : null,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    '@${post.authorUsername ?? 'unknown'}',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                                   ),
+                                ),
                               ],
-                            )
-                          : _mediaPlaceholder(post),
+                            ),
+                          ),
+                          if (post.caption.trim().isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(post.caption, style: const TextStyle(color: Colors.white70, height: 1.35)),
+                          ],
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              _actionButton(
+                                icon: _liked ? Icons.favorite : Icons.favorite_border,
+                                color: _liked ? AppColors.secondary : Colors.white70,
+                                label:
+                                    '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
+                                onTap: _toggleLike,
+                              ),
+                              const SizedBox(width: 20),
+                              _actionButton(
+                                icon: Icons.mode_comment_outlined,
+                                color: Colors.white70,
+                                label: '$_commentCount',
+                                onTap: _openComments,
+                              ),
+                              const SizedBox(width: 20),
+                              _actionButton(
+                                icon: Icons.share_outlined,
+                                color: Colors.white70,
+                                label: 'Share',
+                                onTap: () => Share.share(post.mediaUrl ?? post.caption),
+                              ),
+                            ],
+                          ),
+                          if (_relatedVideos.isNotEmpty) ...[
+                            const SizedBox(height: 22),
+                            const Text(
+                              'More videos',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+                            ),
+                            const SizedBox(height: 10),
+                            ..._relatedVideos.map(_buildRelatedTile),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The video surface itself, pulled out so it can be either the full
+  /// remaining space (comments closed) or a small fixed band (comments
+  /// open) without duplicating the Stack/placeholder logic.
+  Widget _videoArea(Post post, VideoPlayerController? c, bool ready) {
+    return GestureDetector(
+      onTap: _togglePlay,
+      child: Container(
+        width: double.infinity,
+        color: Colors.black,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: ready ? c!.value.aspectRatio : post.displayAspectRatio,
+            child: ready
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(c!),
+                      if (!c.value.isPlaying)
+                        Container(
+                          color: Colors.black26,
+                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 56),
+                        ),
+                    ],
+                  )
+                : _mediaPlaceholder(post),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// One row per related video — thumbnail, title/caption, creator —
+  /// "in one line" per the user's own description of the layout they
+  /// want below a long-form video. Tapping routes the same way
+  /// feed_screen.dart does: long-form non-episode content opens here
+  /// again, everything else keeps the swipe feed.
+  Widget _buildRelatedTile(Post related) {
+    return InkWell(
+      onTap: () {
+        if (!related.isEpisode && related.isLongForm) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => VideoPlayerScreen(post: related)),
+          );
+        } else {
+          Navigator.of(context).pop();
+        }
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 120,
+                height: 68,
+                child: related.thumbnailUrl != null
+                    ? RetryableNetworkImage(
+                        imageUrl: related.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
+                      )
+                    : Container(
+                        color: AppColors.surfaceBorder,
+                        child: const Icon(Icons.movie_outlined, color: Colors.white38),
+                      ),
               ),
             ),
-            if (ready) _videoControlsBar(c!),
-            SingleChildScrollView(
-              padding: const EdgeInsets.all(14),
+            const SizedBox(width: 10),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => ProfileScreen(userId: post.userId)),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: AppColors.surfaceBorder,
-                          backgroundImage:
-                              post.authorAvatarUrl != null ? CachedNetworkImageProvider(post.authorAvatarUrl!) : null,
-                          child: post.authorAvatarUrl == null
-                              ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
-                              : null,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '@${post.authorUsername ?? 'unknown'}',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
-                    ),
+                  Text(
+                    related.caption.trim().isNotEmpty ? related.caption : '@${related.authorUsername ?? 'video'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600),
                   ),
-                  if (post.caption.trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(post.caption, style: const TextStyle(color: Colors.white70, height: 1.35)),
-                  ],
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      _actionButton(
-                        icon: _liked ? Icons.favorite : Icons.favorite_border,
-                        color: _liked ? AppColors.secondary : Colors.white70,
-                        label: '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
-                        onTap: _toggleLike,
-                      ),
-                      const SizedBox(width: 20),
-                      _actionButton(
-                        icon: Icons.mode_comment_outlined,
-                        color: Colors.white70,
-                        label: '$_commentCount',
-                        onTap: _openComments,
-                      ),
-                      const SizedBox(width: 20),
-                      _actionButton(
-                        icon: Icons.share_outlined,
-                        color: Colors.white70,
-                        label: 'Share',
-                        onTap: () => Share.share(post.mediaUrl ?? post.caption),
-                      ),
-                    ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '@${related.authorUsername ?? 'unknown'}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
               ),
