@@ -82,6 +82,18 @@ class VideoMetadataService {
     }
   }
 
+  /// Same idea as [ensureDimensions], for the one gap the admin
+  /// backfill (POST /api/v1/admin/backfill-post-thumbnails) doesn't
+  /// cover going forward: a video post whose client-side thumbnail
+  /// capture failed at upload time keeps thumbnail_url null forever
+  /// otherwise, since generateThumbnail is normally only ever called
+  /// once, right after that same upload. Fires the first time anyone
+  /// actually opens such a post. No-ops once thumbnail_url is set.
+  static void ensureThumbnail(Post post) {
+    if (post.thumbnailUrl != null || post.mediaUrl == null) return;
+    unawaited(generateThumbnail(mediaUrl: post.mediaUrl!, postId: post.id));
+  }
+
   static Future<void> _tryGetBunnyStatus(String videoId) async {
     try {
       await BunnyStreamService.getStatus(videoId);

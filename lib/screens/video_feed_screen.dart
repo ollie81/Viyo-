@@ -567,6 +567,7 @@ class _VideoPageState extends State<_VideoPage> {
       // VideoMetadataService.ensureDimensions's own comment for why
       // this is needed even for a video that's already playing fine.
       VideoMetadataService.ensureDimensions(widget.post);
+      VideoMetadataService.ensureThumbnail(widget.post);
     } catch (_) {
       // The video genuinely failed to load — this is the real
       // "unavailable" case.

@@ -193,6 +193,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // is what actually backfills width/height for a post that's
       // already playing fine, which is most of them.
       VideoMetadataService.ensureDimensions(widget.post);
+      VideoMetadataService.ensureThumbnail(widget.post);
     } catch (_) {
       await controller.dispose();
       if (mounted) setState(() => _initError = true);
