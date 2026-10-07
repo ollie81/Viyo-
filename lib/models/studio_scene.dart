@@ -5,18 +5,31 @@
 class StudioSceneCharacterRef {
   final String? characterId;
   final String name;
+  // Swaps out this character's locked costume (StudioCharacter.
+  // costumeLock) for just this one scene — e.g. pajamas for a home
+  // scene instead of their usual suit — without touching the
+  // character's own lock, which every other scene they're in keeps
+  // using unchanged. Empty means "use the locked default," same as
+  // the character having no costume lock at all.
+  final String costumeOverride;
 
-  const StudioSceneCharacterRef({this.characterId, required this.name});
+  const StudioSceneCharacterRef({this.characterId, required this.name, this.costumeOverride = ''});
 
   factory StudioSceneCharacterRef.fromJson(Map<String, dynamic> json) => StudioSceneCharacterRef(
         characterId: json['character_id'] as String?,
         name: json['name'] ?? '',
+        costumeOverride: json['costume_override'] ?? '',
       );
 
-  Map<String, dynamic> toJson() => {'character_id': characterId, 'name': name};
+  Map<String, dynamic> toJson() =>
+      {'character_id': characterId, 'name': name, 'costume_override': costumeOverride};
 
-  StudioSceneCharacterRef copyWith({String? characterId, String? name}) =>
-      StudioSceneCharacterRef(characterId: characterId ?? this.characterId, name: name ?? this.name);
+  StudioSceneCharacterRef copyWith({String? characterId, String? name, String? costumeOverride}) =>
+      StudioSceneCharacterRef(
+        characterId: characterId ?? this.characterId,
+        name: name ?? this.name,
+        costumeOverride: costumeOverride ?? this.costumeOverride,
+      );
 }
 
 /// One line of dialogue within a [StudioScene].

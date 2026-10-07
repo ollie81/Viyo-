@@ -412,6 +412,55 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     }
   }
 
+  /// Lets the admin swap one character's locked costume for just this
+  /// scene (e.g. pajamas for a home scene) without touching their
+  /// overall costume_lock, which every other scene they're in keeps
+  /// using — see StudioSceneCharacterRef.costumeOverride's own
+  /// comment. The reference portrait (and so the character's face)
+  /// stays exactly as locked either way; only the outfit line in the
+  /// image prompt changes.
+  Future<void> _editCostumeOverride(int sceneIndex, int charIndex) async {
+    final scene = _scenes[sceneIndex];
+    final current = scene.characters[charIndex];
+    final controller = TextEditingController(text: current.costumeOverride);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('${current.name}\'s outfit in this scene', style: const TextStyle(fontSize: 15)),
+        content: TextField(
+          controller: controller,
+          maxLines: 2,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          decoration: const InputDecoration(
+            hintText: 'Leave blank to use their locked costume. '
+                'e.g. "grey hoodie and sweatpants, no jacket"',
+            hintMaxLines: 3,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (result == null || result == current.costumeOverride) return;
+
+    final updatedCharacters = List<StudioSceneCharacterRef>.from(scene.characters);
+    updatedCharacters[charIndex] = current.copyWith(costumeOverride: result);
+    setState(() => _savingScene.add(scene.id));
+    try {
+      final updated = await StudioService.editScene(widget.adminKey, scene.id, characters: updatedCharacters);
+      if (!mounted) return;
+      setState(() => _scenes[sceneIndex] = updated.copyWith(lines: scene.lines));
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    } finally {
+      if (mounted) setState(() => _savingScene.remove(scene.id));
+    }
+  }
+
   /// Assigns [character] to a line Viyo Studio couldn't match on its
   /// own — the dropdown fallback for when the script's speaker name
   /// doesn't resolve to anyone in the cast, instead of only finding
@@ -701,19 +750,27 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                       children: scene.characters.asMap().entries.map((entry) {
                         final c = entry.value;
                         final unmatched = c.characterId == null;
+                        final hasOverride = !unmatched && c.costumeOverride.trim().isNotEmpty;
                         final chip = Chip(
                           label: Text(
-                            unmatched ? '${c.name} ?' : c.name,
+                            unmatched ? '${c.name} ?' : (hasOverride ? '${c.name} 👕' : c.name),
                             style: const TextStyle(fontSize: 11),
                           ),
-                          backgroundColor: unmatched ? AppColors.coin.withOpacity(0.15) : AppColors.background,
-                          side: BorderSide(color: unmatched ? AppColors.coin : AppColors.surfaceBorder),
+                          backgroundColor: unmatched
+                              ? AppColors.coin.withOpacity(0.15)
+                              : (hasOverride ? AppColors.secondary.withOpacity(0.15) : AppColors.background),
+                          side: BorderSide(
+                            color: unmatched
+                                ? AppColors.coin
+                                : (hasOverride ? AppColors.secondary : AppColors.surfaceBorder),
+                          ),
                           visualDensity: VisualDensity.compact,
                           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         );
-                        if (!unmatched) return chip;
                         return GestureDetector(
-                          onTap: () => _pickCharacterForScene(index, entry.key),
+                          onTap: () => unmatched
+                              ? _pickCharacterForScene(index, entry.key)
+                              : _editCostumeOverride(index, entry.key),
                           child: chip,
                         );
                       }).toList(),
