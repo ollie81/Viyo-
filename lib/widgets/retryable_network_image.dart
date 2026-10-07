@@ -17,11 +17,24 @@ class RetryableNetworkImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
   final Widget Function(BuildContext, String)? placeholder;
+  // Caps the actual decoded pixel size, independent of the source
+  // file's own resolution — without this, an oversized source image
+  // (a multi-megapixel screenshot-as-thumbnail, say) gets decoded at
+  // full size before Flutter ever scales it down for display, which
+  // on web's CanvasKit renderer (the only renderer recent Flutter
+  // versions ship — the old html-renderer escape hatch no longer
+  // exists) is slow enough on a phone browser's tighter memory budget
+  // to stall or silently fail to paint. 480 covers even a 3x-density
+  // phone screen's worth of a normal grid thumbnail with headroom;
+  // callers displaying something larger (a full-bleed hero image)
+  // should pass a bigger value.
+  final int memCacheWidth;
   const RetryableNetworkImage({
     super.key,
     required this.imageUrl,
     this.fit = BoxFit.cover,
     this.placeholder,
+    this.memCacheWidth = 480,
   });
 
   @override
@@ -51,6 +64,7 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
       key: ValueKey('${widget.imageUrl}_$_attempt'),
       imageUrl: widget.imageUrl,
       fit: widget.fit,
+      memCacheWidth: widget.memCacheWidth,
       placeholder: widget.placeholder,
       errorWidget: (_, __, ___) => GestureDetector(
         onTap: _retry,

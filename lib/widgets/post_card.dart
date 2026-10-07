@@ -202,6 +202,11 @@ class PostCard extends StatelessWidget {
                       CachedNetworkImage(
                         imageUrl: post.thumbnailUrl!,
                         fit: BoxFit.cover,
+                        // Caps decode size regardless of the source
+                        // file's own resolution — see
+                        // RetryableNetworkImage's own comment on why
+                        // this matters specifically on web.
+                        memCacheWidth: 480,
                         placeholder: (_, __) => Shimmer.fromColors(
                           baseColor: AppColors.surfaceBorder,
                           highlightColor: AppColors.surface,

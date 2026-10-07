@@ -414,6 +414,10 @@ class _TrendingDramaCard extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: post.thumbnailUrl!,
                 fit: BoxFit.cover,
+                // Caps decode size regardless of the source file's own
+                // resolution — see RetryableNetworkImage's own comment
+                // for why this matters specifically on web.
+                memCacheWidth: 400,
                 errorWidget: (_, __, ___) => Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(

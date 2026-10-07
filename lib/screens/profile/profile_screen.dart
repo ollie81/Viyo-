@@ -837,6 +837,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CachedNetworkImage(
                 imageUrl: post.thumbnailUrl!,
                 fit: BoxFit.cover,
+                // Caps decode size regardless of the source file's
+                // own resolution — a grid tile, so 400 is generous.
+                // See RetryableNetworkImage's own comment for why
+                // this matters specifically on web.
+                memCacheWidth: 400,
                 placeholder: (_, __) => Shimmer.fromColors(
                   baseColor: AppColors.surfaceBorder,
                   highlightColor: AppColors.surface,
@@ -1246,7 +1251,11 @@ class _SeriesGridTile extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               series.coverImageUrl != null
-                  ? CachedNetworkImage(imageUrl: series.coverImageUrl!, fit: BoxFit.cover)
+                  ? CachedNetworkImage(
+                      imageUrl: series.coverImageUrl!,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 480,
+                    )
                   : Container(
                       color: AppColors.surfaceBorder,
                       child: const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 28),

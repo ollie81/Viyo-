@@ -290,6 +290,11 @@ class _SeriesHeader extends StatelessWidget {
                   ? CachedNetworkImage(
                       imageUrl: series.coverImageUrl!,
                       fit: BoxFit.cover,
+                      // A 64x90 tile — caps decode size regardless of
+                      // the source file's own resolution. See
+                      // RetryableNetworkImage's own comment for why
+                      // this matters specifically on web.
+                      memCacheWidth: 200,
                       errorWidget: (_, __, ___) => Container(
                         color: AppColors.surfaceBorder,
                         child: const Icon(Icons.auto_awesome, color: AppColors.secondary),
@@ -928,6 +933,12 @@ class _EpisodeTile extends StatelessWidget {
                         ? CachedNetworkImage(
                             imageUrl: episode.thumbnailUrl!,
                             fit: BoxFit.cover,
+                            // A 48x68 tile — caps decode size
+                            // regardless of the source file's own
+                            // resolution. See RetryableNetworkImage's
+                            // own comment for why this matters
+                            // specifically on web.
+                            memCacheWidth: 200,
                             errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
                           )
                         : Container(color: AppColors.surfaceBorder),

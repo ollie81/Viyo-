@@ -38,6 +38,11 @@ class SeriesPosterCard extends StatelessWidget {
                       ? CachedNetworkImage(
                           imageUrl: series.coverImageUrl!,
                           fit: BoxFit.cover,
+                          // Caps decode size regardless of the source
+                          // file's own resolution — see
+                          // RetryableNetworkImage's own comment for
+                          // why this matters specifically on web.
+                          memCacheWidth: 480,
                           errorWidget: (_, __, ___) => const _PosterPlaceholder(),
                         )
                       : const _PosterPlaceholder(),

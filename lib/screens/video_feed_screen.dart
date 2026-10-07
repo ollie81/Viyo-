@@ -778,6 +778,15 @@ class _VideoPageState extends State<_VideoPage> {
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     height: double.infinity,
+                                    // Caps decode size regardless of the
+                                    // source file's own resolution — full-
+                                    // screen here, so a bigger cap than a
+                                    // grid tile's, but still far below an
+                                    // oversized source asset. See
+                                    // RetryableNetworkImage's own comment
+                                    // for why this matters specifically on
+                                    // web.
+                                    memCacheWidth: 1080,
                                     placeholder: (_, __) => const Center(
                                       child: CircularProgressIndicator(
                                         color: AppColors.primary,
@@ -1077,6 +1086,9 @@ class _VideoPageState extends State<_VideoPage> {
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,
+            // See the thumbnail CachedNetworkImage above (same
+            // screen) for why this cap matters specifically on web.
+            memCacheWidth: 1080,
             errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
         Container(color: Colors.black.withOpacity(0.4)),
@@ -1111,6 +1123,10 @@ class _VideoPageState extends State<_VideoPage> {
             child: CachedNetworkImage(
               imageUrl: post.thumbnailUrl!,
               fit: BoxFit.cover,
+              // Blurred anyway, so full source resolution buys nothing
+              // visually — see the other thumbnail CachedNetworkImage
+              // on this screen for why the cap itself matters on web.
+              memCacheWidth: 1080,
               errorWidget: (_, __, ___) => Container(color: Colors.black),
             ),
           )
