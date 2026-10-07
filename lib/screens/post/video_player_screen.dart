@@ -13,6 +13,7 @@ import '../../services/supabase_service.dart';
 import '../../services/video_metadata_service.dart';
 import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/retryable_network_image.dart';
 import 'post_detail_screen.dart';
 import '../profile/profile_screen.dart';
 
@@ -459,7 +460,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return Stack(
         fit: StackFit.expand,
         children: [
-          CachedNetworkImage(
+          RetryableNetworkImage(
             imageUrl: post.thumbnailUrl!,
             fit: BoxFit.cover,
             memCacheWidth: 1080,

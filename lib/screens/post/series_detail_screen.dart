@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
@@ -16,6 +15,7 @@ import '../../utils/friendly_error.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
+import '../../widgets/retryable_network_image.dart';
 import '../../widgets/series_poster_card.dart';
 import '../../widgets/watchlist_button.dart';
 import '../dramas/series_analytics_screen.dart';
@@ -287,13 +287,10 @@ class _SeriesHeader extends StatelessWidget {
               width: 64,
               height: 90,
               child: series.coverImageUrl != null
-                  ? CachedNetworkImage(
+                  ? RetryableNetworkImage(
                       imageUrl: series.coverImageUrl!,
                       fit: BoxFit.cover,
-                      // A 64x90 tile — caps decode size regardless of
-                      // the source file's own resolution. See
-                      // RetryableNetworkImage's own comment for why
-                      // this matters specifically on web.
+                      // A 64x90 tile, so a small decode cap suffices.
                       memCacheWidth: 200,
                       errorWidget: (_, __, ___) => Container(
                         color: AppColors.surfaceBorder,
@@ -930,14 +927,10 @@ class _EpisodeTile extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     episode.thumbnailUrl != null
-                        ? CachedNetworkImage(
+                        ? RetryableNetworkImage(
                             imageUrl: episode.thumbnailUrl!,
                             fit: BoxFit.cover,
-                            // A 48x68 tile — caps decode size
-                            // regardless of the source file's own
-                            // resolution. See RetryableNetworkImage's
-                            // own comment for why this matters
-                            // specifically on web.
+                            // A 48x68 tile, so a small decode cap suffices.
                             memCacheWidth: 200,
                             errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),
                           )

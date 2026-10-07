@@ -9,6 +9,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/episode_lock.dart';
 import 'report_sheet.dart';
+import 'retryable_network_image.dart';
 import 'watchlist_button.dart';
 import '../screens/post/post_detail_screen.dart';
 
@@ -207,25 +208,21 @@ class PostCard extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                     if (post.thumbnailUrl != null)
-                      CachedNetworkImage(
+                      // RetryableNetworkImage, not a raw
+                      // CachedNetworkImage: confirmed live that a
+                      // thumbnail can render fine, then go solid black
+                      // with no error ever firing — see that widget's
+                      // own doc for why (a silent web decode failure
+                      // under memory pressure) and how it guarantees
+                      // this can't read as a black card either way.
+                      RetryableNetworkImage(
                         imageUrl: post.thumbnailUrl!,
                         fit: BoxFit.cover,
-                        // Caps decode size regardless of the source
-                        // file's own resolution — see
-                        // RetryableNetworkImage's own comment on why
-                        // this matters specifically on web.
                         memCacheWidth: 480,
                         placeholder: (_, __) => Shimmer.fromColors(
                           baseColor: AppColors.surfaceBorder,
                           highlightColor: AppColors.surface,
                           child: Container(color: Colors.white),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          color: AppColors.surfaceBorder,
-                          child: const Icon(
-                            Icons.broken_image_outlined,
-                            color: AppColors.textMuted,
-                          ),
                         ),
                       )
                     else

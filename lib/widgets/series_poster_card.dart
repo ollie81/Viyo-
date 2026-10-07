@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/series.dart';
 import '../theme/app_theme.dart';
+import 'retryable_network_image.dart';
 
 /// A tall movie-poster-style card for one series: cover art, title
 /// overlaid at the bottom over a gradient, and a genre pill underneath
@@ -35,13 +35,9 @@ class SeriesPosterCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   series.coverImageUrl != null
-                      ? CachedNetworkImage(
+                      ? RetryableNetworkImage(
                           imageUrl: series.coverImageUrl!,
                           fit: BoxFit.cover,
-                          // Caps decode size regardless of the source
-                          // file's own resolution — see
-                          // RetryableNetworkImage's own comment for
-                          // why this matters specifically on web.
                           memCacheWidth: 480,
                           errorWidget: (_, __, ___) => const _PosterPlaceholder(),
                         )

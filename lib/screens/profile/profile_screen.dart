@@ -20,6 +20,7 @@ import '../../widgets/coin_badge.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/report_sheet.dart';
+import '../../widgets/retryable_network_image.dart';
 import '../settings_screen.dart';
 import '../store_screen.dart';
 import '../post/series_detail_screen.dart';
@@ -834,25 +835,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           fit: StackFit.expand,
           children: [
             if (!isText && post.thumbnailUrl != null)
-              CachedNetworkImage(
+              RetryableNetworkImage(
                 imageUrl: post.thumbnailUrl!,
                 fit: BoxFit.cover,
-                // Caps decode size regardless of the source file's
-                // own resolution — a grid tile, so 400 is generous.
-                // See RetryableNetworkImage's own comment for why
-                // this matters specifically on web.
+                // Grid tile, so 400 is generous.
                 memCacheWidth: 400,
                 placeholder: (_, __) => Shimmer.fromColors(
                   baseColor: AppColors.surfaceBorder,
                   highlightColor: AppColors.surface,
                   child: Container(color: Colors.white),
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  color: AppColors.surfaceBorder,
-                  child: const Icon(
-                    Icons.broken_image_outlined,
-                    color: AppColors.textMuted,
-                  ),
                 ),
               )
             else if (!isText)
@@ -1251,10 +1242,14 @@ class _SeriesGridTile extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               series.coverImageUrl != null
-                  ? CachedNetworkImage(
+                  ? RetryableNetworkImage(
                       imageUrl: series.coverImageUrl!,
                       fit: BoxFit.cover,
                       memCacheWidth: 480,
+                      errorWidget: (_, __, ___) => Container(
+                        color: AppColors.surfaceBorder,
+                        child: const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 28),
+                      ),
                     )
                   : Container(
                       color: AppColors.surfaceBorder,

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/post.dart';
 import '../models/series.dart';
 import '../theme/app_theme.dart';
+import 'retryable_network_image.dart';
 
 /// The end-of-episode "Up Next" card — built on top of the autoplay-next
 /// mechanism that already existed in video_feed_screen.dart with no UI
@@ -103,7 +103,7 @@ class _UpNextOverlayState extends State<UpNextOverlay> {
                     fit: StackFit.expand,
                     children: [
                       post.thumbnailUrl != null
-                          ? CachedNetworkImage(
+                          ? RetryableNetworkImage(
                               imageUrl: post.thumbnailUrl!,
                               fit: BoxFit.cover,
                               errorWidget: (_, __, ___) => Container(color: AppColors.surfaceBorder),

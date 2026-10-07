@@ -23,6 +23,7 @@ import '../utils/friendly_error.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/insufficient_coins_sheet.dart';
+import '../widgets/retryable_network_image.dart';
 import '../widgets/up_next_overlay.dart';
 import 'profile/profile_screen.dart';
 import 'wallet/subscribe_screen.dart';
@@ -792,19 +793,12 @@ class _VideoPageState extends State<_VideoPage> {
                                     child: CircularProgressIndicator(color: AppColors.primary),
                                   )
                                 : post.thumbnailUrl != null
-                                ? CachedNetworkImage(
+                                ? RetryableNetworkImage(
                                     imageUrl: post.thumbnailUrl!,
                                     fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    // Caps decode size regardless of the
-                                    // source file's own resolution — full-
-                                    // screen here, so a bigger cap than a
-                                    // grid tile's, but still far below an
-                                    // oversized source asset. See
-                                    // RetryableNetworkImage's own comment
-                                    // for why this matters specifically on
-                                    // web.
+                                    // Full-screen here, so a bigger cap
+                                    // than a grid tile's, but still far
+                                    // below an oversized source asset.
                                     memCacheWidth: 1080,
                                     placeholder: (_, __) => const Center(
                                       child: CircularProgressIndicator(
@@ -1100,13 +1094,9 @@ class _VideoPageState extends State<_VideoPage> {
       alignment: Alignment.center,
       children: [
         if (thumbnailUrl != null)
-          CachedNetworkImage(
+          RetryableNetworkImage(
             imageUrl: thumbnailUrl,
             fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            // See the thumbnail CachedNetworkImage above (same
-            // screen) for why this cap matters specifically on web.
             memCacheWidth: 1080,
             errorWidget: (_, __, ___) => const SizedBox.shrink(),
           ),
@@ -1139,12 +1129,11 @@ class _VideoPageState extends State<_VideoPage> {
         if (post.thumbnailUrl != null)
           ImageFiltered(
             imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: CachedNetworkImage(
+            child: RetryableNetworkImage(
               imageUrl: post.thumbnailUrl!,
               fit: BoxFit.cover,
               // Blurred anyway, so full source resolution buys nothing
-              // visually — see the other thumbnail CachedNetworkImage
-              // on this screen for why the cap itself matters on web.
+              // visually.
               memCacheWidth: 1080,
               errorWidget: (_, __, ___) => Container(color: Colors.black),
             ),
