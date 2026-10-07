@@ -122,7 +122,10 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     if (details == null) return;
     try {
       final series = await SeriesService.createSeries(
-        userId: userId,
+        // Defaults to whoever's running Studio, same as always — the
+        // creator picker in the dialog above is how an admin assigns
+        // a *different* real account instead.
+        userId: details.creatorUserId ?? userId,
         title: details.title,
         description: details.description,
         genre: details.genre,
@@ -151,24 +154,33 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
       initialTitle: current.title,
       initialGenre: current.genre,
       initialDescription: current.description,
+      initialCreatorUserId: current.userId,
+      initialCreatorLabel: current.authorUsername != null ? '@${current.authorUsername}' : null,
       title: 'Edit Drama',
       confirmLabel: 'Save',
     );
     if (details == null) return;
     try {
-      final updated = await StudioService.updateDramaDetails(
+      await StudioService.updateDramaDetails(
         widget.adminKey,
         current,
         title: details.title,
         description: details.description,
         genre: details.genre,
+        // Only actually changes anything server-side if the admin
+        // picked a different account in the dialog — re-sending the
+        // same id back is a harmless no-op update.
+        creatorUserId: details.creatorUserId,
       );
       if (!mounted) return;
-      setState(() {
-        final index = _series.indexWhere((s) => s.id == seriesId);
-        if (index != -1) _series[index] = updated;
-      });
-      _showSnack('Saved "${updated.title}".');
+      // Reloaded from scratch rather than patched locally: a changed
+      // owner needs this screen's own authorUsername to catch up too
+      // (that's a join-time field, never returned by the details
+      // endpoint itself), and every episode already published from
+      // this series just moved with it server-side.
+      await _loadSeries();
+      if (!mounted) return;
+      _showSnack('Saved "${details.title}".');
     } catch (e) {
       if (!mounted) return;
       _showSnack('Could not save drama: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');

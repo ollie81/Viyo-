@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/insufficient_coins_exception.dart';
@@ -1007,6 +1008,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => Navigator.pop(ctx, 'archive'),
             ),
             ListTile(
+              leading: Icon(
+                post.isPrivate ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+              ),
+              title: Text(
+                post.isPrivate ? 'Make public' : 'Hide from public',
+              ),
+              onTap: () => Navigator.pop(ctx, 'private'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Change thumbnail'),
+              onTap: () => Navigator.pop(ctx, 'thumbnail'),
+            ),
+            if (post.isEpisode)
+              ListTile(
+                leading: const Icon(Icons.sell_outlined),
+                title: const Text('Free or paid'),
+                subtitle: Text(
+                  post.isFree == true
+                      ? 'Currently: always free'
+                      : post.isFree == false
+                          ? 'Currently: always paid'
+                          : 'Currently: default (by episode number)',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onTap: () => Navigator.pop(ctx, 'free'),
+              ),
+            ListTile(
               leading: const Icon(
                 Icons.delete_outline,
                 color: AppColors.danger,
@@ -1028,6 +1057,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await PostService.setPinned(post.id, !post.isPinned);
       } else if (action == 'archive') {
         await PostService.setArchived(post.id, !post.isArchived);
+      } else if (action == 'private') {
+        await PostService.setPrivate(post.id, !post.isPrivate);
+      } else if (action == 'thumbnail') {
+        final picked = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 1080,
+          imageQuality: 85,
+        );
+        if (picked == null) return;
+        final userId = SupabaseService.currentUserId;
+        if (userId == null) return;
+        await PostService.updateThumbnail(post.id, picked, userId);
+      } else if (action == 'free') {
+        final choice = await _showFreeOverrideDialog(post);
+        if (choice == _FreeOverrideChoice.unchanged) return;
+        await PostService.setFreeOverride(
+          post.id,
+          choice == _FreeOverrideChoice.free
+              ? true
+              : choice == _FreeOverrideChoice.paid
+                  ? false
+                  : null,
+        );
       } else if (action == 'delete') {
         final confirmed = await showDialog<bool>(
           context: context,
@@ -1058,7 +1110,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
   }
+
+  /// Three real choices, not a toggle — see Post.isFree's own comment:
+  /// always free, always paid, or no override (fall back to the
+  /// position-based "first kFreeEpisodeCount episodes" default). The
+  /// dialog is pre-selected on whichever one the episode is already
+  /// set to, and returns [_FreeOverrideChoice.unchanged] (distinct
+  /// from re-picking the current state) when dismissed without a
+  /// choice, so the caller can skip the write entirely.
+  Future<_FreeOverrideChoice> _showFreeOverrideDialog(Post post) async {
+    final result = await showDialog<_FreeOverrideChoice>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Free or paid', style: TextStyle(fontSize: 15)),
+        children: [
+          RadioListTile<_FreeOverrideChoice>(
+            value: _FreeOverrideChoice.deflt,
+            groupValue: post.isFree == null
+                ? _FreeOverrideChoice.deflt
+                : (post.isFree! ? _FreeOverrideChoice.free : _FreeOverrideChoice.paid),
+            title: const Text('Default (by episode number)', style: TextStyle(fontSize: 13)),
+            onChanged: (v) => Navigator.pop(ctx, v),
+          ),
+          RadioListTile<_FreeOverrideChoice>(
+            value: _FreeOverrideChoice.free,
+            groupValue: post.isFree == null
+                ? _FreeOverrideChoice.deflt
+                : (post.isFree! ? _FreeOverrideChoice.free : _FreeOverrideChoice.paid),
+            title: const Text('Always free', style: TextStyle(fontSize: 13)),
+            onChanged: (v) => Navigator.pop(ctx, v),
+          ),
+          RadioListTile<_FreeOverrideChoice>(
+            value: _FreeOverrideChoice.paid,
+            groupValue: post.isFree == null
+                ? _FreeOverrideChoice.deflt
+                : (post.isFree! ? _FreeOverrideChoice.free : _FreeOverrideChoice.paid),
+            title: const Text('Always paid', style: TextStyle(fontSize: 13)),
+            onChanged: (v) => Navigator.pop(ctx, v),
+          ),
+        ],
+      ),
+    );
+    return result ?? _FreeOverrideChoice.unchanged;
+  }
 }
+
+enum _FreeOverrideChoice { free, paid, deflt, unchanged }
 
 /// Shown while a profile's data is loading — mimics the header layout
 /// (avatar, stats, bio, rank card, grid) instead of a bare spinner.

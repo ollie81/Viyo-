@@ -226,11 +226,17 @@ class StudioService {
     required String title,
     required String description,
     required String genre,
+    String? creatorUserId,
   }) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/series/${current.id}/details'),
       headers: _headers(adminKey),
-      body: jsonEncode({'title': title, 'description': description, 'genre': genre}),
+      body: jsonEncode({
+        'title': title,
+        'description': description,
+        'genre': genre,
+        if (creatorUserId != null) 'user_id': creatorUserId,
+      }),
     );
     if (res.statusCode != 200) {
       throw Exception(_errorDetail(res) ?? 'Could not save drama details (${res.statusCode})');
@@ -240,6 +246,7 @@ class StudioService {
       title: data['title'] as String?,
       description: data['description'] as String?,
       genre: data['genre'] as String?,
+      userId: data['user_id'] as String?,
     );
   }
 

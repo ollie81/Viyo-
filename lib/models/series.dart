@@ -93,10 +93,11 @@ class Series {
     String? title,
     String? description,
     String? genre,
+    String? userId,
   }) =>
       Series(
         id: id,
-        userId: userId,
+        userId: userId ?? this.userId,
         title: title ?? this.title,
         description: description ?? this.description,
         coverImageUrl: coverImageUrl ?? this.coverImageUrl,

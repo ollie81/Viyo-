@@ -28,6 +28,15 @@ class Post {
   final bool isPrivate;
   final bool isArchived;
   final bool isPinned;
+  // Per-episode override of the "first kFreeEpisodeCount episodes are
+  // free" default (see utils/episode_lock.dart's own isEpisodeLocked):
+  // true always unlocks it regardless of position, false always keeps
+  // it paid even inside the free window, null (the default — no
+  // override set) falls back to the position-based rule. Meaningless
+  // on a non-episode post. Mirrors episodes.py's own
+  // is_free_override param on _is_free_episode — the server is still
+  // what actually enforces this, same as unlockedByMe's own comment.
+  final bool? isFree;
   final DateTime createdAt;
 
   // AI Short Drama support. seriesId set at all is what makes this
@@ -99,6 +108,7 @@ class Post {
     this.isPrivate = false,
     this.isArchived = false,
     this.isPinned = false,
+    this.isFree,
     required this.createdAt,
     this.seriesId,
     this.episodeNumber,
@@ -130,6 +140,7 @@ class Post {
         isPrivate: json['is_private'] ?? false,
         isArchived: json['is_archived'] ?? false,
         isPinned: json['is_pinned'] ?? false,
+        isFree: json['is_free'] as bool?,
         createdAt: DateTime.parse(json['created_at']),
         seriesId: json['series_id'],
         episodeNumber: json['episode_number'],
@@ -167,6 +178,7 @@ class Post {
     bool? isPrivate,
     bool? isArchived,
     bool? isPinned,
+    bool? isFree,
     DateTime? createdAt,
     String? seriesId,
     int? episodeNumber,
@@ -194,6 +206,7 @@ class Post {
       isPrivate: isPrivate ?? this.isPrivate,
       isArchived: isArchived ?? this.isArchived,
       isPinned: isPinned ?? this.isPinned,
+      isFree: isFree ?? this.isFree,
       createdAt: createdAt ?? this.createdAt,
       seriesId: seriesId ?? this.seriesId,
       episodeNumber: episodeNumber ?? this.episodeNumber,

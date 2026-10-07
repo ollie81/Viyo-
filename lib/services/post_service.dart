@@ -232,6 +232,48 @@ class PostService {
     await _client.from('posts').update({'is_pinned': isPinned}).eq('id', postId);
   }
 
+  /// Per-episode override of the "first kFreeEpisodeCount episodes are
+  /// free" default — see Post.isFree's own comment and episodes.py's
+  /// _is_free_episode. [isFree] null clears the override back to the
+  /// position-based default; true/false force it free/paid regardless
+  /// of position. Meaningless on a non-episode post.
+  static Future<void> setFreeOverride(String postId, bool? isFree) async {
+    await _client.from('posts').update({'is_free': isFree}).eq('id', postId);
+  }
+
+  /// Replaces an already-published post's thumbnail — unlike the
+  /// thumbnail picker on the upload/publish screens, this works after
+  /// the fact, from the post's own management menu (see
+  /// profile_screen.dart). Same direct-PUT-to-storage pattern as
+  /// uploadMediaWithProgress above (Supabase storage over a plain
+  /// authenticated PUT, not the SDK's own storage client — proven
+  /// working here already), into the same posts-media bucket every
+  /// other thumbnail already lives in, then the post row is pointed at
+  /// the new URL in one follow-up update — RLS-enforced owner-only,
+  /// same as setPrivate/setArchived/setPinned above.
+  static Future<String> updateThumbnail(String postId, XFile image, String userId) async {
+    final path = '$userId/${const Uuid().v4()}.jpg';
+    final bytes = await image.readAsBytes();
+    final token = _client.auth.currentSession?.accessToken;
+    final url = '${SupabaseConstants.url}/storage/v1/object/${SupabaseConstants.postsBucket}/$path';
+
+    await Dio().put(
+      url,
+      data: bytes,
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+          'apikey': SupabaseConstants.anonKey,
+          'Content-Type': 'image/jpeg',
+        },
+      ),
+    );
+
+    final thumbnailUrl = _client.storage.from(SupabaseConstants.postsBucket).getPublicUrl(path);
+    await _client.from('posts').update({'thumbnail_url': thumbnailUrl}).eq('id', postId);
+    return thumbnailUrl;
+  }
+
   /// Video-only feed for the full-screen Shorts-style player.
   static Future<List<Post>> getVideoFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
