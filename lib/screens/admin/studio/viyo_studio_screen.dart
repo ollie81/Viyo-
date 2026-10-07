@@ -283,12 +283,35 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     try {
       final result = await StudioService.analyzeScript(widget.adminKey, script);
       if (!mounted) return;
+      // Adds to the existing cast rather than replacing it — this is
+      // what makes "paste Episode 2's script to add its new
+      // characters" actually safe. It used to flatly overwrite
+      // _characters/_locations with only whatever this one script
+      // mentioned, so analyzing a later episode's script silently
+      // dropped every returning character/location not re-mentioned
+      // in that episode's text, and hitting Save would then wipe them
+      // from the database too. Matched by name (trimmed,
+      // case-insensitive) — a name already in the cast is left exactly
+      // as-is (keeping its saved portrait, voice, any manual edits);
+      // only genuinely new names get appended.
+      final existingCharNames = _characters.map((c) => c.name.trim().toLowerCase()).toSet();
+      final newCharacters =
+          result.characters.where((c) => !existingCharNames.contains(c.name.trim().toLowerCase())).toList();
+      final existingLocNames = _locations.map((l) => l.name.trim().toLowerCase()).toSet();
+      final newLocations =
+          result.locations.where((l) => !existingLocNames.contains(l.name.trim().toLowerCase())).toList();
       setState(() {
-        _characters = result.characters;
-        _locations = result.locations;
+        _characters = [..._characters, ...newCharacters];
+        _locations = [..._locations, ...newLocations];
         _sessionCostCents += result.costUsdCents;
         _saveMessage = null;
       });
+      _showSnack(
+        newCharacters.isEmpty && newLocations.isEmpty
+            ? 'No new characters or locations found — everyone in this script was already in the cast.'
+            : 'Added ${newCharacters.length} new character(s) and ${newLocations.length} new location(s). '
+                'Existing cast left untouched.',
+      );
       await _loadSpendToday();
       await _saveDraftLocally();
     } catch (e) {
@@ -528,7 +551,20 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _editField('Name', c.name, (v) => _updateCharacter(index, c.copyWith(name: v))),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _editField('Name', c.name, (v) => _updateCharacter(index, c.copyWith(name: v))),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+                      tooltip: 'Remove ${c.name.isEmpty ? 'character' : c.name}',
+                      onPressed: () => _confirmRemoveCharacter(index, c),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
                 Row(
                   children: [
                     Expanded(
@@ -565,6 +601,31 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
     _saveDraftLocally();
   }
 
+  /// Removal only exists in-memory until Save is pressed, same as
+  /// every other edit on this screen — but still worth a confirm, since
+  /// a wrong tap here (unlike a wrong tap in a text field) can't be
+  /// undone by just typing the value back in.
+  Future<void> _confirmRemoveCharacter(int index, StudioCharacter c) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Remove character?'),
+        content: Text('Removes ${c.name.isEmpty ? 'this character' : c.name} from the cast. Not permanent until you tap Save.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _characters.removeAt(index));
+    _saveDraftLocally();
+  }
+
   Widget _locationCard(int index, StudioLocation l) {
     final busy = _generatingImages.contains('loc_$index');
     return Container(
@@ -580,7 +641,20 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _editField('Name', l.name, (v) => _updateLocation(index, l.copyWith(name: v))),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _editField('Name', l.name, (v) => _updateLocation(index, l.copyWith(name: v))),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+                      tooltip: 'Remove ${l.name.isEmpty ? 'location' : l.name}',
+                      onPressed: () => _confirmRemoveLocation(index, l),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
                 _editField('Description', l.description, (v) => _updateLocation(index, l.copyWith(description: v)),
                     maxLines: 2),
                 Row(
@@ -605,6 +679,27 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
 
   void _updateLocation(int index, StudioLocation updated) {
     setState(() => _locations[index] = updated);
+    _saveDraftLocally();
+  }
+
+  Future<void> _confirmRemoveLocation(int index, StudioLocation l) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Remove location?'),
+        content: Text('Removes ${l.name.isEmpty ? 'this location' : l.name}. Not permanent until you tap Save.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _locations.removeAt(index));
     _saveDraftLocally();
   }
 
