@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
@@ -13,25 +14,26 @@ import '../../services/supabase_service.dart';
 import '../../services/video_metadata_service.dart';
 import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/comments_sheet.dart';
 import '../../widgets/retryable_network_image.dart';
-import 'post_detail_screen.dart';
 import '../profile/profile_screen.dart';
 
 /// Standard single-video player for long-form/landscape content (see
 /// Post.isLongForm) — everything the TikTok-style swipe feed
 /// (video_feed_screen.dart) isn't meant for: a real seek bar and
 /// duration the viewer can actually scrub through at will, resuming
-/// mid-watch instead of always starting over, and no swipe-to-a-
-/// random-next-post, since "the next thing" for a 30-minute upload
-/// shouldn't be a stranger's 15-second clip.
+/// mid-watch instead of always starting over, a fullscreen mode, and
+/// no swipe-to-a-random-next-post, since "the next thing" for a
+/// 30-minute upload shouldn't be a stranger's 15-second clip.
 ///
 /// Reuses the same proven pieces video_feed_screen.dart's _VideoPage
 /// already has — the resolution self-heal retry, Bunny status
-/// polling, WatchProgressService resume/save — rather than
-/// reinventing them; this screen only really differs in presentation
-/// (true native aspect ratio instead of FittedBox cover/contain, no
-/// PageView) and in adding periodic ad breaks, which only make sense
-/// for a long sit-through, not a short swipeable clip.
+/// polling, WatchProgressService resume/save, showCommentsSheet for
+/// commenting without losing the video — rather than reinventing them;
+/// this screen only really differs in presentation (true native aspect
+/// ratio instead of FittedBox cover/contain, no PageView) and in
+/// adding periodic ad breaks, which only make sense for a long
+/// sit-through, not a short swipeable clip.
 class VideoPlayerScreen extends StatefulWidget {
   final Post post;
 
@@ -48,6 +50,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _processingFailedOverride = false;
   bool _liked = false;
   bool _isSubscriber = true; // fail-closed — see _loadSubscriptionStatus
+  bool _isFullscreen = false;
+  int _commentCount = 0;
 
   Duration? _lastSavedPosition;
   static const _savePositionInterval = Duration(seconds: 3);
@@ -63,6 +67,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void initState() {
     super.initState();
     _liked = widget.post.likedByMe;
+    _commentCount = widget.post.commentCount;
     InterstitialAdService.preload();
     _loadSubscriptionStatus();
     PostService.recordView(widget.post.id);
@@ -236,6 +241,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ));
     }
     _controller?.dispose();
+    // Safety net: if the viewer backed out while still in fullscreen
+    // (landscape-locked, immersive system UI), leaving those set would
+    // wrongly affect every other screen in the app afterward.
+    if (_isFullscreen) _restoreSystemChrome();
     super.dispose();
   }
 
@@ -266,6 +275,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  void _openComments() {
+    // A bottom sheet, not a full navigation — the video stays mounted
+    // and keeps playing behind it, same fix as video_feed_screen.dart's
+    // own _openComments (a full-screen route here used to leave the
+    // video playing invisibly underneath instead of actually pausing or
+    // staying visible).
+    showCommentsSheet(
+      context,
+      widget.post,
+      onCommentAdded: () {
+        if (mounted) setState(() => _commentCount++);
+      },
+    );
+  }
+
+  void _restoreSystemChrome() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  void _toggleFullscreen() {
+    final enteringFullscreen = !_isFullscreen;
+    setState(() => _isFullscreen = enteringFullscreen);
+    if (enteringFullscreen) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      // Only forces landscape for content that's actually wide — a
+      // vertical/square video stays upright in fullscreen too, same as
+      // every video platform.
+      final aspectRatio = _controller?.value.aspectRatio ?? widget.post.displayAspectRatio;
+      if (aspectRatio > 1.0) {
+        SystemChrome.setPreferredOrientations(
+          [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+        );
+      }
+    } else {
+      _restoreSystemChrome();
+    }
+  }
+
   String _time(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes % 60;
@@ -280,6 +333,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final post = widget.post;
     final c = _controller;
     final ready = c?.value.isInitialized == true;
+
+    if (_isFullscreen) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _toggleFullscreen();
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                GestureDetector(
+                  onTap: _togglePlay,
+                  child: Center(
+                    child: ready
+                        ? AspectRatio(
+                            aspectRatio: c!.value.aspectRatio,
+                            child: VideoPlayer(c),
+                          )
+                        : _mediaPlaceholder(post),
+                  ),
+                ),
+                if (ready) _videoControlsBar(c!, compact: true),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                    onPressed: _toggleFullscreen,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -296,134 +388,160 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            GestureDetector(
-              onTap: _togglePlay,
-              child: Container(
-                width: double.infinity,
-                color: Colors.black,
-                child: AspectRatio(
-                  // True native shape, centered and letterboxed as
-                  // needed — a YouTube/Netflix-style single player,
-                  // deliberately not the swipe feed's edge-to-edge
-                  // FittedBox cover/contain.
-                  aspectRatio: ready ? c!.value.aspectRatio : post.displayAspectRatio,
-                  child: ready
-                      ? Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            VideoPlayer(c!),
-                            if (!c.value.isPlaying)
-                              Container(
-                                color: Colors.black26,
-                                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 56),
-                              ),
-                          ],
-                        )
-                      : _mediaPlaceholder(post),
+            // Fills all the space between the app bar and the content
+            // below instead of being tightly sized to just the video's
+            // own aspect ratio — a landscape video on a tall phone
+            // screen now letterboxes *larger*, within this whole area,
+            // rather than leaving a separate, disconnected black gap
+            // underneath the caption/actions.
+            Expanded(
+              child: GestureDetector(
+                onTap: _togglePlay,
+                child: Container(
+                  width: double.infinity,
+                  color: Colors.black,
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: ready ? c!.value.aspectRatio : post.displayAspectRatio,
+                      child: ready
+                          ? Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                VideoPlayer(c!),
+                                if (!c.value.isPlaying)
+                                  Container(
+                                    color: Colors.black26,
+                                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 56),
+                                  ),
+                              ],
+                            )
+                          : _mediaPlaceholder(post),
+                    ),
+                  ),
                 ),
               ),
             ),
-            if (ready)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Row(
-                  children: [
-                    Text(_time(c!.value.position), style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                    Expanded(
-                      child: SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 2,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                        ),
-                        child: Slider(
-                          min: 0,
-                          max: c.value.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                          value: c.value.position.inMilliseconds
-                              .toDouble()
-                              .clamp(0, c.value.duration.inMilliseconds.toDouble()),
-                          activeColor: AppColors.primary,
-                          inactiveColor: Colors.white30,
-                          onChanged: (v) => c.seekTo(Duration(milliseconds: v.round())),
-                        ),
-                      ),
+            if (ready) _videoControlsBar(c!),
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => ProfileScreen(userId: post.userId)),
                     ),
-                    Text(_time(c.value.duration), style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                    IconButton(
-                      icon: Icon(c.value.volume == 0 ? Icons.volume_off : Icons.volume_up, color: Colors.white70, size: 20),
-                      onPressed: () => c.setVolume(c.value.volume == 0 ? 1 : 0),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => ProfileScreen(userId: post.userId)),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: AppColors.surfaceBorder,
-                            backgroundImage:
-                                post.authorAvatarUrl != null ? CachedNetworkImageProvider(post.authorAvatarUrl!) : null,
-                            child: post.authorAvatarUrl == null
-                                ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
-                                : null,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '@${post.authorUsername ?? 'unknown'}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (post.caption.trim().isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Text(post.caption, style: const TextStyle(color: Colors.white70, height: 1.35)),
-                    ],
-                    const SizedBox(height: 14),
-                    Row(
+                    child: Row(
                       children: [
-                        _actionButton(
-                          icon: _liked ? Icons.favorite : Icons.favorite_border,
-                          color: _liked ? AppColors.secondary : Colors.white70,
-                          label: '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
-                          onTap: _toggleLike,
+                        CircleAvatar(
+                          radius: 18,
+                          backgroundColor: AppColors.surfaceBorder,
+                          backgroundImage:
+                              post.authorAvatarUrl != null ? CachedNetworkImageProvider(post.authorAvatarUrl!) : null,
+                          child: post.authorAvatarUrl == null
+                              ? Text((post.authorDisplayName ?? '?')[0].toUpperCase())
+                              : null,
                         ),
-                        const SizedBox(width: 20),
-                        _actionButton(
-                          icon: Icons.mode_comment_outlined,
-                          color: Colors.white70,
-                          label: '${post.commentCount}',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '@${post.authorUsername ?? 'unknown'}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                           ),
-                        ),
-                        const SizedBox(width: 20),
-                        _actionButton(
-                          icon: Icons.share_outlined,
-                          color: Colors.white70,
-                          label: 'Share',
-                          onTap: () => Share.share(post.mediaUrl ?? post.caption),
                         ),
                       ],
                     ),
+                  ),
+                  if (post.caption.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(post.caption, style: const TextStyle(color: Colors.white70, height: 1.35)),
                   ],
-                ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      _actionButton(
+                        icon: _liked ? Icons.favorite : Icons.favorite_border,
+                        color: _liked ? AppColors.secondary : Colors.white70,
+                        label: '${post.likeCount + (_liked == post.likedByMe ? 0 : (_liked ? 1 : -1))}',
+                        onTap: _toggleLike,
+                      ),
+                      const SizedBox(width: 20),
+                      _actionButton(
+                        icon: Icons.mode_comment_outlined,
+                        color: Colors.white70,
+                        label: '$_commentCount',
+                        onTap: _openComments,
+                      ),
+                      const SizedBox(width: 20),
+                      _actionButton(
+                        icon: Icons.share_outlined,
+                        color: Colors.white70,
+                        label: 'Share',
+                        onTap: () => Share.share(post.mediaUrl ?? post.caption),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Shared by both the normal and fullscreen layouts — position/
+  /// duration labels, the seek bar, mute, and a fullscreen toggle.
+  /// [compact] trims the padding for the fullscreen overlay, which sits
+  /// directly over the video rather than in its own row below it.
+  Widget _videoControlsBar(VideoPlayerController c, {bool compact = false}) {
+    final row = Row(
+      children: [
+        Text(_time(c.value.position), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+            ),
+            child: Slider(
+              min: 0,
+              max: c.value.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+              value: c.value.position.inMilliseconds.toDouble().clamp(0, c.value.duration.inMilliseconds.toDouble()),
+              activeColor: AppColors.primary,
+              inactiveColor: Colors.white30,
+              onChanged: (v) => c.seekTo(Duration(milliseconds: v.round())),
+            ),
+          ),
+        ),
+        Text(_time(c.value.duration), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        IconButton(
+          icon: Icon(c.value.volume == 0 ? Icons.volume_off : Icons.volume_up, color: Colors.white70, size: 20),
+          onPressed: () => c.setVolume(c.value.volume == 0 ? 1 : 0),
+        ),
+        if (!compact)
+          IconButton(
+            icon: const Icon(Icons.fullscreen, color: Colors.white70, size: 20),
+            onPressed: _toggleFullscreen,
+          ),
+      ],
+    );
+    if (!compact) {
+      return Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: row);
+    }
+    return Positioned(
+      left: 10,
+      right: 10,
+      bottom: 10,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: row,
       ),
     );
   }
