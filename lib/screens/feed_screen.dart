@@ -13,6 +13,7 @@ import 'ai_hub_screen.dart';
 import 'notifications_screen.dart';
 import 'messages/conversations_screen.dart';
 import 'post/post_detail_screen.dart';
+import 'post/video_player_screen.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
 
@@ -160,10 +161,24 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
       onOpenMedia: post.postType == PostType.video
           ? () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => VideoFeedScreen(
-                    initialPostId: post.id,
-                    seriesId: post.isEpisode ? post.seriesId : null,
-                  ),
+                  // Short vertical content keeps the existing TikTok-
+                  // style swipe feed, unchanged. A plain (non-episode)
+                  // post that's landscape/square or past the
+                  // short-form length (see Post.isLongForm) gets the
+                  // standard single-video player instead — swiping into
+                  // a random unrelated post mid-way through a 30-minute
+                  // video would be a much worse experience than just
+                  // not swiping at all. A drama episode always keeps
+                  // the swipe experience even from here, same as
+                  // DramaHomeScreen's own entry point — auto-advance to
+                  // the next episode and the series badge only make
+                  // sense inside that screen.
+                  builder: (_) => (!post.isEpisode && post.isLongForm)
+                      ? VideoPlayerScreen(post: post)
+                      : VideoFeedScreen(
+                          initialPostId: post.id,
+                          seriesId: post.isEpisode ? post.seriesId : null,
+                        ),
                 ),
               )
           : null,

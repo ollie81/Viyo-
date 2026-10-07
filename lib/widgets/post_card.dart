@@ -194,7 +194,15 @@ class PostCard extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: AspectRatio(
-                    aspectRatio: post.postType == PostType.video ? 9 / 16 : 4 / 5,
+                    // The post's own real shape when known (see
+                    // Post.displayAspectRatio) — a landscape or square
+                    // video no longer gets squeezed into a vertical
+                    // 9:16 box and cropped by the BoxFit.cover below;
+                    // the box itself now matches the content, so cover
+                    // just fills it cleanly. Falls back to today's
+                    // fixed 9:16/4:5 for any post with no stored
+                    // dimensions yet, so nothing already working moves.
+                    aspectRatio: post.displayAspectRatio,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [

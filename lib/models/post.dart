@@ -88,10 +88,50 @@ class Post {
   // this rather than just trying to play immediately.
   final String? videoStatus;
 
+  // The video's own real encoded dimensions — populated server-side
+  // (bunny_stream.py's self-heal for a Bunny-hosted video, reading
+  // Bunny's own API response; video_metadata.py's ffprobe endpoint for
+  // a Supabase-hosted one) rather than decoded client-side, so Web and
+  // Android end up with the exact same numbers instead of each
+  // platform's player independently guessing. Null for any post
+  // uploaded before this existed, or while the backfill hasn't landed
+  // yet — every getter below treats null as "unknown, assume the old
+  // short-vertical default" rather than crashing or guessing wrong.
+  final int? width;
+  final int? height;
+
   bool get isEpisode => seriesId != null;
-  bool get isLandscapeVideo => seriesOrientation == 'landscape';
   bool get isVideoProcessing => videoStatus == 'processing';
   bool get isVideoFailed => videoStatus == 'failed';
+
+  // width/height (this post's own real shape) wins when known; falls
+  // back to the series' own orientation flag (the only signal that
+  // existed before width/height did, and still the only one a plain
+  // non-Bunny episode with no probed dimensions yet has).
+  bool get isLandscapeVideo =>
+      (width != null && height != null) ? width! > height! : seriesOrientation == 'landscape';
+
+  // Real aspect ratio when known, clamped so one outlier (an ultra-wide
+  // screen recording, a near-square clip) can't produce an absurdly
+  // short or tall card — falls back to today's fixed shape (9:16 video,
+  // 4:5 photo) so every post without stored dimensions renders exactly
+  // as it always has.
+  double get displayAspectRatio {
+    if (width != null && height != null && width! > 0 && height! > 0) {
+      final ratio = width! / height!;
+      return ratio.clamp(9 / 16, 16 / 9);
+    }
+    return postType == PostType.video ? 9 / 16 : 4 / 5;
+  }
+
+  // Short-form keeps today's TikTok-style swipe player; anything
+  // landscape/square or past the short-form length gets the standard
+  // single-video player instead (see video_player_screen.dart). A post
+  // with no known duration yet (freshly uploaded, backfill still in
+  // flight) is treated as short so nothing regresses mid-backfill.
+  static const int _longFormThresholdSeconds = 180;
+  bool get isLongForm =>
+      isLandscapeVideo || (durationSeconds != null && durationSeconds! > _longFormThresholdSeconds);
 
   Post({
     required this.id,
@@ -123,6 +163,8 @@ class Post {
     this.videoProvider,
     this.bunnyVideoId,
     this.videoStatus,
+    this.width,
+    this.height,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -133,6 +175,8 @@ class Post {
         mediaUrl: json['media_url'],
         thumbnailUrl: json['thumbnail_url'],
         durationSeconds: json['duration_seconds'],
+        width: json['width'] as int?,
+        height: json['height'] as int?,
         likeCount: json['like_count'] ?? 0,
         commentCount: json['comment_count'] ?? 0,
         viewCount: json['view_count'] ?? 0,
@@ -190,6 +234,8 @@ class Post {
     String? videoProvider,
     String? bunnyVideoId,
     String? videoStatus,
+    int? width,
+    int? height,
   }) {
     return Post(
       id: id ?? this.id,
@@ -218,6 +264,8 @@ class Post {
       videoProvider: videoProvider ?? this.videoProvider,
       bunnyVideoId: bunnyVideoId ?? this.bunnyVideoId,
       videoStatus: videoStatus ?? this.videoStatus,
+      width: width ?? this.width,
+      height: height ?? this.height,
     );
   }
 }

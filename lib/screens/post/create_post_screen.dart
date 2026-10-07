@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/caption_variants.dart';
@@ -9,6 +11,7 @@ import '../../services/bunny_stream_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/video_metadata_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
@@ -66,10 +69,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     });
   }
 
+  // Raised from a hardcoded 60 seconds so a creator can post real
+  // long-form video directly, not just short clips — the Home feed and
+  // player now adapt to a video's real length/shape instead of
+  // assuming every video is short and vertical (see Post.isLongForm,
+  // video_player_screen.dart). Ad breaks in the long-form player (see
+  // that screen) are what makes this sustainable rather than just
+  // handing out 40 minutes of ad-free viewing.
+  static const _maxUploadDuration = Duration(minutes: 40);
+
   Future<void> _pickMedia(ImageSource source, {required bool video}) async {
     final picker = ImagePicker();
     final XFile? picked = video
-        ? await picker.pickVideo(source: source, maxDuration: const Duration(seconds: 60))
+        ? await picker.pickVideo(source: source, maxDuration: _maxUploadDuration)
         : await picker.pickImage(source: source);
     if (picked != null) {
       setState(() {
@@ -356,7 +368,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         caption: caption,
         mediaUrl: mediaUrl,
         thumbnailUrl: thumbnailUrl,
-        durationSeconds: postType == PostType.video ? 60 : null,
+        // Left null rather than a guessed/hardcoded value — a
+        // Bunny-hosted video gets its real duration (and width/height)
+        // from Bunny's own API via bunny_stream.py's self-heal poll
+        // below; a Supabase-hosted one gets it from the
+        // probeDimensions call right after this, which ffprobes the
+        // video directly. Either way the real number lands within
+        // moments of posting, not a guess that's wrong for anything
+        // but exactly-60-second clips.
+        durationSeconds: null,
         videoProvider: videoProvider,
         bunnyVideoId: bunnyVideoId,
         videoStatus: videoStatus,
@@ -367,7 +387,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // post's status once it's ready (or failed) so the feed player
       // stops showing a "processing" state. Detached from this screen's
       // lifecycle on purpose: the creator may well navigate away before
-      // Bunny finishes.
+      // Bunny finishes. Bunny's own API response (read inside
+      // get_bunny_video_status) also carries this video's real
+      // width/height/length, so the self-heal write-back already
+      // fills those in — nothing extra needed here for a Bunny-hosted
+      // video.
       if (bunnyVideoId != null) {
         BunnyStreamService.waitForReady(bunnyVideoId).then((status) async {
           if (status == null) return;
@@ -377,6 +401,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             mediaUrl: status.failed ? null : status.playbackUrl,
           );
         }).catchError((_) {});
+      } else if (postType == PostType.video && mediaUrl != null) {
+        // Supabase-hosted fallback (Bunny wasn't configured) — nothing
+        // else ever learns this video's real shape/length, so probe it
+        // directly. Fire-and-forget, same posture as the Bunny poll
+        // above: never blocks or fails the post itself.
+        unawaited(VideoMetadataService.probeDimensions(postId: post.id, mediaUrl: mediaUrl));
+      }
+
+      // Client-side capture (video_thumbnail on native, a <canvas>
+      // capture on web) can fail or get skipped — if this post still
+      // has no thumbnail at all, fall back to the same server-side
+      // ffmpeg generator the series-cover backfill uses, so a post
+      // never permanently has no thumbnail just because one browser's
+      // local capture didn't work.
+      if (postType == PostType.video && thumbnailUrl == null && mediaUrl != null) {
+        unawaited(VideoMetadataService.generateThumbnail(mediaUrl: mediaUrl, postId: post.id));
       }
 
       if (!mounted) return;

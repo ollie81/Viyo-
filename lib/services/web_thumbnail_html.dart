@@ -23,25 +23,6 @@ Future<Uint8List?> captureVideoFrameWeb(Uint8List videoBytes) async {
   }
 }
 
-/// Same capture, but reading a video that's already hosted somewhere
-/// (Supabase Storage) rather than freshly picked bytes — used to
-/// backfill a thumbnail for a video that was uploaded before this file
-/// existed (see SeriesService's cover-image backfill), without
-/// re-downloading and re-uploading the whole clip. Needs the resource
-/// to actually serve permissive CORS (confirmed for this app's public
-/// storage bucket) — canvas.toBlob throws a SecurityError on a tainted
-/// (cross-origin, no CORS) canvas otherwise, which surfaces here as a
-/// null return like any other capture failure.
-Future<Uint8List?> captureVideoFrameFromUrlWeb(String url) async {
-  final video = html.VideoElement()
-    ..crossOrigin = 'anonymous'
-    ..src = url
-    ..muted = true
-    ..preload = 'auto';
-
-  return _captureFrame(video);
-}
-
 Future<Uint8List?> _captureFrame(html.VideoElement video) async {
   try {
     await video.onLoadedMetadata.first.timeout(const Duration(seconds: 15));
