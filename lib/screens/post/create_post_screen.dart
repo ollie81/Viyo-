@@ -508,7 +508,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 const SizedBox(width: 8),
                 _typeChip('Photo', PostType.photo),
                 const SizedBox(width: 8),
-                _typeChip('Video (60s)', PostType.video),
+                _typeChip('Video (40 min)', PostType.video),
               ],
             ),
             const SizedBox(height: 16),
