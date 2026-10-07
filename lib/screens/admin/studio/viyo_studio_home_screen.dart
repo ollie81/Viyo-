@@ -48,6 +48,7 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
   bool _loading = false;
   String? _error;
   List<_SeriesStudioSummary> _summaries = [];
+  bool _backfillingCovers = false;
 
   @override
   void dispose() {
@@ -213,10 +214,55 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
     }
   }
 
+  /// Re-compresses every series cover already in the database — see
+  /// StudioService.backfillSeriesCovers's own doc comment. A one-off
+  /// cleanup for covers set before that endpoint started compressing
+  /// new ones automatically, so this is safe to leave as a manual
+  /// button rather than something that needs to run on its own: once
+  /// every old oversized cover has been caught, re-running it finds
+  /// nothing left to do.
+  Future<void> _backfillCovers() async {
+    if (_backfillingCovers) return;
+    setState(() => _backfillingCovers = true);
+    try {
+      final result = await StudioService.backfillSeriesCovers(_adminKey!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'Checked ${result.checked} covers — compressed ${result.compressed}, '
+          'already small ${result.skipped}, failed ${result.failed}.',
+        ),
+      ));
+    } catch (err) {
+      if (!mounted) return;
+      final message = err.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not compress covers: $message')));
+    } finally {
+      if (mounted) setState(() => _backfillingCovers = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Viyo Studio')),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: const Text('Viyo Studio'),
+        actions: [
+          if (_adminKey != null)
+            IconButton(
+              tooltip: 'Compress oversized series covers',
+              icon: _backfillingCovers
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textMuted),
+                    )
+                  : const Icon(Icons.compress, color: AppColors.textMuted),
+              onPressed: _backfillingCovers ? null : _backfillCovers,
+            ),
+        ],
+      ),
       body: _adminKey == null ? _keyPrompt() : _content(),
     );
   }

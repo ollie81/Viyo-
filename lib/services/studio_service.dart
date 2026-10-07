@@ -27,6 +27,21 @@ class StudioImageResult {
   StudioImageResult({required this.imageUrl, required this.costUsdCents});
 }
 
+/// Summary of one run of [StudioService.backfillSeriesCovers].
+class StudioCoverBackfillResult {
+  final int checked;
+  final int compressed;
+  final int skipped;
+  final int failed;
+
+  StudioCoverBackfillResult({
+    required this.checked,
+    required this.compressed,
+    required this.skipped,
+    required this.failed,
+  });
+}
+
 class StudioVideoResult {
   final String videoUrl;
   final int durationSeconds;
@@ -606,6 +621,30 @@ class StudioService {
     if (res.statusCode != 200) {
       throw Exception(_errorDetail(res) ?? 'Could not delete post (${res.statusCode})');
     }
+  }
+
+  /// Re-compresses every series cover already in the database down to
+  /// a small JPEG — see series_covers.py's backfill_series_covers for
+  /// why: a cover set before that endpoint started auto-compressing
+  /// can still be someone's original multi-megabyte upload, which is
+  /// exactly the kind of file that times out and never loads on a
+  /// slow connection. Safe to run more than once — already-compressed
+  /// covers are skipped.
+  static Future<StudioCoverBackfillResult> backfillSeriesCovers(String adminKey) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/backfill-series-covers'),
+      headers: _headers(adminKey),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not backfill series covers (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioCoverBackfillResult(
+      checked: data['checked'] as int,
+      compressed: data['compressed'] as int,
+      skipped: data['skipped'] as int,
+      failed: data['failed'] as int,
+    );
   }
 
   static String? _errorDetail(http.Response res) {
