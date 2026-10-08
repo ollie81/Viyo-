@@ -50,6 +50,20 @@ import '../theme/app_theme.dart';
 /// alone indefinitely; only a connection that's gone genuinely silent
 /// (zero new bytes across several checks — a dropped connection, a
 /// backgrounded tab's network paused) triggers the destructive retry.
+///
+/// A second, separate watchdog keeps running after a render is
+/// confirmed, instead of stopping there — confirmed live: a thumbnail
+/// rendered correctly, then was blank again about a minute later with
+/// no rebuild, no error, and nothing in Flutter's image pipeline that
+/// fires when an already-painted texture silently goes bad under GPU
+/// memory pressure (point 2 above). There's no event to react to for
+/// that failure mode, so instead this periodically forces a fresh
+/// decode (a new CachedNetworkImage element via a changed key) a while
+/// after every confirmed render — it resolves straight from the
+/// already-cached bytes, no network round trip, and simply repaints a
+/// new texture. It's the only defense available against a failure with
+/// no signal of its own, which is also why it keeps doing this for as
+/// long as the image stays on screen, not just once.
 class RetryableNetworkImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -87,19 +101,26 @@ class RetryableNetworkImage extends StatefulWidget {
 }
 
 class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
-  // How often the stall check runs, and how many consecutive checks
+  // How often the periodic check runs, and how many consecutive checks
   // with zero new bytes count as "actually stuck" rather than "just
-  // slow". 4 checks x 5s = 20s of genuine silence before retrying —
-  // generous on purpose, since the cost of waiting a bit longer on a
-  // real stall is low, while retrying a slow-but-live download is what
-  // this whole rewrite exists to stop doing.
+  // slow" during the loading phase. 4 checks x 5s = 20s of genuine
+  // silence before retrying — generous on purpose, since the cost of
+  // waiting a bit longer on a real stall is low, while retrying a
+  // slow-but-live download is what this whole rewrite exists to stop
+  // doing.
   static const _stallCheckInterval = Duration(seconds: 5);
   static const _maxSilentChecks = 4;
+  // How long after a confirmed render this waits before proactively
+  // forcing a fresh decode, purely as a defense against a silent
+  // post-render paint failure (see the class doc). Long enough that
+  // this is never what a viewer's actually waiting on.
+  static const _healthRecheckInterval = Duration(seconds: 25);
 
   int _attempt = 0;
   bool _retrying = false;
   bool _confirmedRendered = false;
-  Timer? _stallTimer;
+  DateTime? _confirmedAt;
+  Timer? _timer;
   int _downloadedBytes = 0;
   int _lastCheckedBytes = -1;
   int _silentChecks = 0;
@@ -107,36 +128,46 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
   @override
   void initState() {
     super.initState();
-    _armStallTimer();
+    _resetLoadTracking();
+    // One persistent periodic timer for the widget's whole lifetime —
+    // _tick below handles both the loading-phase stall check and the
+    // post-render health recheck depending on _confirmedRendered, so
+    // there's no "stop watching once it looks safe" moment at all.
+    _timer = Timer.periodic(_stallCheckInterval, (_) => _tick());
   }
 
   @override
   void didUpdateWidget(covariant RetryableNetworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.imageUrl != widget.imageUrl) {
-      _confirmedRendered = false;
-      _attempt = 0;
-      _armStallTimer();
+      setState(() {
+        _attempt = 0;
+        _confirmedRendered = false;
+        _confirmedAt = null;
+      });
+      _resetLoadTracking();
     }
   }
 
   @override
   void dispose() {
-    _stallTimer?.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
-  void _armStallTimer() {
-    _stallTimer?.cancel();
+  void _resetLoadTracking() {
     _downloadedBytes = 0;
     _lastCheckedBytes = -1;
     _silentChecks = 0;
-    _stallTimer = Timer.periodic(_stallCheckInterval, (_) => _checkForStall());
   }
 
-  void _checkForStall() {
-    if (!mounted || _confirmedRendered) {
-      _stallTimer?.cancel();
+  void _tick() {
+    if (!mounted) return;
+    if (_confirmedRendered) {
+      final confirmedAt = _confirmedAt;
+      if (confirmedAt != null && DateTime.now().difference(confirmedAt) >= _healthRecheckInterval) {
+        _refreshQuietly();
+      }
       return;
     }
     if (_downloadedBytes > _lastCheckedBytes) {
@@ -150,9 +181,22 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
     }
     _silentChecks++;
     if (_silentChecks >= _maxSilentChecks) {
-      _stallTimer?.cancel();
       _retry();
     }
+  }
+
+  // The quiet, no-error-involved sibling of _retry — called on a
+  // healthy, already-confirmed image purely as a precaution, not in
+  // response to anything having actually failed. Doesn't touch
+  // flutter_cache_manager's disk cache (nothing to evict, the bytes
+  // are fine), just forces CachedNetworkImage to rebuild from them.
+  void _refreshQuietly() {
+    setState(() {
+      _attempt++;
+      _confirmedRendered = false;
+      _confirmedAt = null;
+    });
+    _resetLoadTracking();
   }
 
   Future<void> _retry() async {
@@ -169,8 +213,10 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
     setState(() {
       _attempt++;
       _retrying = false;
+      _confirmedRendered = false;
+      _confirmedAt = null;
     });
-    _armStallTimer();
+    _resetLoadTracking();
   }
 
   @override
@@ -191,6 +237,7 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
         },
         imageBuilder: (context, imageProvider) {
           _confirmedRendered = true;
+          _confirmedAt = DateTime.now();
           return Container(
             decoration: BoxDecoration(
               image: DecorationImage(image: imageProvider, fit: widget.fit),
