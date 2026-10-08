@@ -108,7 +108,26 @@ class RetryableNetworkImage extends StatefulWidget {
   State<RetryableNetworkImage> createState() => _RetryableNetworkImageState();
 }
 
-class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
+class _RetryableNetworkImageState extends State<RetryableNetworkImage>
+    with AutomaticKeepAliveClientMixin {
+  // Reported live: a thumbnail renders fine, then goes black as soon as
+  // it's scrolled out of view and back — fixed instantly by a tap, with
+  // no navigation. Root cause: a plain State, with no keep-alive, gets
+  // fully disposed the moment a ListView.builder item scrolls past the
+  // viewport's cache extent, then rebuilt from scratch (initState runs
+  // again) when scrolled back — throwing away everything this widget
+  // tracks (_confirmedRendered, _attempt, the stall timer) and leaving a
+  // blank frame until the fresh element's own image stream resolves and
+  // repaints. A tap "fixes" it only because it triggers some unrelated
+  // rebuild that happens to force that repaint sooner. Requesting a
+  // keep-alive here means the list's own AutomaticKeepAlive (already
+  // wrapping every item by default) never tears this state down for
+  // being off-screen in the first place, so there's nothing to rebuild
+  // from scratch — the already-painted image just scrolls with the list
+  // like any other normal widget.
+  @override
+  bool get wantKeepAlive => true;
+
   // How often the periodic check runs, and how many consecutive checks
   // with zero new bytes count as "actually stuck" rather than "just
   // slow" during the loading phase. 4 checks x 5s = 20s of genuine
@@ -276,6 +295,7 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
     return Container(
       // Always-present base layer — see the class doc for why this,
       // not just a placeholder, is what actually makes a black card
