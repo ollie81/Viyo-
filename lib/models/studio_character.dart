@@ -47,6 +47,13 @@ class StudioCharacter {
       );
 
   Map<String, dynamic> toJson() => {
+        // Present for an already-saved character so the backend can
+        // update that same row in place instead of recreating it under
+        // a new id — see StudioService.saveCast's own comment for why
+        // that distinction matters (it's what scenes/dialogue lines
+        // reference). Omitted (null) for one just extracted by Analyze
+        // Script that's never been saved yet.
+        if (id != null) 'id': id,
         'name': name,
         'age': age,
         'gender': gender,

@@ -30,6 +30,8 @@ class StudioLocation {
       );
 
   Map<String, dynamic> toJson() => {
+        // See StudioCharacter.toJson's own comment — same reasoning.
+        if (id != null) 'id': id,
         'name': name,
         'description': description,
         'time_of_day': timeOfDay,

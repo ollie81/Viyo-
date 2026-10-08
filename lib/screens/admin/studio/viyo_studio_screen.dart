@@ -98,8 +98,24 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
       if (!mounted) return;
       setState(() {
         _series = series;
-        if (_selectedSeriesId == null || !series.any((s) => s.id == _selectedSeriesId)) {
-          _selectedSeriesId = series.isNotEmpty ? series.first.id : null;
+        // Only clears an already-set selection that's gone stale (its
+        // series got deleted, or this is a restored draft pointing at
+        // one that no longer exists) — never picks a series on the
+        // admin's behalf when none was ever actually selected. This
+        // used to default to series.first (the newest existing
+        // series) whenever _selectedSeriesId was null, which meant
+        // opening a blank "New Script", pasting an unrelated script,
+        // and hitting Save without ever touching the picker silently
+        // overwrote whatever drama happened to be most recent —
+        // confirmed live: a user's new cast replaced another series'
+        // entirely, cast and locations both, with no warning shown
+        // anywhere. Leaving it null now means the Series picker shows
+        // genuinely empty and "Save Cast to Series" stays disabled
+        // (already gated on _selectedSeriesId == null) until the admin
+        // either explicitly picks an existing series or taps
+        // "+ New Drama".
+        if (_selectedSeriesId != null && !series.any((s) => s.id == _selectedSeriesId)) {
+          _selectedSeriesId = null;
         }
       });
     } catch (_) {
