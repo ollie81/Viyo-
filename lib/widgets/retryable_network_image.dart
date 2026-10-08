@@ -58,12 +58,20 @@ import '../theme/app_theme.dart';
 /// fires when an already-painted texture silently goes bad under GPU
 /// memory pressure (point 2 above). There's no event to react to for
 /// that failure mode, so instead this periodically forces a fresh
-/// decode (a new CachedNetworkImage element via a changed key) a while
-/// after every confirmed render — it resolves straight from the
-/// already-cached bytes, no network round trip, and simply repaints a
-/// new texture. It's the only defense available against a failure with
-/// no signal of its own, which is also why it keeps doing this for as
-/// long as the image stays on screen, not just once.
+/// decode a while after every confirmed render. Critically, that means
+/// actually evicting the specific entry from Flutter's in-memory
+/// `ImageCache`, not just changing this widget's own Key — an earlier
+/// version only did the latter, which is a no-op for this exact case:
+/// `ImageCache` keys entries by the `ImageProvider`'s own `==` (the
+/// image URL, scale, and decode size — see `_evictedProvider` below),
+/// completely independent of any widget Key, so a plain key bump just
+/// tears down and rebuilds a widget that resolves to the *same*
+/// already-cached (possibly corrupted) entry, with no redecode at all.
+/// Only an explicit `.evict()` on a provider built the exact same way
+/// CachedNetworkImage builds its own (including the `ResizeImage` wrap
+/// memCacheWidth implies — see below) actually clears it, after which
+/// the next build genuinely re-reads the bytes (already on disk, so
+/// still no network round trip) and decodes a fresh texture.
 class RetryableNetworkImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -118,6 +126,7 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
 
   int _attempt = 0;
   bool _retrying = false;
+  bool _refreshing = false;
   bool _confirmedRendered = false;
   DateTime? _confirmedAt;
   Timer? _timer;
@@ -161,12 +170,37 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
     _silentChecks = 0;
   }
 
+  // Must match exactly what CachedNetworkImage builds internally
+  // (cached_image_widget.dart: `_image = CachedNetworkImageProvider(url,
+  // scale: ...)`, then wrapped as `ResizeImage.resizeIfNeeded(memCacheWidth,
+  // memCacheHeight, _image)` before ever reaching Flutter's ImageCache) —
+  // evicting anything else (e.g. just the bare CachedNetworkImageProvider)
+  // targets a cache key that was never actually used, and silently evicts
+  // nothing.
+  ImageProvider _cacheKeyProvider() {
+    return ResizeImage.resizeIfNeeded(
+      widget.memCacheWidth,
+      null,
+      CachedNetworkImageProvider(widget.imageUrl),
+    );
+  }
+
+  Future<void> _evictFromImageCache() async {
+    try {
+      await _cacheKeyProvider().evict();
+    } catch (_) {
+      // Best-effort — the key bump below still forces a new element,
+      // which at minimum re-runs the load pipeline even if eviction
+      // itself failed for some reason.
+    }
+  }
+
   void _tick() {
     if (!mounted) return;
     if (_confirmedRendered) {
       final confirmedAt = _confirmedAt;
       if (confirmedAt != null && DateTime.now().difference(confirmedAt) >= _healthRecheckInterval) {
-        _refreshQuietly();
+        unawaited(_refreshQuietly());
       }
       return;
     }
@@ -181,42 +215,63 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
     }
     _silentChecks++;
     if (_silentChecks >= _maxSilentChecks) {
-      _retry();
+      unawaited(_retry());
     }
+  }
+
+  // Shared by _retry and _refreshQuietly: forces a fresh
+  // CachedNetworkImage element and clears the stall/health tracking
+  // state, so the two retry paths can't drift out of sync with each
+  // other over time.
+  void _bumpAttemptAndReset() {
+    _attempt++;
+    _confirmedRendered = false;
+    _confirmedAt = null;
+    _resetLoadTracking();
   }
 
   // The quiet, no-error-involved sibling of _retry — called on a
   // healthy, already-confirmed image purely as a precaution, not in
   // response to anything having actually failed. Doesn't touch
-  // flutter_cache_manager's disk cache (nothing to evict, the bytes
-  // are fine), just forces CachedNetworkImage to rebuild from them.
-  void _refreshQuietly() {
-    setState(() {
-      _attempt++;
-      _confirmedRendered = false;
-      _confirmedAt = null;
-    });
-    _resetLoadTracking();
+  // flutter_cache_manager's disk cache (the bytes on disk are fine),
+  // but does still evict Flutter's in-memory ImageCache entry — see
+  // _evictFromImageCache's own comment for why skipping that step
+  // would make this whole method a no-op.
+  //
+  // Guarded by _refreshing exactly like _retry is guarded by
+  // _retrying — set synchronously before the first await, not after.
+  // Without it, if the main thread stalls past one tick while this
+  // method's own await is pending (the same GPU-memory-pressure
+  // scenario the health recheck exists to catch), _confirmedAt stays
+  // stale until the setState below runs, so the next timer tick would
+  // see the same "still >= 25s old" state and fire an overlapping
+  // second refresh on top of the first.
+  Future<void> _refreshQuietly() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    await _evictFromImageCache();
+    _refreshing = false;
+    if (!mounted) return;
+    setState(_bumpAttemptAndReset);
   }
 
   Future<void> _retry() async {
     if (_retrying) return;
     setState(() => _retrying = true);
-    try {
-      await DefaultCacheManager().removeFile(widget.imageUrl);
-    } catch (_) {
-      // Best-effort — even if the cache-manager removal fails, the
-      // changed key below still forces a new CachedNetworkImage
-      // element, which is itself a real (if less certain) retry.
-    }
+    // Independent caches (disk vs Flutter's in-memory ImageCache) —
+    // run them concurrently rather than back-to-back.
+    await Future.wait([
+      DefaultCacheManager().removeFile(widget.imageUrl).catchError((_) {
+        // Best-effort — even if the cache-manager removal fails, the
+        // eviction below still forces a real reload.
+      }),
+      _evictFromImageCache(),
+    ]);
     if (!mounted) return;
     setState(() {
-      _attempt++;
       _retrying = false;
-      _confirmedRendered = false;
-      _confirmedAt = null;
+      _bumpAttemptAndReset();
     });
-    _resetLoadTracking();
   }
 
   @override
@@ -236,8 +291,20 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
           return widget.placeholder?.call(context, url) ?? const SizedBox.shrink();
         },
         imageBuilder: (context, imageProvider) {
-          _confirmedRendered = true;
-          _confirmedAt = DateTime.now();
+          // octo_image calls this on every rebuild of the Image widget
+          // while a frame is already available (Flutter's own
+          // frameBuilder semantics), not just once on first success —
+          // confirmed by reading octo_image's source. A parent that
+          // rebuilds often (e.g. a video player's setState on every
+          // position tick, with a thumbnail list rendered alongside
+          // it) would otherwise push _confirmedAt forward every single
+          // time, so the 25s-since-confirmation health check below
+          // could never actually elapse. Only the first confirmation
+          // for a given _attempt should count.
+          if (!_confirmedRendered) {
+            _confirmedRendered = true;
+            _confirmedAt = DateTime.now();
+          }
           return Container(
             decoration: BoxDecoration(
               image: DecorationImage(image: imageProvider, fit: widget.fit),
