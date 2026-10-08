@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../../services/studio_service.dart';
+import '../../../services/web_download_stub.dart'
+    if (dart.library.html) '../../../services/web_download_html.dart' as web_download;
 import '../../../theme/app_theme.dart';
 
 /// Viyo Studio, Phase 4: assemble this episode's scenes into one 9:16
@@ -156,11 +159,17 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
 
   /// Saves the assembled preview to the phone before publishing — e.g.
   /// to check it looks right on a real device, or to keep a copy.
-  /// Downloads the bytes, writes them to a scratch file, then hands
-  /// that off to the system share sheet (share_plus), which is what
-  /// lets the admin actually choose where it lands (Files, Downloads,
-  /// Photos) — Flutter has no direct "save to device storage" call of
-  /// its own without a platform-specific gallery plugin.
+  /// Downloads the bytes, then hands them off differently per platform:
+  /// native writes a scratch file and opens the system share sheet
+  /// (share_plus), which is what lets the admin actually choose where
+  /// it lands (Files, Downloads, Photos) — Flutter has no direct "save
+  /// to device storage" call of its own without a platform-specific
+  /// gallery plugin. Web has no filesystem and no share sheet at all —
+  /// path_provider's getTemporaryDirectory() has no web implementation,
+  /// which is exactly what crashed here with a bare
+  /// MissingPluginException before this split existed. web_download's
+  /// Blob-URL-plus-<a download> is the actual web equivalent: it saves
+  /// straight to the browser's own Downloads folder.
   Future<void> _downloadPreview() async {
     final assembled = _assembled;
     if (assembled == null) return;
@@ -170,13 +179,17 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
       if (res.statusCode != 200) {
         throw Exception('Could not download video (${res.statusCode})');
       }
-      final dir = await getTemporaryDirectory();
       final fileName = '${widget.seriesTitle.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')}'
           '_ep${widget.episodeNumber}.mp4';
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(res.bodyBytes);
-      if (!mounted) return;
-      await Share.shareXFiles([XFile(file.path)], text: fileName);
+      if (kIsWeb) {
+        web_download.downloadBytesWeb(res.bodyBytes, fileName);
+      } else {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$fileName');
+        await file.writeAsBytes(res.bodyBytes);
+        if (!mounted) return;
+        await Share.shareXFiles([XFile(file.path)], text: fileName);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
