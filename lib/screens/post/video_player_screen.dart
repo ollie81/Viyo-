@@ -17,6 +17,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/retryable_network_image.dart';
 import '../profile/profile_screen.dart';
+import '../video_feed_screen.dart';
 
 /// Standard single-video player for long-form/landscape content (see
 /// Post.isLongForm) — everything the TikTok-style swipe feed
@@ -550,12 +551,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget _buildRelatedTile(Post related) {
     return InkWell(
       onTap: () {
+        // Same long-form-vs-swipe-feed split feed_screen.dart's own
+        // onOpenMedia uses. The short-form branch used to just pop
+        // this screen — which, tapped from here, lands back on
+        // whatever opened the long-form player (usually Home), not on
+        // the tapped video at all. Push the real destination instead,
+        // same as every other "open a video" tap in the app.
         if (!related.isEpisode && related.isLongForm) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => VideoPlayerScreen(post: related)),
           );
         } else {
-          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => VideoFeedScreen(
+                initialPostId: related.id,
+                seriesId: related.isEpisode ? related.seriesId : null,
+              ),
+            ),
+          );
         }
       },
       borderRadius: BorderRadius.circular(8),

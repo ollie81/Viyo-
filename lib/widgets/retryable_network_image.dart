@@ -34,9 +34,22 @@ import '../theme/app_theme.dart';
 ///    confirming success only through `imageBuilder`, which the
 ///    package only ever calls once a frame has actually decoded — the
 ///    same "initialized != rendered" distinction a video player needs.
-///    If that confirmation hasn't landed within [_autoRetryAfter], this
-///    retries automatically, the same way the explicit error path
-///    already did on tap.
+///
+/// The retry watchdog is progress-aware, not a flat timeout — an
+/// earlier version just retried if nothing had confirmed within a
+/// fixed window, which on a genuinely slow connection (not a stalled
+/// one) was actively self-defeating: a real download that legitimately
+/// takes 15+ seconds on a slow connection kept getting cancelled and
+/// restarted from zero bytes just before it would have finished,
+/// forever, which reads to the viewer as a permanently stuck black
+/// card on exactly the connections most likely to produce one.
+/// flutter_cache_manager's progressIndicatorBuilder reports cumulative
+/// bytes downloaded on every real chunk received, so this instead
+/// polls whether that count has moved since the last check — a
+/// download that's still receiving bytes, however slowly, is left
+/// alone indefinitely; only a connection that's gone genuinely silent
+/// (zero new bytes across several checks — a dropped connection, a
+/// backgrounded tab's network paused) triggers the destructive retry.
 class RetryableNetworkImage extends StatefulWidget {
   final String imageUrl;
   final BoxFit fit;
@@ -74,17 +87,27 @@ class RetryableNetworkImage extends StatefulWidget {
 }
 
 class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
-  static const _autoRetryAfter = Duration(seconds: 12);
+  // How often the stall check runs, and how many consecutive checks
+  // with zero new bytes count as "actually stuck" rather than "just
+  // slow". 4 checks x 5s = 20s of genuine silence before retrying —
+  // generous on purpose, since the cost of waiting a bit longer on a
+  // real stall is low, while retrying a slow-but-live download is what
+  // this whole rewrite exists to stop doing.
+  static const _stallCheckInterval = Duration(seconds: 5);
+  static const _maxSilentChecks = 4;
 
   int _attempt = 0;
   bool _retrying = false;
   bool _confirmedRendered = false;
-  Timer? _watchdog;
+  Timer? _stallTimer;
+  int _downloadedBytes = 0;
+  int _lastCheckedBytes = -1;
+  int _silentChecks = 0;
 
   @override
   void initState() {
     super.initState();
-    _armWatchdog();
+    _armStallTimer();
   }
 
   @override
@@ -93,24 +116,43 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
     if (oldWidget.imageUrl != widget.imageUrl) {
       _confirmedRendered = false;
       _attempt = 0;
-      _armWatchdog();
+      _armStallTimer();
     }
   }
 
   @override
   void dispose() {
-    _watchdog?.cancel();
+    _stallTimer?.cancel();
     super.dispose();
   }
 
-  void _armWatchdog() {
-    _watchdog?.cancel();
-    _watchdog = Timer(_autoRetryAfter, () {
-      // Only fires if imageBuilder never confirmed a real decode in
-      // time — a genuinely slow-but-working load gets more time on its
-      // next attempt anyway, since the watchdog re-arms per attempt.
-      if (!_confirmedRendered && mounted) _retry();
-    });
+  void _armStallTimer() {
+    _stallTimer?.cancel();
+    _downloadedBytes = 0;
+    _lastCheckedBytes = -1;
+    _silentChecks = 0;
+    _stallTimer = Timer.periodic(_stallCheckInterval, (_) => _checkForStall());
+  }
+
+  void _checkForStall() {
+    if (!mounted || _confirmedRendered) {
+      _stallTimer?.cancel();
+      return;
+    }
+    if (_downloadedBytes > _lastCheckedBytes) {
+      // Bytes have actually moved since the last check — a live,
+      // progressing download, however slow. Reset the silence count
+      // instead of retrying; there's no fixed deadline for this at
+      // all as long as it keeps making real progress.
+      _lastCheckedBytes = _downloadedBytes;
+      _silentChecks = 0;
+      return;
+    }
+    _silentChecks++;
+    if (_silentChecks >= _maxSilentChecks) {
+      _stallTimer?.cancel();
+      _retry();
+    }
   }
 
   Future<void> _retry() async {
@@ -128,7 +170,7 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
       _attempt++;
       _retrying = false;
     });
-    _armWatchdog();
+    _armStallTimer();
   }
 
   @override
@@ -143,7 +185,10 @@ class _RetryableNetworkImageState extends State<RetryableNetworkImage> {
         imageUrl: widget.imageUrl,
         fit: widget.fit,
         memCacheWidth: widget.memCacheWidth,
-        placeholder: widget.placeholder,
+        progressIndicatorBuilder: (context, url, progress) {
+          _downloadedBytes = progress.downloaded;
+          return widget.placeholder?.call(context, url) ?? const SizedBox.shrink();
+        },
         imageBuilder: (context, imageProvider) {
           _confirmedRendered = true;
           return Container(
