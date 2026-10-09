@@ -6,6 +6,7 @@ import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
+import 'admin/ads_studio/ads_studio_home_screen.dart';
 import 'admin/moderation_review_screen.dart';
 import 'admin/studio/viyo_studio_home_screen.dart';
 import 'auth/login_screen.dart';
@@ -41,6 +42,14 @@ void _showAdminToolsSheet(BuildContext context) {
             onTap: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ViyoStudioHomeScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.campaign_outlined),
+            title: const Text('AI Ads Studio'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdsStudioHomeScreen()));
             },
           ),
           const SizedBox(height: 8),

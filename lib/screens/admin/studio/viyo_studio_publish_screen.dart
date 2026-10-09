@@ -11,6 +11,7 @@ import '../../../services/studio_service.dart';
 import '../../../services/web_download_stub.dart'
     if (dart.library.html) '../../../services/web_download_html.dart' as web_download;
 import '../../../theme/app_theme.dart';
+import '../../../widgets/dotted_border_box.dart';
 import '../../video_feed_screen.dart';
 
 /// Viyo Studio, Phase 4: assemble this episode's scenes into one 9:16
@@ -539,42 +540,3 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
   }
 }
 
-/// A plain dashed-border box for the "upload your own thumbnail" tile
-/// — CustomPaint instead of a package since this is the only place in
-/// the app that needs one.
-class DottedBorderBox extends StatelessWidget {
-  final Widget child;
-  const DottedBorderBox({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _DashedBorderPainter(),
-      child: child,
-    );
-  }
-}
-
-class _DashedBorderPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.textMuted.withOpacity(0.5)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    final rrect = RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(8));
-    final path = Path()..addRRect(rrect);
-    const dashWidth = 5.0;
-    const dashSpace = 4.0;
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        canvas.drawPath(metric.extractPath(distance, distance + dashWidth), paint);
-        distance += dashWidth + dashSpace;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
