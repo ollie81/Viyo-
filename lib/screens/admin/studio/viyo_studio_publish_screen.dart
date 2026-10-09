@@ -11,6 +11,7 @@ import '../../../services/studio_service.dart';
 import '../../../services/web_download_stub.dart'
     if (dart.library.html) '../../../services/web_download_html.dart' as web_download;
 import '../../../theme/app_theme.dart';
+import '../../video_feed_screen.dart';
 
 /// Viyo Studio, Phase 4: assemble this episode's scenes into one 9:16
 /// MP4 (ffmpeg, server-side — slow zoom/pan, burned-in captions,
@@ -505,20 +506,32 @@ class _ViyoStudioPublishScreenState extends State<ViyoStudioPublishScreen> {
   }
 
   Widget _publishedCard() {
+    final published = _published!;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: AppTheme.card(),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.check_circle_outline, color: AppColors.success, size: 40),
-          SizedBox(height: 12),
-          Text('Episode published!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          SizedBox(height: 8),
-          Text(
+          const Icon(Icons.check_circle_outline, color: AppColors.success, size: 40),
+          const SizedBox(height: 12),
+          const Text('Episode published!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 8),
+          const Text(
             'Bunny is still processing the video — it\'ll start playing in the app once that finishes, '
             'usually within a few minutes.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => VideoFeedScreen(initialPostId: published.postId, seriesId: widget.seriesId),
+              )),
+              icon: const Icon(Icons.play_circle_outline, size: 18),
+              label: const Text('View episode'),
+            ),
           ),
         ],
       ),

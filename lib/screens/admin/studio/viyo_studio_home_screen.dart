@@ -3,6 +3,7 @@ import '../../../models/series.dart';
 import '../../../models/studio_episode_status.dart';
 import '../../../services/series_service.dart';
 import '../../../services/studio_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
 import 'drama_details_dialog.dart';
 import 'viyo_studio_scenes_screen.dart';
@@ -125,6 +126,42 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => ViyoStudioScreen(adminKey: _adminKey!)))
         .then((_) => _load());
+  }
+
+  /// A standalone "create a new drama" entry point, right on the home
+  /// screen — previously the only way to create a new series was
+  /// buried inside ViyoStudioScreen's "New Drama" button, which only
+  /// appears after pasting a script and analyzing it, so there was no
+  /// visible way to start a fresh drama shell without first producing
+  /// a cast for something. Creates the series immediately, then opens
+  /// it preselected so the admin can start casting it right away —
+  /// an entirely new row, never touching any existing series' cast,
+  /// scenes, or episodes.
+  Future<void> _startNewDrama() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    final details = await showDramaDetailsDialog(context, title: 'New Drama', confirmLabel: 'Create');
+    if (details == null) return;
+    try {
+      final series = await SeriesService.createSeries(
+        userId: details.creatorUserId ?? userId,
+        title: details.title,
+        description: details.description,
+        genre: details.genre,
+        contentType: kContentTypeShortDrama,
+        orientation: kOrientationVertical,
+      );
+      if (!mounted) return;
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+            builder: (_) => ViyoStudioScreen(adminKey: _adminKey!, preselectedSeriesId: series.id),
+          ))
+          .then((_) => _load());
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create drama: $message')));
+    }
   }
 
   void _continueCasting(Series series) {
@@ -263,7 +300,46 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
             ),
         ],
       ),
-      body: _adminKey == null ? _keyPrompt() : _content(),
+      body: SupabaseService.isGuest ? _guestBlock() : (_adminKey == null ? _keyPrompt() : _content()),
+    );
+  }
+
+  // Studio has no idea of its own who's holding the admin key — any
+  // drama it publishes gets owned by whatever Supabase account is
+  // currently signed in (StudioService.publishEpisode defaults the
+  // post's creator to the caller's own session unless a different
+  // account is explicitly picked in the New Drama dialog). An
+  // anonymous guest session is disposable — it can expire or get
+  // cleared with nothing recoverable — so a drama published while
+  // signed in as one would be owned by an account that might not
+  // exist next week. Blocking Studio entirely for a guest session
+  // forces logging into (or creating) a real account first, so every
+  // drama has a durable owner from the moment it's published.
+  Widget _guestBlock() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline, size: 40, color: AppColors.textMuted),
+            SizedBox(height: 16),
+            Text(
+              'Log into a real account first',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 8),
+            Text(
+              "You're browsing as a guest. Anything Studio publishes gets owned by whoever's "
+              "signed in, and a guest session isn't durable — log in or create an account from "
+              'the Profile tab, then come back to Studio.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -304,12 +380,32 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _startNewScript,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('New Script'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _startNewDrama,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('New Drama'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _startNewScript,
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: const Text('New Script'),
+                ),
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              '"New Drama" creates an empty series right away — nothing existing is ever '
+              'touched. "New Script" starts a blank paste-and-analyze session you assign to '
+              'a series (new or existing) afterward.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
             ),
           ),
           const SizedBox(height: 18),
