@@ -40,6 +40,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   AdCampaign? _campaign;
   List<AdAsset> _assets = [];
   List<AdFormatInfo> _formats = [];
+  List<VeoTierInfo> _veoTiers = [];
 
   final _targetNameController = TextEditingController();
   final _targetDescriptionController = TextEditingController();
@@ -55,6 +56,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   String _aspectRatio = '9:16';
   String _resolution = '720p';
   bool _useVeo = false;
+  String _veoTier = 'lite';
   bool _uploadingAsset = false;
   bool _saving = false;
 
@@ -79,6 +81,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   Future<void> _init() async {
     try {
       _formats = await AdsStudioService.listFormats(widget.adminKey);
+      _veoTiers = await AdsStudioService.listVeoTiers(widget.adminKey);
       if (widget.preselectedCampaignId != null) {
         _campaign = await AdsStudioService.getCampaign(widget.adminKey, widget.preselectedCampaignId!);
         _assets = await AdsStudioService.listAssets(widget.adminKey, _campaign!.id);
@@ -110,6 +113,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
     _aspectRatio = c.aspectRatio;
     _resolution = c.resolution;
     _useVeo = c.useVeo;
+    _veoTier = c.veoTier;
   }
 
   Future<void> _fillPromoteViyoDefaults() async {
@@ -219,6 +223,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
         'aspect_ratio': _aspectRatio,
         'resolution': _resolution,
         'use_veo': _useVeo,
+        'veo_tier': _veoTier,
       });
       if (!mounted) return;
       Navigator.of(context).push(MaterialPageRoute(
@@ -512,14 +517,55 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
             subtitle: Text(
               _aspectRatio == '1:1'
                   ? 'Not available for 1:1 — Veo only supports 16:9/9:16.'
-                  : 'Costs more per scene — otherwise scenes use a still-image Ken Burns pan/zoom.',
+                  : 'Costs more per scene. A dialogue scene uses Veo\'s own generated voice (real sync, but no '
+                      'exact wording/voice control) instead of a separate narrator track — otherwise scenes use a '
+                      'still-image Ken Burns pan/zoom with a picked narrator voice.',
               style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             ),
             value: _useVeo,
             onChanged: _aspectRatio == '1:1' ? null : (v) => setState(() => _useVeo = v),
           ),
+          if (_useVeo && _veoTiers.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('Veo quality', style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: _veoTiers
+                  .map((t) => ChoiceChip(
+                        label: Text('${t.label} (${(t.pricePerSecCents / 100).toStringAsFixed(2)}\$/s)'),
+                        selected: _veoTier == t.key,
+                        onSelected: (_) => _selectVeoTier(t),
+                      ))
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _selectVeoTier(VeoTierInfo tier) async {
+    if (tier.key != 'standard') {
+      setState(() => _veoTier = tier.key);
+      return;
+    }
+    final perClipHigh = (tier.pricePerSecCents * 8 / 100).toStringAsFixed(2);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Use Standard quality?'),
+        content: Text(
+          'Standard costs \$${(tier.pricePerSecCents / 100).toStringAsFixed(2)}/second — up to ~\$$perClipHigh '
+          'per 8-second scene, far more than Lite or Fast. Make sure this campaign is worth it before generating.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Use Standard')),
+        ],
+      ),
+    );
+    if (confirmed == true) setState(() => _veoTier = tier.key);
   }
 }

@@ -43,6 +43,13 @@ class AdFormatInfo {
   AdFormatInfo({required this.key, required this.label});
 }
 
+class VeoTierInfo {
+  final String key;
+  final String label;
+  final int pricePerSecCents;
+  VeoTierInfo({required this.key, required this.label, required this.pricePerSecCents});
+}
+
 /// Talks to viyo_ai's ads_studio.py — same X-Admin-Key gate every other
 /// admin surface in this app uses (see StudioService), and the exact
 /// same request/response/error-handling shape as that file so the two
@@ -86,6 +93,7 @@ class AdsStudioService {
     String aspectRatio = '9:16',
     String resolution = '720p',
     bool useVeo = false,
+    String veoTier = 'lite',
     String? voiceGenderPreference,
   }) async {
     final res = await http.post(
@@ -106,11 +114,20 @@ class AdsStudioService {
         'aspect_ratio': aspectRatio,
         'resolution': resolution,
         'use_veo': useVeo,
+        'veo_tier': veoTier,
         if (voiceGenderPreference != null) 'voice_gender_preference': voiceGenderPreference,
       }),
     );
     if (res.statusCode != 200) throw _failure(res, 'create campaign');
     return AdCampaign.fromJson(jsonDecode(res.body));
+  }
+
+  static Future<List<VeoTierInfo>> listVeoTiers(String adminKey) async {
+    final res = await http.get(Uri.parse('$_base/veo-tiers'), headers: _headers(adminKey));
+    if (res.statusCode != 200) throw _failure(res, 'load Veo tiers');
+    return (jsonDecode(res.body) as List)
+        .map((e) => VeoTierInfo(key: e['key'] as String, label: e['label'] as String, pricePerSecCents: (e['price_per_sec_cents'] as num).toInt()))
+        .toList();
   }
 
   static Future<AdCampaign> updateCampaign(String adminKey, String campaignId, Map<String, dynamic> patch) async {

@@ -18,6 +18,7 @@ class AdCampaign {
   final String aspectRatio;
   final String resolution;
   final bool useVeo;
+  final String veoTier; // lite | fast | standard
   final String? voiceGenderPreference;
   final String? voiceName;
   final String? selectedHookId;
@@ -47,6 +48,7 @@ class AdCampaign {
     required this.aspectRatio,
     required this.resolution,
     required this.useVeo,
+    this.veoTier = 'lite',
     this.voiceGenderPreference,
     this.voiceName,
     this.selectedHookId,
@@ -79,6 +81,7 @@ class AdCampaign {
         aspectRatio: json['aspect_ratio'] ?? '9:16',
         resolution: json['resolution'] ?? '720p',
         useVeo: json['use_veo'] == true,
+        veoTier: json['veo_tier'] ?? 'lite',
         voiceGenderPreference: json['voice_gender_preference'] as String?,
         voiceName: json['voice_name'] as String?,
         selectedHookId: json['selected_hook_id'] as String?,
