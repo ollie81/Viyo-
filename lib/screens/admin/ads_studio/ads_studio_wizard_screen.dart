@@ -8,6 +8,7 @@ import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/dotted_border_box.dart';
 import 'ads_hook_screen.dart';
+import 'ads_result_screen.dart';
 
 const _kPromoteTargets = {
   'viyo': 'VIYO',
@@ -224,12 +225,14 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   List<String> get _featureList =>
       _targetFeaturesController.text.split('\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
-  Future<void> _continueToHooks() async {
-    final campaign = _campaign;
-    if (campaign == null) return;
-    setState(() => _saving = true);
-    try {
-      final updated = await AdsStudioService.updateCampaign(widget.adminKey, campaign.id, {
+  // This campaign already went through the paid pipeline at least once
+  // (a hook was picked, a script exists, or a video finished/failed) —
+  // so editing it doesn't have to mean regenerating anything. A brand
+  // new draft has nothing to "just save"; the only useful action is to
+  // move it forward.
+  bool get _isEditingGenerated => widget.preselectedCampaignId != null && _campaign != null && _campaign!.status != 'draft';
+
+  Map<String, dynamic> get _fieldPatch => {
         'target_name': _targetNameController.text.trim(),
         'target_description': _targetDescriptionController.text.trim(),
         'target_features': _featureList,
@@ -243,7 +246,62 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
         'resolution': _resolution,
         'use_veo': _useVeo,
         'veo_tier': _veoTier,
-      });
+      };
+
+  /// Just persists the text/setting fields and goes back to the result
+  /// screen — no hooks, script or video generation involved, so this
+  /// never spends anything. The right action for fixing a typo (e.g. a
+  /// mangled destination link) on a campaign that already has a video.
+  Future<void> _saveChangesOnly() async {
+    final campaign = _campaign;
+    if (campaign == null) return;
+    setState(() => _saving = true);
+    try {
+      await AdsStudioService.updateCampaign(widget.adminKey, campaign.id, _fieldPatch);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => AdsResultScreen(adminKey: widget.adminKey, campaignId: campaign.id),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _continueToHooks() async {
+    final campaign = _campaign;
+    if (campaign == null) return;
+    // Re-entering the pipeline on a campaign that already has a finished
+    // (or failed) video means a brand new paid Veo/Gemini run later at
+    // the generation screen — make that explicit before any field is
+    // even saved, rather than letting someone click through screens that
+    // each look individually harmless and land on a real charge.
+    if (campaign.status == 'ready' || campaign.status == 'failed') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Regenerate this ad?'),
+          content: Text(
+            campaign.status == 'ready'
+                ? 'This campaign already has a finished video. Continuing will walk through hooks and script again and, '
+                    'once you reach Generate, create a brand new video — a new Veo/Gemini charge, same as the first time.\n\n'
+                    'Just fixing a detail like the destination link? Go back and use "Save changes" instead — that\'s free.'
+                : 'This will retry generation, which charges for the scenes/voice/video it produces — same as the first attempt.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    setState(() => _saving = true);
+    try {
+      final updated = await AdsStudioService.updateCampaign(widget.adminKey, campaign.id, _fieldPatch);
       if (!mounted) return;
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => AdsHookScreen(adminKey: widget.adminKey, campaignId: updated.id),
@@ -289,13 +347,30 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
         _sectionLabel('Video settings'),
         _settingsSection(),
         const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _saving ? null : _continueToHooks,
-            child: Text(_saving ? 'Saving...' : 'Continue to Hooks'),
+        if (_isEditingGenerated) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _saveChangesOnly,
+              child: Text(_saving ? 'Saving...' : 'Save changes'),
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _saving ? null : _continueToHooks,
+              child: const Text('Regenerate from hooks (costs again)'),
+            ),
+          ),
+        ] else
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _continueToHooks,
+              child: Text(_saving ? 'Saving...' : 'Continue to Hooks'),
+            ),
+          ),
       ],
     );
   }

@@ -21,6 +21,10 @@ class _AdsScriptScreenState extends State<AdsScriptScreen> {
   bool _saving = false;
   String? _error;
   List<Map<String, dynamic>> _scenes = [];
+  // Tracked so "Save and continue" can warn before it leads to a real
+  // charge: a campaign that already finished once means this run is a
+  // genuine regenerate, not the first (necessary) generation.
+  String _campaignStatus = 'draft';
 
   @override
   void initState() {
@@ -35,6 +39,7 @@ class _AdsScriptScreenState extends State<AdsScriptScreen> {
     });
     try {
       final campaign = await AdsStudioService.getCampaign(widget.adminKey, widget.campaignId);
+      _campaignStatus = campaign.status;
       if (campaign.hasScript) {
         setState(() => _scenes = campaign.script!);
       } else {
@@ -67,6 +72,28 @@ class _AdsScriptScreenState extends State<AdsScriptScreen> {
   }
 
   Future<void> _saveAndContinue() async {
+    // Last checkpoint before the next screen fires the paid Veo/Gemini
+    // job automatically on load — confirm here if a finished video
+    // already exists, since that means this run replaces it rather than
+    // producing the campaign's first one.
+    if (_campaignStatus == 'ready') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Generate a new video?'),
+          content: const Text(
+            'This campaign already has a finished video. Continuing starts a brand new generation — a real Veo/Gemini '
+            'charge, same as the first run.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Generate')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     setState(() => _saving = true);
     try {
       final normalized = _scenes
