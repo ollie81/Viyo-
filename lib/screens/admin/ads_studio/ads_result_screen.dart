@@ -240,25 +240,33 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                       ),
                       const SizedBox(height: 16),
                     ] else if (_videoController != null && _videoController!.value.isInitialized)
-                      Center(
-                        child: AspectRatio(
-                          aspectRatio: _videoController!.value.aspectRatio,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                VideoPlayer(_videoController!),
-                                GestureDetector(
-                                  onTap: () => setState(() => _videoController!.value.isPlaying ? _videoController!.pause() : _videoController!.play()),
-                                  child: AnimatedBuilder(
-                                    animation: _videoController!,
-                                    builder: (_, __) => _videoController!.value.isPlaying
-                                        ? const SizedBox.shrink()
-                                        : Container(color: Colors.black26, child: const Icon(Icons.play_arrow, size: 54, color: Colors.white)),
+                      // Capped well below full screen height so the download/
+                      // edit/record buttons below are always visible without
+                      // scrolling — a full-bleed 9:16 video was filling the
+                      // entire viewport on phones, making those actions look
+                      // like they didn't exist at all.
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+                        child: Center(
+                          child: AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  VideoPlayer(_videoController!),
+                                  GestureDetector(
+                                    onTap: () => setState(() => _videoController!.value.isPlaying ? _videoController!.pause() : _videoController!.play()),
+                                    child: AnimatedBuilder(
+                                      animation: _videoController!,
+                                      builder: (_, __) => _videoController!.value.isPlaying
+                                          ? const SizedBox.shrink()
+                                          : Container(color: Colors.black26, child: const Icon(Icons.play_arrow, size: 54, color: Colors.white)),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),

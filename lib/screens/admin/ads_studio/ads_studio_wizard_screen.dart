@@ -356,6 +356,10 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
             controller: _destinationController,
             decoration: const InputDecoration(labelText: 'Destination link'),
             style: const TextStyle(color: Colors.white, fontSize: 13),
+            keyboardType: TextInputType.url,
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            enableSuggestions: false,
           ),
           const SizedBox(height: 10),
           TextField(
