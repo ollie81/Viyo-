@@ -137,8 +137,16 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
     final campaign = _campaign;
     if (campaign == null || _assets.length >= 8) return;
     final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
-    final picked = result?.files.single;
-    if (picked == null || picked.bytes == null) return;
+    if (result == null) return; // picker cancelled — nothing to report
+    final picked = result.files.single;
+    if (picked.bytes == null) {
+      // Abnormal — a file was actually picked but the browser/OS gave
+      // back no byte data (seen on some mobile browsers). Previously
+      // this silently did nothing, which read as "upload did nothing"
+      // with zero feedback — now it says so instead of going quiet.
+      _showSnack('Could not read that image — try picking it again, or a different file.');
+      return;
+    }
     setState(() => _uploadingAsset = true);
     try {
       final asset = await AdsStudioService.uploadAsset(widget.adminKey, campaign.id, picked.bytes as Uint8List, picked.name);
