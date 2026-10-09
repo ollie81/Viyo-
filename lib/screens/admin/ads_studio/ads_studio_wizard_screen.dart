@@ -136,19 +136,30 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   Future<void> _pickAndUploadAsset() async {
     final campaign = _campaign;
     if (campaign == null || _assets.length >= 8) return;
-    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
-    if (result == null) return; // picker cancelled — nothing to report
-    final picked = result.files.single;
-    if (picked.bytes == null) {
-      // Abnormal — a file was actually picked but the browser/OS gave
-      // back no byte data (seen on some mobile browsers). Previously
-      // this silently did nothing, which read as "upload did nothing"
-      // with zero feedback — now it says so instead of going quiet.
-      _showSnack('Could not read that image — try picking it again, or a different file.');
-      return;
-    }
-    setState(() => _uploadingAsset = true);
+    // Everything — including the picker call itself — lives inside this
+    // one try/catch now. The previous version only wrapped the upload
+    // network call; FilePicker.platform.pickFiles() and result.files.single
+    // sat OUTSIDE it, so an exception from either (pickFiles() throwing on
+    // some mobile-browser/webview combos, or .single throwing a bare
+    // StateError whenever the browser hands back zero or more than one
+    // file — both confirmed real failure modes for file_picker's web
+    // backend) propagated uncaught: no snackbar, no thumbnail, nothing —
+    // exactly "totally silent" as reported, and exactly why the earlier,
+    // narrower fix (which only handled a picked-but-null-bytes file)
+    // didn't change anything.
     try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      if (result == null || result.files.isEmpty) return; // picker cancelled — nothing to report
+      if (result.files.length > 1) {
+        _showSnack('Pick one image at a time.');
+        return;
+      }
+      final picked = result.files.first;
+      if (picked.bytes == null) {
+        _showSnack('Could not read that image — try picking it again, or a different file.');
+        return;
+      }
+      setState(() => _uploadingAsset = true);
       final asset = await AdsStudioService.uploadAsset(widget.adminKey, campaign.id, picked.bytes as Uint8List, picked.name);
       if (!mounted) return;
       setState(() => _assets = [..._assets, asset]);
