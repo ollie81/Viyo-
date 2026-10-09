@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../../models/ad_campaign.dart';
 import '../../../services/ads_studio_service.dart';
+import '../../../services/bunny_stream_service.dart';
 import '../../../services/web_download_stub.dart'
     if (dart.library.html) '../../../services/web_download_html.dart' as web_download;
 import '../../../theme/app_theme.dart';
@@ -32,6 +33,12 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
   AdCampaign? _campaign;
   VideoPlayerController? _videoController;
   bool _downloading = false;
+  // True while we're polling Bunny for transcode completion, and also
+  // the sticky "still processing" state if it never finished within
+  // waitForReady's timeout — in either case we must not hand a
+  // not-yet-ready URL to VideoPlayerController, which fails hard with
+  // MEDIA_ERR_SRC_NOT_SUPPORTED rather than a retriable error.
+  bool _processingVideo = false;
 
   @override
   void initState() {
@@ -49,11 +56,41 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _processingVideo = false;
     });
     try {
       final campaign = await AdsStudioService.getCampaign(widget.adminKey, widget.campaignId);
-      if (campaign.videoUrl != null) {
-        final controller = VideoPlayerController.networkUrl(Uri.parse(campaign.videoUrl!));
+      String? playbackUrl = campaign.videoUrl;
+      // Bunny transcodes every upload before it's playable (same race
+      // already solved for Viyo Studio's publish flow) — wait for that
+      // to finish rather than handing the browser/video_player a URL
+      // that 404s or comes back in a container it rejects outright.
+      if (campaign.bunnyVideoId != null) {
+        if (!mounted) return;
+        setState(() => _processingVideo = true);
+        BunnyVideoStatus? status;
+        try {
+          status = await BunnyStreamService.waitForReady(campaign.bunnyVideoId!);
+        } on BunnyNotConfiguredException {
+          status = null;
+        }
+        if (!mounted) return;
+        if (status != null && status.failed) {
+          throw Exception('Bunny could not process this video.');
+        }
+        if (status != null && status.ready) {
+          playbackUrl = status.playbackUrl.isNotEmpty ? status.playbackUrl : playbackUrl;
+          setState(() => _processingVideo = false);
+        } else {
+          // Timed out still processing, or Bunny isn't configured and
+          // we have no other way to confirm readiness — don't attempt
+          // playback yet; leave _processingVideo set so the UI shows a
+          // retry affordance instead of a broken player.
+          playbackUrl = null;
+        }
+      }
+      if (playbackUrl != null) {
+        final controller = VideoPlayerController.networkUrl(Uri.parse(playbackUrl));
         await controller.initialize();
         if (!mounted) return;
         await _videoController?.dispose();
@@ -63,7 +100,10 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
       setState(() => _campaign = campaign);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+      setState(() {
+        _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        _processingVideo = false;
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -169,6 +209,36 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
+                    ] else if (_processingVideo) ...[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: AppTheme.card(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                SizedBox(width: 10),
+                                Text('Still processing', style: TextStyle(fontWeight: FontWeight.w800)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Bunny is still processing the video — it usually takes a few minutes after generation finishes. '
+                              'Tap refresh to check again.',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('Refresh'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                     ] else if (_videoController != null && _videoController!.value.isInitialized)
                       Center(
                         child: AspectRatio(
@@ -198,7 +268,7 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: campaign.videoUrl == null || _downloading ? null : _download,
+                            onPressed: campaign.videoUrl == null || _processingVideo || _downloading ? null : _download,
                             icon: _downloading
                                 ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.download_outlined, size: 16),

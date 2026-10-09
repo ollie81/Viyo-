@@ -25,6 +25,7 @@ class AdCampaign {
   final List<Map<String, dynamic>>? script;
   final String status;
   final String? videoUrl;
+  final String? bunnyVideoId;
   final String? thumbnailUrl;
   final int? durationActualSeconds;
   final int costUsdCents;
@@ -55,6 +56,7 @@ class AdCampaign {
     this.script,
     required this.status,
     this.videoUrl,
+    this.bunnyVideoId,
     this.thumbnailUrl,
     this.durationActualSeconds,
     required this.costUsdCents,
@@ -88,6 +90,7 @@ class AdCampaign {
         script: (json['script'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
         status: json['status'] ?? 'draft',
         videoUrl: json['video_url'] as String?,
+        bunnyVideoId: json['bunny_video_id'] as String?,
         thumbnailUrl: json['thumbnail_url'] as String?,
         durationActualSeconds: (json['duration_actual_seconds'] as num?)?.toInt(),
         costUsdCents: (json['cost_usd_cents'] as num?)?.toInt() ?? 0,
