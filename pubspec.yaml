@@ -67,6 +67,10 @@ dependencies:
 
   # HTTP (for FastAPI AI backend)
   http: ^1.2.1
+  # Already resolved transitively via http — declared directly here too
+  # (Dart convention) since ads_studio_service.dart imports MediaType
+  # from it directly to set a real Content-Type on multipart uploads.
+  http_parser: ^4.1.2
   dio: ^5.4.0
   uuid: ^4.4.0
 

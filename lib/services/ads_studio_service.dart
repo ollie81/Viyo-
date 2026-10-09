@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import '../constants/supabase_constants.dart';
 import '../models/ad_asset.dart';
 import '../models/ad_campaign.dart';
@@ -74,6 +75,38 @@ class AdsStudioService {
 
   static Exception _failure(http.Response res, String action) =>
       Exception(_errorDetail(res) ?? 'Could not $action (${res.statusCode})');
+
+  // http.MultipartFile.fromBytes has no way to infer a Content-Type from
+  // the bytes/filename the way fromPath does (that inference is backed by
+  // the `mime` package, only wired into fromPath) — it defaults silently
+  // to application/octet-stream whenever contentType: isn't passed
+  // explicitly. Every asset upload was sending that default, which the
+  // backend's own (correct) "Only image files are supported here." check
+  // then rejected every single time — confirmed live via screen
+  // recording: the picker and the upload both ran fine, the backend 400'd
+  // on content-type. Both upload methods below now explicitly declare a
+  // real image Content-Type inferred from the picked file's own extension
+  // (this screen only ever offers FileType.image, so the fallback for an
+  // unrecognized/missing extension is still a safe, always-correct choice).
+  static MediaType _imageMediaType(String filename) {
+    final ext = filename.contains('.') ? filename.split('.').last.toLowerCase() : '';
+    switch (ext) {
+      case 'png':
+        return MediaType('image', 'png');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'webp':
+        return MediaType('image', 'webp');
+      case 'heic':
+        return MediaType('image', 'heic');
+      case 'heif':
+        return MediaType('image', 'heif');
+      case 'bmp':
+        return MediaType('image', 'bmp');
+      default:
+        return MediaType('image', 'jpeg');
+    }
+  }
 
   // --- Campaigns ---------------------------------------------------------
 
@@ -189,7 +222,7 @@ class AdsStudioService {
     final uri = Uri.parse('$_base/campaign/$campaignId/assets?asset_type=$assetType');
     final request = http.MultipartRequest('POST', uri)
       ..headers['X-Admin-Key'] = adminKey
-      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _imageMediaType(filename)));
     final res = await http.Response.fromStream(await request.send());
     if (res.statusCode != 200) throw _failure(res, 'upload asset');
     return AdAsset.fromJson(jsonDecode(res.body));
@@ -216,7 +249,7 @@ class AdsStudioService {
     final uri = Uri.parse('$_base/viyo-asset-library?label=${Uri.encodeComponent(label)}');
     final request = http.MultipartRequest('POST', uri)
       ..headers['X-Admin-Key'] = adminKey
-      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _imageMediaType(filename)));
     final res = await http.Response.fromStream(await request.send());
     if (res.statusCode != 200) throw _failure(res, 'upload to the Viyo asset library');
     return AdAsset.fromJson(jsonDecode(res.body));
