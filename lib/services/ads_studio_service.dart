@@ -217,7 +217,7 @@ class AdsStudioService {
     String campaignId,
     Uint8List bytes,
     String filename, {
-    String assetType = 'reference',
+    String assetType = 'other',
   }) async {
     final uri = Uri.parse('$_base/campaign/$campaignId/assets?asset_type=$assetType');
     final request = http.MultipartRequest('POST', uri)

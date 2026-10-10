@@ -106,6 +106,12 @@ class _AdsScriptScreenState extends State<AdsScriptScreen> {
                 'camera_shot': e.value['camera_shot'] ?? '',
                 'dialogue_or_vo': e.value['dialogue_or_vo'] ?? '',
                 'caption_text': e.value['caption_text'] ?? '',
+                // Not user-editable from this screen yet — carried
+                // through unchanged so saving a script edit doesn't
+                // silently drop which real asset (if any) generation
+                // picked for this scene (see ads_studio.py's
+                // featured_asset_id).
+                'featured_asset_id': e.value['featured_asset_id'] ?? '',
                 'is_cta': e.key == _scenes.length - 1,
               })
           .toList();

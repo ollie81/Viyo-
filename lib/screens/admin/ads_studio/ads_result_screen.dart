@@ -183,6 +183,30 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
     }
   }
 
+  /// Requested vs. actual runtime — Veo only renders in fixed 4/6/8s
+  /// clip lengths and TTS dialogue can run long, so the assembled
+  /// video can drift from what was asked for. Surfacing the real
+  /// number here (rather than only the campaign's requested setting)
+  /// is the validation step the admin can actually act on.
+  Widget _durationNote(AdCampaign campaign) {
+    final requested = campaign.durationSeconds;
+    final actual = campaign.durationActualSeconds!;
+    final driftSeconds = (actual - requested).abs();
+    final isOff = driftSeconds > 3 && driftSeconds > requested * 0.25;
+    return Row(
+      children: [
+        Icon(isOff ? Icons.warning_amber_rounded : Icons.timer_outlined, size: 14, color: isOff ? AppColors.danger : AppColors.textMuted),
+        const SizedBox(width: 6),
+        Text(
+          isOff
+              ? 'Requested ${requested}s — came out ${actual}s'
+              : 'Requested ${requested}s • Actual ${actual}s',
+          style: TextStyle(fontSize: 12, color: isOff ? AppColors.danger : AppColors.textMuted, fontWeight: isOff ? FontWeight.w700 : FontWeight.normal),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final campaign = _campaign;
@@ -271,6 +295,10 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                           ),
                         ),
                       ),
+                    if (campaign.status == 'ready' && campaign.durationActualSeconds != null) ...[
+                      const SizedBox(height: 10),
+                      _durationNote(campaign),
+                    ],
                     const SizedBox(height: 16),
                     Row(
                       children: [

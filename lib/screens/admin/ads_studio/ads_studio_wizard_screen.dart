@@ -20,6 +20,17 @@ const _kDurations = [8, 15, 30, 45, 60];
 const _kAspectRatios = ['9:16', '16:9', '1:1'];
 const _kResolutions = ['720p', '1080p'];
 
+// Matches ads_studio.py's AD_ASSET_TYPES exactly. This is what lets
+// generation tell a real product asset (must render pixel-exact) from
+// a creative reference (fair game for AI reinterpretation) — see
+// ads_studio.py's EXACT_ASSET_TYPES and _run_ad_generation.
+const _kAssetTypes = {
+  'screenshot': 'App / website screenshot',
+  'product_photo': 'Product photo',
+  'logo': 'Logo',
+  'other': 'Other / creative reference',
+};
+
 /// Steps 1-4 of the Ads Studio workflow — what to promote, up to 8
 /// reference assets, format, audience/objective, plus duration/aspect/
 /// resolution/Veo settings. A draft campaign is created immediately on
@@ -160,8 +171,13 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
         _showSnack('Could not read that image — try picking it again, or a different file.');
         return;
       }
+      final assetType = await _askAssetType();
+      if (assetType == null) return; // cancelled — nothing uploaded
       setState(() => _uploadingAsset = true);
-      final asset = await AdsStudioService.uploadAsset(widget.adminKey, campaign.id, picked.bytes as Uint8List, picked.name);
+      final asset = await AdsStudioService.uploadAsset(
+        widget.adminKey, campaign.id, picked.bytes as Uint8List, picked.name,
+        assetType: assetType,
+      );
       if (!mounted) return;
       setState(() => _assets = [..._assets, asset]);
     } catch (e) {
@@ -170,6 +186,32 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
     } finally {
       if (mounted) setState(() => _uploadingAsset = false);
     }
+  }
+
+  /// Asked right after picking a file, before it uploads — generation
+  /// can only tell a real product asset from a creative reference if
+  /// the admin actually says which this is (see _kAssetTypes).
+  Future<String?> _askAssetType() {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('What is this image?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _kAssetTypes.entries
+              .map((e) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(e.value, style: const TextStyle(fontSize: 14)),
+                    onTap: () => Navigator.pop(ctx, e.key),
+                  ))
+              .toList(),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickFromViyoLibrary() async {
@@ -462,6 +504,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   }
 
   Widget _assetTile(AdAsset a) {
+    final typeLabel = _kAssetTypes[a.assetType];
     return Stack(
       children: [
         ClipRRect(
@@ -480,6 +523,22 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
             ),
           ),
         ),
+        if (typeLabel != null)
+          Positioned(
+            left: 2,
+            bottom: 2,
+            right: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
+              child: Text(
+                a.assetType == 'other' ? 'creative' : a.assetType.replaceAll('_', ' '),
+                style: const TextStyle(fontSize: 8.5, color: Colors.white, fontWeight: FontWeight.w700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
       ],
     );
   }
