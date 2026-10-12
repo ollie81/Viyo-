@@ -6,6 +6,7 @@ import '../../../services/studio_service.dart';
 import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
 import 'drama_details_dialog.dart';
+import 'new_drama_ai_screen.dart';
 import 'viyo_studio_scenes_screen.dart';
 import 'viyo_studio_screen.dart';
 import 'viyo_studio_voices_screen.dart';
@@ -161,6 +162,34 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
       if (!mounted) return;
       final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create drama: $message')));
+    }
+  }
+
+  /// The new AI-assistant entry point — creates the same kind of empty
+  /// series shell _startNewDrama does (a placeholder title the AI
+  /// overwrites once a real idea is developed), but opens
+  /// NewDramaAiScreen instead of the old paste-a-script screen.
+  /// _startNewDrama itself is untouched: this is a second, separate
+  /// way in, not a replacement.
+  Future<void> _startNewDramaWithAi() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    try {
+      final series = await SeriesService.createSeries(
+        userId: userId,
+        title: 'New Drama',
+        genre: kDefaultDramaGenre,
+        contentType: kContentTypeShortDrama,
+        orientation: kOrientationVertical,
+      );
+      if (!mounted) return;
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => NewDramaAiScreen(adminKey: _adminKey!, seriesId: series.id)))
+          .then((_) => _load());
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not start a new drama: $message')));
     }
   }
 
@@ -380,6 +409,23 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _startNewDramaWithAi,
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE91E8C)),
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('New Drama — AI Assistant'),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 6, bottom: 14),
+            child: Text(
+              'Describe a story idea and let the AI Drama Assistant develop the title, plot, cast, '
+              'cover and episode-1 storyboard for you.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+            ),
+          ),
           Row(
             children: [
               Expanded(

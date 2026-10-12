@@ -2,6 +2,14 @@
 /// Script" step — editable in the UI before being saved to a series,
 /// and re-generatable (the portrait) independently of the others.
 /// [id] is null until it's actually been saved (see StudioService.saveCast).
+///
+/// The fields from [skinTone] through [fourViewSheetUrl] are written
+/// by the newer AI Drama Creator flow (drama_creator_service.dart) —
+/// the original paste-a-script flow never sets them, which is fine:
+/// the backend (studio.py's save_cast) preserves whatever's already
+/// stored for a character when a save request leaves them blank,
+/// specifically so editing an AI-assistant-created character from
+/// this older screen never wipes them out.
 class StudioCharacter {
   final String? id;
   final String name;
@@ -19,6 +27,16 @@ class StudioCharacter {
   // one exact outfit across every scene so it doesn't visibly drift.
   // Empty is a real, supported choice (no lock), not a placeholder.
   final String costumeLock;
+  final String skinTone;
+  final String faceShape;
+  final String eyeColor;
+  final String hairstyle;
+  final String bodyProportions;
+  final String voiceDescription;
+  final String? frontViewUrl;
+  final String? sideViewUrl;
+  final String? rearViewUrl;
+  final String? fourViewSheetUrl;
 
   const StudioCharacter({
     this.id,
@@ -31,7 +49,19 @@ class StudioCharacter {
     this.portraitUrl,
     this.voiceId,
     this.costumeLock = '',
+    this.skinTone = '',
+    this.faceShape = '',
+    this.eyeColor = '',
+    this.hairstyle = '',
+    this.bodyProportions = '',
+    this.voiceDescription = '',
+    this.frontViewUrl,
+    this.sideViewUrl,
+    this.rearViewUrl,
+    this.fourViewSheetUrl,
   });
+
+  bool get hasFourViewSheet => fourViewSheetUrl != null && fourViewSheetUrl!.isNotEmpty;
 
   factory StudioCharacter.fromJson(Map<String, dynamic> json) => StudioCharacter(
         id: json['id'] as String?,
@@ -44,6 +74,16 @@ class StudioCharacter {
         portraitUrl: json['portrait_url'] as String?,
         voiceId: json['voice_id'] as String?,
         costumeLock: json['costume_lock'] ?? '',
+        skinTone: json['skin_tone'] ?? '',
+        faceShape: json['face_shape'] ?? '',
+        eyeColor: json['eye_color'] ?? '',
+        hairstyle: json['hairstyle'] ?? '',
+        bodyProportions: json['body_proportions'] ?? '',
+        voiceDescription: json['voice_description'] ?? '',
+        frontViewUrl: json['front_view_url'] as String?,
+        sideViewUrl: json['side_view_url'] as String?,
+        rearViewUrl: json['rear_view_url'] as String?,
+        fourViewSheetUrl: json['four_view_sheet_url'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +103,16 @@ class StudioCharacter {
         'portrait_url': portraitUrl,
         'voice_id': voiceId,
         'costume_lock': costumeLock,
+        'skin_tone': skinTone,
+        'face_shape': faceShape,
+        'eye_color': eyeColor,
+        'hairstyle': hairstyle,
+        'body_proportions': bodyProportions,
+        'voice_description': voiceDescription,
+        'front_view_url': frontViewUrl,
+        'side_view_url': sideViewUrl,
+        'rear_view_url': rearViewUrl,
+        'four_view_sheet_url': fourViewSheetUrl,
       };
 
   StudioCharacter copyWith({
@@ -75,6 +125,16 @@ class StudioCharacter {
     String? portraitUrl,
     String? voiceId,
     String? costumeLock,
+    String? skinTone,
+    String? faceShape,
+    String? eyeColor,
+    String? hairstyle,
+    String? bodyProportions,
+    String? voiceDescription,
+    String? frontViewUrl,
+    String? sideViewUrl,
+    String? rearViewUrl,
+    String? fourViewSheetUrl,
   }) =>
       StudioCharacter(
         id: id,
@@ -87,5 +147,15 @@ class StudioCharacter {
         portraitUrl: portraitUrl ?? this.portraitUrl,
         voiceId: voiceId ?? this.voiceId,
         costumeLock: costumeLock ?? this.costumeLock,
+        skinTone: skinTone ?? this.skinTone,
+        faceShape: faceShape ?? this.faceShape,
+        eyeColor: eyeColor ?? this.eyeColor,
+        hairstyle: hairstyle ?? this.hairstyle,
+        bodyProportions: bodyProportions ?? this.bodyProportions,
+        voiceDescription: voiceDescription ?? this.voiceDescription,
+        frontViewUrl: frontViewUrl ?? this.frontViewUrl,
+        sideViewUrl: sideViewUrl ?? this.sideViewUrl,
+        rearViewUrl: rearViewUrl ?? this.rearViewUrl,
+        fourViewSheetUrl: fourViewSheetUrl ?? this.fourViewSheetUrl,
       );
 }

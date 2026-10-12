@@ -142,6 +142,12 @@ const kDramaGenres = <String>[
   'Male Lead',
   'Female Lead',
   'LGBTQ+',
+  // Added for the AI Drama Creator flow's genre picker — the existing
+  // list above is untouched, these are additive.
+  'Mystery',
+  'Crime Drama',
+  'Science Fiction',
+  'Historical Drama',
 ];
 
 // Content type ids stored on `series.content_type` — what kind of
