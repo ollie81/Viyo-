@@ -164,12 +164,20 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
     try {
       final portrait = await StudioService.generateCharacterPortrait(widget.adminKey, character);
       final updated = character.copyWith(portraitUrl: portrait.imageUrl);
-      final saved = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: [updated], locations: const []);
+      // studio.py's save_cast treats the request as the complete,
+      // authoritative cast — anything NOT included gets deleted (by
+      // design, for the old paste-script screen's per-card delete
+      // button). Sending just [updated] here silently deleted every
+      // OTHER character in this drama on each call, one at a time, as
+      // the casting loop worked through the cast — which is exactly
+      // what turned "Character not found" into a live bug: by the end
+      // of casting, only the last character saved still existed in the
+      // database, even though the client's in-memory list still showed
+      // all of them with their (locally cached) portraits.
+      final fullList = _characters.map((c) => c.id == character.id ? updated : c).toList();
+      final saved = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: fullList, locations: const []);
       if (!mounted) return;
-      setState(() {
-        final savedChar = saved.characters.firstWhere((c) => c.id == character.id, orElse: () => updated);
-        _characters = _characters.map((c) => c.id == character.id ? savedChar : c).toList();
-      });
+      setState(() => _characters = saved.characters);
     } catch (e) {
       if (!mounted) return;
       _showSnack('Could not cast ${character.name}: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');
@@ -506,6 +514,18 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
               Text('Characters', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               const Spacer(),
               Text('$castingCount added, max $_kMaxCharacters', style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+              // Recovery path for the save_cast partial-list bug (see
+              // _generatePortraitFor's comment) — a character silently
+              // deleted by that bug has no other way back into the
+              // cast than being re-added by hand.
+              if (!_storySetupLocked && _characters.length < _kMaxCharacters)
+                IconButton(
+                  icon: const Icon(Icons.person_add_alt_1, size: 18),
+                  tooltip: 'Add character',
+                  onPressed: _addCharacter,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -779,12 +799,124 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
       voiceDescription: controllers['voice_description']!.text,
     );
     try {
-      final result = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: [updated], locations: const []);
+      // Must send every character, not just this one — save_cast
+      // deletes any existing character whose id is missing from the
+      // request (see _generatePortraitFor's comment for how a
+      // single-character save here silently destroyed the rest of the
+      // cast).
+      final fullList = _characters.map((existing) => existing.id == c.id ? updated : existing).toList();
+      final result = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: fullList, locations: const []);
       if (!mounted) return;
-      setState(() {
-        final savedChar = result.characters.firstWhere((sc) => sc.id == c.id, orElse: () => updated);
-        _characters = _characters.map((existing) => existing.id == c.id ? savedChar : existing).toList();
-      });
+      setState(() => _characters = result.characters);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    }
+  }
+
+  /// Manually add a character — the only way to recover one the
+  /// save_cast partial-list bug silently deleted (see
+  /// _generatePortraitFor's comment), since nothing here recreates a
+  /// deleted row on its own. Also just a normal "add a character the
+  /// AI didn't write" escape hatch, capped at _kMaxCharacters same as
+  /// the AI-generated cast.
+  Future<void> _addCharacter() async {
+    if (_characters.length >= _kMaxCharacters) {
+      _showSnack('Max $_kMaxCharacters characters.');
+      return;
+    }
+    final nameController = TextEditingController();
+    final ageController = TextEditingController();
+    final genderController = TextEditingController();
+    final appearanceController = TextEditingController();
+    final clothingController = TextEditingController();
+    final personalityController = TextEditingController();
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Add character', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: ageController,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Age'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: genderController,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: const InputDecoration(labelText: 'Gender'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: appearanceController,
+              maxLines: 2,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(labelText: 'Appearance'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: clothingController,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(labelText: 'Clothing'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: personalityController,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: const InputDecoration(labelText: 'Personality'),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+          ],
+        ),
+      ),
+    );
+    if (saved != true) return;
+    final name = nameController.text.trim();
+    if (name.isEmpty) {
+      _showSnack('Give the character a name first.');
+      return;
+    }
+    final newCharacter = StudioCharacter(
+      name: name,
+      age: ageController.text,
+      gender: genderController.text,
+      appearance: appearanceController.text,
+      clothing: clothingController.text,
+      personality: personalityController.text,
+    );
+    try {
+      final result = await StudioService.saveCast(
+        widget.adminKey,
+        widget.seriesId,
+        characters: [..._characters, newCharacter],
+        locations: const [],
+      );
+      if (!mounted) return;
+      setState(() => _characters = result.characters);
     } catch (e) {
       if (!mounted) return;
       _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
