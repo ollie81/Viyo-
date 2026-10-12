@@ -50,6 +50,13 @@ class StudioVideoResult {
   StudioVideoResult({required this.videoUrl, required this.durationSeconds, required this.costUsdCents});
 }
 
+class StudioTalkingPortraitResult {
+  final String talkingPortraitUrl;
+  final int costUsdCents;
+
+  StudioTalkingPortraitResult({required this.talkingPortraitUrl, required this.costUsdCents});
+}
+
 class StudioSpendToday {
   final int spentUsdCents;
   final int capUsdCents;
@@ -453,6 +460,33 @@ class StudioService {
     return StudioVideoResult(
       videoUrl: data['video_url'],
       durationSeconds: (data['duration_seconds'] as num).toInt(),
+      costUsdCents: (data['cost_usd_cents'] as num).toInt(),
+    );
+  }
+
+  /// Generates a real lip-synced "talking portrait" video for this
+  /// scene (Sync/sync.so) — animates the scene's single speaking
+  /// character's portrait to match this scene's already-generated
+  /// dialogue audio exactly, unlike [generateSceneVideo] (Veo), which
+  /// can only guess at camera/body motion with no way to match a
+  /// voice to lip movement. Only works for a scene carried by one
+  /// speaking character — the backend 400s with a clear message for a
+  /// multi-character scene rather than syncing the wrong face. Same
+  /// generous timeout as [generateSceneVideo]: this is an async render
+  /// the backend holds the request open while polling.
+  static Future<StudioTalkingPortraitResult> generateTalkingPortrait(String adminKey, String sceneId) async {
+    final res = await http
+        .post(
+          Uri.parse('${AiBackendConstants.baseUrl}/api/v1/admin/studio/scene/$sceneId/talking-portrait'),
+          headers: _headers(adminKey),
+        )
+        .timeout(const Duration(minutes: 6));
+    if (res.statusCode != 200) {
+      throw Exception(_errorDetail(res) ?? 'Could not generate a talking portrait (${res.statusCode})');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return StudioTalkingPortraitResult(
+      talkingPortraitUrl: data['talking_portrait_url'],
       costUsdCents: (data['cost_usd_cents'] as num).toInt(),
     );
   }

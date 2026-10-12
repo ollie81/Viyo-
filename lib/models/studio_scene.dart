@@ -90,6 +90,13 @@ class StudioScene {
   // instead of the default Ken Burns zoom/pan on [imageUrl], so one
   // episode can freely mix video and still-image scenes.
   final String? videoUrl;
+  // Set once this scene has had the real-lip-sync upgrade (Sync) — a
+  // genuinely talking character, not just camera/body motion. Takes
+  // priority over [videoUrl] at assembly when both are somehow set,
+  // since it's the more deliberate, more expensive choice. Only
+  // produced for a scene carried by one speaking character — see
+  // generate_talking_portrait's own docstring in studio.py.
+  final String? talkingPortraitUrl;
   final List<StudioSceneLine> lines;
 
   const StudioScene({
@@ -102,6 +109,7 @@ class StudioScene {
     required this.visualDescription,
     this.imageUrl,
     this.videoUrl,
+    this.talkingPortraitUrl,
     required this.lines,
   });
 
@@ -117,6 +125,7 @@ class StudioScene {
         visualDescription: json['visual_description'] ?? '',
         imageUrl: json['image_url'] as String?,
         videoUrl: json['video_url'] as String?,
+        talkingPortraitUrl: json['talking_portrait_url'] as String?,
         lines: ((json['lines'] as List?) ?? []).map((l) => StudioSceneLine.fromJson(l as Map<String, dynamic>)).toList(),
       );
 
@@ -126,6 +135,7 @@ class StudioScene {
     String? visualDescription,
     String? imageUrl,
     String? videoUrl,
+    String? talkingPortraitUrl,
     List<StudioSceneCharacterRef>? characters,
     List<StudioSceneLine>? lines,
   }) =>
@@ -139,6 +149,7 @@ class StudioScene {
         visualDescription: visualDescription ?? this.visualDescription,
         imageUrl: imageUrl ?? this.imageUrl,
         videoUrl: videoUrl ?? this.videoUrl,
+        talkingPortraitUrl: talkingPortraitUrl ?? this.talkingPortraitUrl,
         lines: lines ?? this.lines,
       );
 

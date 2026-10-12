@@ -154,6 +154,7 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
 
   final Set<String> _generatingImages = {};
   final Set<String> _generatingVideo = {};
+  final Set<String> _generatingTalkingPortrait = {};
   final Set<String> _generatingAudio = {};
   final Set<String> _savingScene = {};
   final Set<String> _savingLine = {};
@@ -347,6 +348,52 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
       _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
     } finally {
       if (mounted) setState(() => _generatingVideo.remove(scene.id));
+    }
+  }
+
+  /// Real lip-synced video (Sync) — a genuinely talking character,
+  /// not just camera/body motion like [_confirmAndGenerateSceneVideo]
+  /// (Veo). No duration picker here: unlike Veo's fixed 4/6/8s clips,
+  /// this is animated to match this scene's actual dialogue audio
+  /// length exactly, so there's nothing for the admin to choose —
+  /// only a cost warning, since the exact per-second charge isn't
+  /// known until the backend measures that audio.
+  Future<void> _confirmAndGenerateTalkingPortrait(int index) async {
+    final scene = _scenes[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Generate talking portrait (real lip sync)'),
+        content: const Text(
+          'Animates this scene\'s speaking character\'s portrait so their mouth actually matches the '
+          'dialogue, instead of the usual zoom/pan or Veo\'s guessed motion. Only works when this scene '
+          'has exactly one speaking character with every line\'s audio already generated. Takes a '
+          'minute or more and costs real money per second of dialogue, charged after it finishes.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Generate')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _generatingTalkingPortrait.add(scene.id));
+    try {
+      final result = await StudioService.generateTalkingPortrait(widget.adminKey, scene.id);
+      if (!mounted) return;
+      setState(() {
+        _scenes[index] = scene.copyWith(talkingPortraitUrl: result.talkingPortraitUrl);
+        _sessionCostCents += result.costUsdCents;
+      });
+      _showSnack('Scene ${index + 1} now has a real talking portrait.');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    } finally {
+      if (mounted) setState(() => _generatingTalkingPortrait.remove(scene.id));
     }
   }
 
@@ -682,6 +729,7 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
   Widget _sceneCard(int index, StudioScene scene) {
     final imageBusy = _generatingImages.contains(scene.id);
     final videoBusy = _generatingVideo.contains(scene.id);
+    final talkingPortraitBusy = _generatingTalkingPortrait.contains(scene.id);
     final savingScene = _savingScene.contains(scene.id);
 
     return Container(
@@ -700,15 +748,30 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                 hasVideo: scene.videoUrl != null,
                 videoBusy: videoBusy,
                 onGenerateVideo: () => _confirmAndGenerateSceneVideo(index),
-                onPlayVideo: scene.videoUrl == null
-                    ? null
-                    : () => showDialog(
+                hasTalkingPortrait: scene.talkingPortraitUrl != null,
+                talkingPortraitBusy: talkingPortraitBusy,
+                onGenerateTalkingPortrait: () => _confirmAndGenerateTalkingPortrait(index),
+                // The talking portrait is the more deliberate, more
+                // expensive upgrade — tapping the thumbnail previews
+                // that one first when both exist, same priority order
+                // assembly itself uses.
+                onPlayVideo: scene.talkingPortraitUrl != null
+                    ? () => showDialog(
                           context: context,
                           builder: (_) => _ScenePreviewDialog(
-                            videoUrl: scene.videoUrl!,
-                            title: 'Scene ${index + 1}',
+                            videoUrl: scene.talkingPortraitUrl!,
+                            title: 'Scene ${index + 1} (talking portrait)',
                           ),
-                        ),
+                        )
+                    : scene.videoUrl == null
+                        ? null
+                        : () => showDialog(
+                              context: context,
+                              builder: (_) => _ScenePreviewDialog(
+                                videoUrl: scene.videoUrl!,
+                                title: 'Scene ${index + 1}',
+                              ),
+                            ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -804,9 +867,13 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
     bool hasVideo = false,
     required bool videoBusy,
     required VoidCallback onGenerateVideo,
+    bool hasTalkingPortrait = false,
+    required bool talkingPortraitBusy,
+    required VoidCallback onGenerateTalkingPortrait,
     VoidCallback? onPlayVideo,
   }) {
     const width = 84.0;
+    final hasAnyVideo = hasVideo || hasTalkingPortrait;
     const height = 149.0;
     return Column(
       children: [
@@ -820,19 +887,23 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: hasVideo ? AppColors.primary : AppColors.surfaceBorder),
+                  border: Border.all(color: hasAnyVideo ? AppColors.primary : AppColors.surfaceBorder),
                   image: url != null ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
                 ),
                 child: url == null ? const Icon(Icons.image_outlined, color: AppColors.textMuted, size: 22) : null,
               ),
-              if (hasVideo) ...[
+              if (hasAnyVideo) ...[
                 Positioned(
                   top: 4,
                   right: 4,
                   child: Container(
                     padding: const EdgeInsets.all(3),
                     decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                    child: const Icon(Icons.videocam, size: 11, color: Colors.black),
+                    // A distinct icon for the talking portrait (vs. a
+                    // plain camera for Veo) — it's a meaningfully
+                    // different, more expensive upgrade and the badge
+                    // should say so at a glance.
+                    child: Icon(hasTalkingPortrait ? Icons.record_voice_over : Icons.videocam, size: 11, color: Colors.black),
                   ),
                 ),
                 Container(
@@ -876,6 +947,22 @@ class _ViyoStudioScenesScreenState extends State<ViyoStudioScenesScreen> {
                   child: Text(
                     hasVideo ? 'Redo video' : 'Real video',
                     style: const TextStyle(fontSize: 11, color: AppColors.primary),
+                  ),
+                ),
+        ),
+        SizedBox(
+          width: width,
+          child: talkingPortraitBusy
+              ? const Padding(
+                  padding: EdgeInsets.all(6),
+                  child: Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))),
+                )
+              : TextButton(
+                  onPressed: onGenerateTalkingPortrait,
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                  child: Text(
+                    hasTalkingPortrait ? 'Redo lip sync' : 'Real lip sync',
+                    style: const TextStyle(fontSize: 11, color: AppColors.secondary),
                   ),
                 ),
         ),
