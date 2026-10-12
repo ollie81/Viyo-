@@ -152,6 +152,7 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
         genre: details.genre,
         contentType: kContentTypeShortDrama,
         orientation: kOrientationVertical,
+        createdVia: 'paste_script',
       );
       if (!mounted) return;
       Navigator.of(context)
@@ -182,6 +183,7 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
         genre: kDefaultDramaGenre,
         contentType: kContentTypeShortDrama,
         orientation: kOrientationVertical,
+        createdVia: 'ai_drama_creator',
       );
       if (!mounted) return;
       Navigator.of(context)
@@ -197,24 +199,31 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
   /// Routes to whichever cast editor this series actually belongs to,
   /// instead of always opening the old paste-script screen regardless
   /// of how the drama was made — the exact confusion reported as
-  /// "why does Edit Cast take me to that old [way of creating]": a
-  /// drama built with the AI Drama Assistant has a written plot
-  /// (plot_json) the old flow never produces, so that's checked first
-  /// via the same getSetup call the AI screen itself loads from. A
-  /// series with no plot — every old-flow drama, including one with
-  /// zero locations — gets exactly the old ViyoStudioScreen behavior
-  /// this had before, unchanged. getSetup succeeds either way (it
-  /// returns blank-but-valid defaults for a series with no plot_json
-  /// yet), so a failed check falls back to the old screen rather than
-  /// blocking the admin from editing cast at all.
+  /// "why does Edit Cast take me to that old [way of creating]".
+  ///
+  /// [series.createdVia] (set at creation time, see _startNewDrama/
+  /// _startNewDramaWithAi) is the primary signal — instant, no network
+  /// call, and correct even for a brand-new AI drama that's still
+  /// completely empty (no plot or cast yet for any other check to key
+  /// off of, which is exactly the case reported: tapping "Start
+  /// Casting" on a just-created, still-untouched AI drama). For a
+  /// series created before this column existed, [createdVia] is null,
+  /// so this falls back to checking whether a plot has actually been
+  /// written (only the AI flow ever produces one) via the same
+  /// getSetup call the AI screen itself loads from — getSetup succeeds
+  /// either way (blank-but-valid defaults for a plot-less series), so
+  /// a failed check falls back to the old screen rather than blocking
+  /// cast editing entirely.
   Future<void> _continueCasting(Series series) async {
-    var isAiDrama = false;
-    try {
-      final setup = await DramaCreatorService.getSetup(_adminKey!, series.id);
-      isAiDrama = !setup.plot.isEmpty;
-    } catch (_) {
-      // Fall through to the old screen — see this method's own doc
-      // comment on why that's the safe default here.
+    var isAiDrama = series.createdVia == 'ai_drama_creator';
+    if (!isAiDrama && series.createdVia == null) {
+      try {
+        final setup = await DramaCreatorService.getSetup(_adminKey!, series.id);
+        isAiDrama = !setup.plot.isEmpty;
+      } catch (_) {
+        // Fall through to the old screen — see this method's own doc
+        // comment on why that's the safe default here.
+      }
     }
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(

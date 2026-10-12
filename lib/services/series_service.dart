@@ -31,6 +31,11 @@ class SeriesService {
     // fields.
     String? contentType,
     String? orientation,
+    // 'ai_drama_creator' | 'paste_script' — which Studio flow actually
+    // created this series, so the Studio home screen can route "Edit
+    // Cast" to the right screen even before any plot/cast exists yet.
+    // Same "inert until migrated" column as contentType/orientation.
+    String? createdVia,
   }) async {
     final row = {
       'user_id': userId,
@@ -43,6 +48,7 @@ class SeriesService {
     final extraFields = {
       if (contentType != null) 'content_type': contentType,
       if (orientation != null) 'orientation': orientation,
+      if (createdVia != null) 'created_via': createdVia,
     };
 
     Map<String, dynamic> inserted;

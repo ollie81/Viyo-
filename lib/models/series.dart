@@ -41,6 +41,15 @@ class Series {
   final String? contentType;
   final String? orientation;
 
+  // Which Studio flow actually created this series — 'ai_drama_creator'
+  // or 'paste_script'. Null for every series created before this
+  // column existed, or until the migration handing it over has run
+  // (same "inert until migrated" posture as contentType/orientation
+  // above). Lets the Studio home screen route "Edit Cast" to the right
+  // screen for a brand-new, still-empty AI drama — before it has any
+  // plot_json yet for the plot-based fallback check to key off of.
+  final String? createdVia;
+
   String get effectiveContentType => contentType ?? kContentTypeShortDrama;
   String get effectiveOrientation => orientation ?? kOrientationVertical;
 
@@ -66,6 +75,7 @@ class Series {
     this.status,
     this.contentType,
     this.orientation,
+    this.createdVia,
   });
 
   factory Series.fromJson(Map<String, dynamic> json, {int episodeCount = 0}) => Series(
@@ -84,6 +94,7 @@ class Series {
         status: json['status'] as String?,
         contentType: json['content_type'] as String?,
         orientation: json['orientation'] as String?,
+        createdVia: json['created_via'] as String?,
       );
 
   Series copyWith({
@@ -111,6 +122,7 @@ class Series {
         episodeCount: episodeCount ?? this.episodeCount,
         contentType: contentType,
         orientation: orientation,
+        createdVia: createdVia,
       );
 }
 
