@@ -541,19 +541,22 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
                       ))
                   .toList(),
             ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: _allPortraitsReady ? _lockStorySetup : null,
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline, size: 18, color: _allPortraitsReady ? AppColors.success : AppColors.textMuted),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Confirmed, no re-editing later',
-                    style: TextStyle(fontSize: 12.5, color: _allPortraitsReady ? AppColors.textPrimary : AppColors.textMuted),
-                  ),
-                ],
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _allPortraitsReady ? _lockStorySetup : null,
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('Confirm story & cast'),
               ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _allPortraitsReady
+                  ? 'No re-editing after this — reveals the cover and character sheets next.'
+                  : 'Still casting your characters — this unlocks once portraits finish.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             ),
           ] else
             Row(
