@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/series.dart';
 import '../../../models/studio_episode_status.dart';
+import '../../../services/drama_creator_service.dart';
 import '../../../services/series_service.dart';
 import '../../../services/studio_service.dart';
 import '../../../services/supabase_service.dart';
@@ -193,12 +194,35 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
     }
   }
 
-  void _continueCasting(Series series) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(
-          builder: (_) => ViyoStudioScreen(adminKey: _adminKey!, preselectedSeriesId: series.id),
-        ))
-        .then((_) => _load());
+  /// Routes to whichever cast editor this series actually belongs to,
+  /// instead of always opening the old paste-script screen regardless
+  /// of how the drama was made — the exact confusion reported as
+  /// "why does Edit Cast take me to that old [way of creating]": a
+  /// drama built with the AI Drama Assistant has a written plot
+  /// (plot_json) the old flow never produces, so that's checked first
+  /// via the same getSetup call the AI screen itself loads from. A
+  /// series with no plot — every old-flow drama, including one with
+  /// zero locations — gets exactly the old ViyoStudioScreen behavior
+  /// this had before, unchanged. getSetup succeeds either way (it
+  /// returns blank-but-valid defaults for a series with no plot_json
+  /// yet), so a failed check falls back to the old screen rather than
+  /// blocking the admin from editing cast at all.
+  Future<void> _continueCasting(Series series) async {
+    var isAiDrama = false;
+    try {
+      final setup = await DramaCreatorService.getSetup(_adminKey!, series.id);
+      isAiDrama = !setup.plot.isEmpty;
+    } catch (_) {
+      // Fall through to the old screen — see this method's own doc
+      // comment on why that's the safe default here.
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => isAiDrama
+          ? NewDramaAiScreen(adminKey: _adminKey!, seriesId: series.id)
+          : ViyoStudioScreen(adminKey: _adminKey!, preselectedSeriesId: series.id),
+    ));
+    _load();
   }
 
   void _continueVoices(Series series) {
