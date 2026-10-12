@@ -167,6 +167,7 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
       'major_secrets': TextEditingController(text: _plot.majorSecrets),
       'emotional_turning_points': TextEditingController(text: _plot.emotionalTurningPoints),
       'episode_progression': TextEditingController(text: _plot.episodeProgression),
+      'opening_hook': TextEditingController(text: _plot.openingHook),
       'cliffhanger': TextEditingController(text: _plot.cliffhanger),
     };
     const labels = {
@@ -176,7 +177,8 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
       'major_secrets': 'Major secrets',
       'emotional_turning_points': 'Emotional turning points',
       'episode_progression': 'Episode progression',
-      'cliffhanger': 'Cliffhanger',
+      'opening_hook': 'Opening hook (what scene 1 opens on)',
+      'cliffhanger': 'Cliffhanger (what the final scene ends on)',
     };
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -225,6 +227,7 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
       majorSecrets: controllers['major_secrets']!.text,
       emotionalTurningPoints: controllers['emotional_turning_points']!.text,
       episodeProgression: controllers['episode_progression']!.text,
+      openingHook: controllers['opening_hook']!.text,
       cliffhanger: controllers['cliffhanger']!.text,
     );
     try {

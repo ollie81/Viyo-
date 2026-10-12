@@ -13,6 +13,11 @@ class DramaPlot {
   final String majorSecrets;
   final String emotionalTurningPoints;
   final String episodeProgression;
+  // The exact moment every episode's scene 1 is built from — distinct
+  // from [premise] (scene-setting) and from [cliffhanger] (the ending
+  // beat). Written by GPT specifically for hook strength, not just a
+  // theme — see drama_creator.py's _STORYBOARD_PROMPT.
+  final String openingHook;
   final String cliffhanger;
 
   const DramaPlot({
@@ -22,6 +27,7 @@ class DramaPlot {
     this.majorSecrets = '',
     this.emotionalTurningPoints = '',
     this.episodeProgression = '',
+    this.openingHook = '',
     this.cliffhanger = '',
   });
 
@@ -34,6 +40,7 @@ class DramaPlot {
         majorSecrets: json['major_secrets'] ?? '',
         emotionalTurningPoints: json['emotional_turning_points'] ?? '',
         episodeProgression: json['episode_progression'] ?? '',
+        openingHook: json['opening_hook'] ?? '',
         cliffhanger: json['cliffhanger'] ?? '',
       );
 
@@ -44,6 +51,7 @@ class DramaPlot {
         'major_secrets': majorSecrets,
         'emotional_turning_points': emotionalTurningPoints,
         'episode_progression': episodeProgression,
+        'opening_hook': openingHook,
         'cliffhanger': cliffhanger,
       };
 }
