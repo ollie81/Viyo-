@@ -21,7 +21,7 @@ import 'viyo_studio_scenes_screen.dart';
 /// clearly-separate entry point.
 // Matches drama_creator.py's own MAX_CHARACTERS — display only; the
 // backend is the actual source of truth and enforces it server-side.
-const _kMaxCharacters = 2;
+const _kMaxCharacters = 4;
 
 class NewDramaAiScreen extends StatefulWidget {
   final String adminKey;
@@ -57,6 +57,9 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
   final Set<String> _generatingViewsForCharacterId = {};
 
   int _episodeDurationSeconds = 30;
+  // Null = default pacing (duration-driven). Set = denser/sparser than
+  // the default — see DramaSetupResult.episodeSceneCount.
+  int? _episodeSceneCount;
   int _pointsUsed = 0;
   bool _confirmingAndGenerating = false;
 
@@ -87,6 +90,7 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
         _characters = setup.characters;
         _coverImageUrl = setup.coverImageUrl;
         _episodeDurationSeconds = setup.episodeDurationSeconds;
+        _episodeSceneCount = setup.episodeSceneCount;
         _pointsUsed = setup.pointsUsed;
         // Resuming a drama whose story was already generated (even if
         // not yet locked/confirmed) skips straight past the idea
@@ -310,6 +314,23 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
     }
   }
 
+  /// Null picks "Auto" — back to the backend's default duration-driven
+  /// pacing. A real number overrides it for a drama that wants denser
+  /// or sparser scenes than that default curve would choose (e.g. many
+  /// short close-up beats rather than a few longer ones). "Auto" sends
+  /// 0 — the backend's clear sentinel (see update_episode_settings) —
+  /// rather than skipping the call, so re-picking Auto actually clears
+  /// a previously-set override instead of leaving it stale server-side.
+  Future<void> _pickEpisodeSceneCount(int? count) async {
+    setState(() => _episodeSceneCount = count);
+    try {
+      await DramaCreatorService.updateEpisodeSettings(widget.adminKey, widget.seriesId, episodeSceneCount: count ?? 0);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    }
+  }
+
   Future<void> _confirmAndGenerateStoryboard() async {
     if (!_readyToConfirm) {
       _showSnack('Finish the cover and every character\'s reference sheet first.');
@@ -494,8 +515,30 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: [30, 60, 90, 120]
+              children: [30, 45, 60, 90, 120]
                   .map((d) => ChoiceChip(label: Text('${d}s'), selected: _episodeDurationSeconds == d, onSelected: (_) => _pickEpisodeDuration(d)))
+                  .toList(),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Scene count',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Auto paces scenes to the length above. Override it for a denser or sparser episode — e.g. many '
+              'short close-up beats instead of a few longer scenes.',
+              style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [null, 6, 8, 10, 12, 16]
+                  .map((n) => ChoiceChip(
+                        label: Text(n == null ? 'Auto' : '$n'),
+                        selected: _episodeSceneCount == n,
+                        onSelected: (_) => _pickEpisodeSceneCount(n),
+                      ))
                   .toList(),
             ),
             const SizedBox(height: 16),

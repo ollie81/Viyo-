@@ -74,6 +74,10 @@ class DramaSetupResult {
   final bool setupConfirmed;
   final int episodeDurationSeconds;
   final String dramaAspectRatio;
+  // Null = use the backend's default duration->scene-count curve
+  // (built for ad pacing). Set = a drama that wants denser/sparser
+  // pacing than that curve would pick — see _pickEpisodeSceneCount.
+  final int? episodeSceneCount;
   final int pointsUsed;
 
   DramaSetupResult({
@@ -85,6 +89,7 @@ class DramaSetupResult {
     required this.setupConfirmed,
     required this.episodeDurationSeconds,
     required this.dramaAspectRatio,
+    this.episodeSceneCount,
     required this.pointsUsed,
   });
 
@@ -99,6 +104,7 @@ class DramaSetupResult {
         setupConfirmed: json['setup_confirmed'] == true,
         episodeDurationSeconds: (json['episode_duration_seconds'] as num?)?.toInt() ?? 30,
         dramaAspectRatio: json['drama_aspect_ratio'] ?? '9:16',
+        episodeSceneCount: (json['episode_scene_count'] as num?)?.toInt(),
         pointsUsed: (json['points_used'] as num?)?.toInt() ?? 0,
       );
 }
@@ -216,6 +222,7 @@ class DramaCreatorService {
     String seriesId, {
     int? episodeDurationSeconds,
     String? dramaAspectRatio,
+    int? episodeSceneCount,
   }) async {
     final res = await http.put(
       Uri.parse('$_base/$seriesId/episode-settings'),
@@ -223,6 +230,7 @@ class DramaCreatorService {
       body: jsonEncode({
         if (episodeDurationSeconds != null) 'episode_duration_seconds': episodeDurationSeconds,
         if (dramaAspectRatio != null) 'drama_aspect_ratio': dramaAspectRatio,
+        if (episodeSceneCount != null) 'episode_scene_count': episodeSceneCount,
       }),
     );
     if (res.statusCode != 200) {
