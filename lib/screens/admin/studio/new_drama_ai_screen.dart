@@ -140,26 +140,41 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
   /// Generates a portrait for every character that doesn't have one
   /// yet, persisting each via the exact same generateCharacterPortrait
   /// + saveCast pair the old paste-script flow already uses — nothing
-  /// new on the backend for this step, pure reuse.
+  /// new on the backend for this step, pure reuse. A failure here used
+  /// to just flash a snackbar and leave the character silently stuck
+  /// forever (no portrait, "Confirm story & cast" permanently disabled,
+  /// no way to tell why) — see _generatePortraitFor for the per-
+  /// character retry this now exposes in the UI.
   Future<void> _castEveryCharacterMissingAPortrait() async {
     for (final character in List.of(_characters)) {
       if ((character.portraitUrl ?? '').isNotEmpty || character.id == null) continue;
-      setState(() => _castingCharacterIds.add(character.id!));
-      try {
-        final portrait = await StudioService.generateCharacterPortrait(widget.adminKey, character);
-        final updated = character.copyWith(portraitUrl: portrait.imageUrl);
-        final saved = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: [updated], locations: const []);
-        if (!mounted) return;
-        setState(() {
-          final savedChar = saved.characters.firstWhere((c) => c.id == character.id, orElse: () => updated);
-          _characters = _characters.map((c) => c.id == character.id ? savedChar : c).toList();
-        });
-      } catch (e) {
-        if (!mounted) return;
-        _showSnack('Could not cast ${character.name}: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');
-      } finally {
-        if (mounted) setState(() => _castingCharacterIds.remove(character.id));
-      }
+      await _generatePortraitFor(character);
+    }
+  }
+
+  /// Casts (or re-casts, after an earlier failure) a single character.
+  /// Pulled out of _castEveryCharacterMissingAPortrait so a character
+  /// whose portrait generation failed — the only thing that can leave
+  /// "Confirm story & cast" permanently disabled with nothing visibly
+  /// happening — has a real retry button instead of being stuck until
+  /// the whole idea is regenerated from scratch.
+  Future<void> _generatePortraitFor(StudioCharacter character) async {
+    if (character.id == null) return;
+    setState(() => _castingCharacterIds.add(character.id!));
+    try {
+      final portrait = await StudioService.generateCharacterPortrait(widget.adminKey, character);
+      final updated = character.copyWith(portraitUrl: portrait.imageUrl);
+      final saved = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: [updated], locations: const []);
+      if (!mounted) return;
+      setState(() {
+        final savedChar = saved.characters.firstWhere((c) => c.id == character.id, orElse: () => updated);
+        _characters = _characters.map((c) => c.id == character.id ? savedChar : c).toList();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Could not cast ${character.name}: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}');
+    } finally {
+      if (mounted) setState(() => _castingCharacterIds.remove(character.id));
     }
   }
 
@@ -554,7 +569,9 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
             Text(
               _allPortraitsReady
                   ? 'No re-editing after this — reveals the cover and character sheets next.'
-                  : 'Still casting your characters — this unlocks once portraits finish.',
+                  : (_castingCharacterIds.isNotEmpty
+                      ? 'Still casting your characters — this unlocks once portraits finish.'
+                      : 'A character above has no portrait yet — tap Retry on it, then this unlocks.'),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             ),
@@ -573,32 +590,63 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
 
   Widget _characterRow(StudioCharacter c) {
     final busy = c.id != null && _castingCharacterIds.contains(c.id);
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => _openCharacterDetail(c),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: (c.portraitUrl ?? '').isNotEmpty
-                  ? Image.network(c.portraitUrl!, width: 40, height: 40, fit: BoxFit.cover)
-                  : Container(
-                      width: 40,
-                      height: 40,
-                      color: AppColors.surfaceBorder,
-                      child: busy
-                          ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.person_outline, size: 18, color: AppColors.textMuted),
+    final missingPortrait = (c.portraitUrl ?? '').isEmpty;
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _openCharacterDetail(c),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: (c.portraitUrl ?? '').isNotEmpty
+                        ? Image.network(c.portraitUrl!, width: 40, height: 40, fit: BoxFit.cover)
+                        : Container(
+                            width: 40,
+                            height: 40,
+                            color: AppColors.surfaceBorder,
+                            child: busy
+                                ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.person_outline, size: 18, color: AppColors.textMuted),
+                          ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(c.name, style: const TextStyle(fontSize: 13.5)),
+                        // The one and only symptom of a silently-failed
+                        // portrait cast — without this, the character
+                        // just sits there forever with nothing but a
+                        // grey placeholder icon, and the admin has no
+                        // way to tell that's *why* "Confirm story &
+                        // cast" below stays disabled.
+                        if (missingPortrait)
+                          Text(
+                            busy ? 'Casting…' : 'No portrait yet',
+                            style: TextStyle(fontSize: 10.5, color: busy ? AppColors.textMuted : AppColors.danger),
+                          ),
+                      ],
                     ),
+                  ),
+                  const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+                ],
+              ),
             ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(c.name, style: const TextStyle(fontSize: 13.5))),
-            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
-          ],
+          ),
         ),
-      ),
+        if (missingPortrait && !busy)
+          TextButton(
+            onPressed: () => _generatePortraitFor(c),
+            child: const Text('Retry', style: TextStyle(fontSize: 12.5)),
+          ),
+      ],
     );
   }
 
