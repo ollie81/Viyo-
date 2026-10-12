@@ -573,28 +573,174 @@ class _NewDramaAiScreenState extends State<NewDramaAiScreen> {
 
   Widget _characterRow(StudioCharacter c) {
     final busy = c.id != null && _castingCharacterIds.contains(c.id);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: (c.portraitUrl ?? '').isNotEmpty
-                ? Image.network(c.portraitUrl!, width: 40, height: 40, fit: BoxFit.cover)
-                : Container(
-                    width: 40,
-                    height: 40,
-                    color: AppColors.surfaceBorder,
-                    child: busy
-                        ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.person_outline, size: 18, color: AppColors.textMuted),
-                  ),
-          ),
-          const SizedBox(width: 10),
-          Text(c.name, style: const TextStyle(fontSize: 13.5)),
-        ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _openCharacterDetail(c),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: (c.portraitUrl ?? '').isNotEmpty
+                  ? Image.network(c.portraitUrl!, width: 40, height: 40, fit: BoxFit.cover)
+                  : Container(
+                      width: 40,
+                      height: 40,
+                      color: AppColors.surfaceBorder,
+                      child: busy
+                          ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.person_outline, size: 18, color: AppColors.textMuted),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(c.name, style: const TextStyle(fontSize: 13.5))),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+          ],
+        ),
       ),
     );
+  }
+
+  /// Tapping a character in the cast list — the only way into their
+  /// full details (age/gender/appearance/clothing/personality plus the
+  /// AI-generated skin tone/face shape/eye color/hairstyle/body
+  /// proportions/voice description) since the compact row above only
+  /// has room for the portrait and name. Editable until story setup is
+  /// locked, same cutoff the plot editor (_editPlot) and the "no
+  /// re-editing later" copy already promise elsewhere on this screen —
+  /// after that it's view-only, falling back to the four-view sheet
+  /// section below for anything further.
+  Future<void> _openCharacterDetail(StudioCharacter c) async {
+    final editable = !_storySetupLocked;
+    final controllers = {
+      'name': TextEditingController(text: c.name),
+      'age': TextEditingController(text: c.age),
+      'gender': TextEditingController(text: c.gender),
+      'appearance': TextEditingController(text: c.appearance),
+      'clothing': TextEditingController(text: c.clothing),
+      'costume_lock': TextEditingController(text: c.costumeLock),
+      'personality': TextEditingController(text: c.personality),
+      'skin_tone': TextEditingController(text: c.skinTone),
+      'face_shape': TextEditingController(text: c.faceShape),
+      'eye_color': TextEditingController(text: c.eyeColor),
+      'hairstyle': TextEditingController(text: c.hairstyle),
+      'body_proportions': TextEditingController(text: c.bodyProportions),
+      'voice_description': TextEditingController(text: c.voiceDescription),
+    };
+    const labels = {
+      'name': 'Name',
+      'age': 'Age',
+      'gender': 'Gender',
+      'appearance': 'Appearance',
+      'clothing': 'Clothing',
+      'costume_lock': 'Costume lock (optional)',
+      'personality': 'Personality',
+      'skin_tone': 'Skin tone',
+      'face_shape': 'Face shape',
+      'eye_color': 'Eye color',
+      'hairstyle': 'Hairstyle',
+      'body_proportions': 'Body proportions',
+      'voice_description': 'Voice description',
+    };
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, scrollController) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: (c.portraitUrl ?? '').isNotEmpty
+                        ? Image.network(c.portraitUrl!, width: 48, height: 48, fit: BoxFit.cover)
+                        : Container(
+                            width: 48,
+                            height: 48,
+                            color: AppColors.surfaceBorder,
+                            child: const Icon(Icons.person_outline, size: 20, color: AppColors.textMuted),
+                          ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      editable ? 'Edit character' : 'Character details',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+              if (!editable) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Story setup is locked — view only.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  children: labels.entries
+                      .map((e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: TextField(
+                              controller: controllers[e.key],
+                              enabled: editable,
+                              maxLines: e.key == 'appearance' ? 2 : 1,
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                              decoration: InputDecoration(labelText: e.value),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (editable)
+                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save'))
+              else
+                OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Close')),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (saved != true || c.id == null) return;
+    final updated = c.copyWith(
+      name: controllers['name']!.text,
+      age: controllers['age']!.text,
+      gender: controllers['gender']!.text,
+      appearance: controllers['appearance']!.text,
+      clothing: controllers['clothing']!.text,
+      costumeLock: controllers['costume_lock']!.text,
+      personality: controllers['personality']!.text,
+      skinTone: controllers['skin_tone']!.text,
+      faceShape: controllers['face_shape']!.text,
+      eyeColor: controllers['eye_color']!.text,
+      hairstyle: controllers['hairstyle']!.text,
+      bodyProportions: controllers['body_proportions']!.text,
+      voiceDescription: controllers['voice_description']!.text,
+    );
+    try {
+      final result = await StudioService.saveCast(widget.adminKey, widget.seriesId, characters: [updated], locations: const []);
+      if (!mounted) return;
+      setState(() {
+        final savedChar = result.characters.firstWhere((sc) => sc.id == c.id, orElse: () => updated);
+        _characters = _characters.map((existing) => existing.id == c.id ? savedChar : existing).toList();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+    }
   }
 
   Widget _coverSection() {
