@@ -31,6 +31,11 @@ class CreatePostScreen extends StatefulWidget {
 class _CreatePostScreenState extends State<CreatePostScreen> {
   PostType _type = PostType.text;
   final _caption = TextEditingController();
+  // "Steal My Setup" — optional, left blank most of the time. Only
+  // posted at all once there's real text in it (see createPost call
+  // below), so leaving it empty behaves exactly as if the field never
+  // existed.
+  final _setupNote = TextEditingController();
   // XFile, not dart:io's File — File doesn't work on web (throws at
   // runtime), while XFile (image_picker's own cross-platform file
   // type) reads bytes and uploads identically on every platform.
@@ -380,6 +385,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         videoProvider: videoProvider,
         bunnyVideoId: bunnyVideoId,
         videoStatus: videoStatus,
+        setupNote: _setupNote.text.trim(),
       );
 
       // Bunny still needs a little time to finish encoding after the
@@ -422,6 +428,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (!mounted) return;
       setState(() {
         _caption.clear();
+        _setupNote.clear();
         _mediaFile = null;
         _videoThumbnail = null;
         _customThumbnailPicked = false;
@@ -602,6 +609,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               maxLines: 4,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(hintText: "What's on your mind, creator?"),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _setupNote,
+              maxLength: 140,
+              style: const TextStyle(color: Colors.white, fontSize: 13.5),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.build_outlined, size: 18, color: AppColors.textMuted),
+                hintText: 'Steal My Setup (optional) — gear, app, or preset you used',
+                counterStyle: TextStyle(fontSize: 11, color: AppColors.textMuted),
+              ),
             ),
             const SizedBox(height: 8),
             Wrap(

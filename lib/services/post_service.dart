@@ -485,6 +485,10 @@ class PostService {
     String? videoProvider,
     String? bunnyVideoId,
     String? videoStatus,
+    // "Steal My Setup" — the creator's own note on the gear/app/preset
+    // behind this post. Sent conditionally, same column-not-migrated-
+    // yet retry as the Bunny fields below.
+    String? setupNote,
   }) async {
     final row = {
       'user_id': userId,
@@ -501,6 +505,7 @@ class PostService {
       if (videoProvider != null) 'video_provider': videoProvider,
       if (bunnyVideoId != null) 'bunny_video_id': bunnyVideoId,
       if (videoStatus != null) 'video_status': videoStatus,
+      if (setupNote != null && setupNote.isNotEmpty) 'setup_note': setupNote,
     };
 
     Map<String, dynamic> inserted;

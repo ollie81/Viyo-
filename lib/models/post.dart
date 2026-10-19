@@ -100,6 +100,15 @@ class Post {
   final int? width;
   final int? height;
 
+  // "Steal My Setup" — the creator's own note on the gear/app/preset
+  // behind this post (e.g. "iPhone 15 · CapCut · Warm Film preset"),
+  // optional and free-text. Null for every post made before this
+  // column existed, or one where the creator just left it blank — read
+  // opportunistically (see fromJson) and sent conditionally (see
+  // PostService.createPost), same "inert until migrated" posture as
+  // videoProvider/width/height above.
+  final String? setupNote;
+
   bool get isEpisode => seriesId != null;
   bool get isVideoProcessing => videoStatus == 'processing';
   bool get isVideoFailed => videoStatus == 'failed';
@@ -165,6 +174,7 @@ class Post {
     this.videoStatus,
     this.width,
     this.height,
+    this.setupNote,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -206,6 +216,7 @@ class Post {
         videoProvider: json['video_provider'],
         bunnyVideoId: json['bunny_video_id'],
         videoStatus: json['video_status'],
+        setupNote: json['setup_note'] as String?,
       );
   Post copyWith({
     String? id,
@@ -236,6 +247,7 @@ class Post {
     String? videoStatus,
     int? width,
     int? height,
+    String? setupNote,
   }) {
     return Post(
       id: id ?? this.id,
@@ -266,6 +278,7 @@ class Post {
       videoStatus: videoStatus ?? this.videoStatus,
       width: width ?? this.width,
       height: height ?? this.height,
+      setupNote: setupNote ?? this.setupNote,
     );
   }
 }

@@ -184,6 +184,25 @@ class PostCard extends StatelessWidget {
               child: Text(post.caption, style: const TextStyle(height: 1.3)),
             ),
 
+          // ── Steal My Setup ──
+          if ((post.setupNote ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.build_outlined, size: 14, color: AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      post.setupNote!,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // ── Media (photo or video thumbnail) ──
           if (post.mediaUrl != null) ...[
             Padding(
