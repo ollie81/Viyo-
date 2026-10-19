@@ -14,6 +14,7 @@ import '../widgets/daily_streak_card.dart';
 import '../widgets/engagement_digest_card.dart';
 import '../widgets/trending_card.dart';
 import '../widgets/weekly_report_card.dart';
+import 'creator_feed_screen.dart';
 import 'leaderboard_screen.dart';
 
 /// The Creator Growth Dashboard — one place to see performance,
@@ -75,7 +76,19 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     final s = _stats!;
 
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Growth Dashboard')),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: const Text('Growth Dashboard'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome_outlined),
+            tooltip: 'Creator Feed',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CreatorFeedScreen()),
+            ),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         color: AppColors.primary,
