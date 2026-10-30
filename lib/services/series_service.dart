@@ -375,16 +375,49 @@ class SeriesService {
 
   /// Discover's "New AI Series" — freshly started series, newest first.
   static Future<List<Series>> getNewAiSeries({int limit = 12}) async {
+    // Over-fetch: some of the newest rows are series a creator just
+    // started in Studio and hasn't published an episode for yet. Those
+    // get filtered out below, so a plain `limit` here could leave this
+    // row short of real content.
     final data = await _client
         .from('series')
         .select('*, profiles(username, display_name, avatar_url)')
         .order('created_at', ascending: false)
-        .limit(limit);
+        .limit(limit * 4);
     final series = (data as List).map((e) => Series.fromJson(e)).toList();
-    for (final s in series) {
+    if (series.isEmpty) return [];
+
+    // A series with zero published episodes is still a draft being
+    // built in Studio — its `series` row exists but there's nothing to
+    // actually watch yet, which is exactly the empty purple-placeholder
+    // tile this row should never show to real users. Keep only series
+    // with at least one public episode, and stamp the real count onto
+    // each while we're already querying — SeriesPosterCard's "N ep"
+    // badge was otherwise always hidden here (episodeCount defaulted to
+    // 0, since this query never joined posts before).
+    final seriesIds = series.map((s) => s.id).toList();
+    final episodeRows = await _client
+        .from('posts')
+        .select('series_id')
+        .inFilter('series_id', seriesIds)
+        .eq('is_private', false)
+        .eq('is_archived', false);
+    final counts = <String, int>{};
+    for (final row in (episodeRows as List)) {
+      final sid = row['series_id'] as String?;
+      if (sid == null) continue;
+      counts[sid] = (counts[sid] ?? 0) + 1;
+    }
+
+    final withEpisodes = series
+        .where((s) => (counts[s.id] ?? 0) > 0)
+        .map((s) => s.copyWith(episodeCount: counts[s.id]))
+        .take(limit)
+        .toList();
+    for (final s in withEpisodes) {
       backfillCoverIfMissing(s);
     }
-    return series;
+    return withEpisodes;
   }
 
   /// Every public series, optionally narrowed to one genre and ordered

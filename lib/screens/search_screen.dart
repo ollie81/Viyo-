@@ -329,6 +329,7 @@ class _DiscoverBody extends StatelessWidget {
             itemCount: trendingDramas.length,
             itemBuilder: (ctx, i) => _TrendingDramaCard(
               post: trendingDramas[i],
+              rank: i + 1,
               onTap: () => onOpenDrama(trendingDramas[i]),
             ),
           ),
@@ -399,7 +400,13 @@ class _SectionLabel extends StatelessWidget {
 class _TrendingDramaCard extends StatelessWidget {
   final Post post;
   final VoidCallback onTap;
-  const _TrendingDramaCard({required this.post, required this.onTap});
+  // This row is already sorted by the same engagement score that
+  // decides its order, so a #1/#2/#3 badge is just labeling a ranking
+  // that already exists — not inventing one. Shown for every tile
+  // (matching the ranked-grid density of competitor drama apps), gold
+  // for the top 3 to call those out the way a real leaderboard would.
+  final int rank;
+  const _TrendingDramaCard({required this.post, required this.onTap, required this.rank});
 
   @override
   Widget build(BuildContext context) {
@@ -462,6 +469,22 @@ class _TrendingDramaCard extends StatelessWidget {
               right: 6,
               child: Row(
                 children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: rank <= 3 ? AppColors.coin : Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '#$rank',
+                      style: TextStyle(
+                        color: rank <= 3 ? AppColors.background : Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
                   const Icon(Icons.auto_awesome, size: 11, color: AppColors.secondary),
                   const SizedBox(width: 4),
                   Expanded(
@@ -485,11 +508,30 @@ class _TrendingDramaCard extends StatelessWidget {
                     colors: [Colors.transparent, Colors.black87],
                   ),
                 ),
-                child: Text(
-                  post.seriesTitle ?? 'Short Drama',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post.seriesTitle ?? 'Short Drama',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.2),
+                    ),
+                    if (post.viewCount > 0) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(Icons.visibility_outlined, size: 10, color: Colors.white70),
+                          const SizedBox(width: 3),
+                          Text(
+                            _compactCount(post.viewCount),
+                            style: const TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -498,6 +540,16 @@ class _TrendingDramaCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "1.2K"/"3.4M"-style compact count for a tile's view/engagement
+/// badge — raw numbers like 48213 read as clutter at this tile size,
+/// where the competitor reference this row is matching always
+/// abbreviates.
+String _compactCount(int n) {
+  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+  if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+  return '$n';
 }
 
 class _SuggestedCreatorChip extends StatelessWidget {
