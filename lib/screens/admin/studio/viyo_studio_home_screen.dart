@@ -77,7 +77,7 @@ class _ViyoStudioHomeScreenState extends State<ViyoStudioHomeScreen> {
       _error = null;
     });
     try {
-      final series = await SeriesService.getAllSeries(sort: DramaSort.newest, limit: 100);
+      final series = await SeriesService.getAllSeries(sort: DramaSort.newest, limit: 100, requireEpisodes: false);
       final summaries = await Future.wait(series.map((s) async {
         try {
           final results = await Future.wait([

@@ -446,44 +446,56 @@ class SeriesService {
     DramaSort sort = DramaSort.newest,
     int limit = 60,
     Set<String> boostedSeriesIds = const {},
+    // false only for Studio's own series pickers (viyo_studio_screen.dart,
+    // viyo_studio_home_screen.dart) — an admin managing their library
+    // needs to see a brand-new, still-empty draft to keep casting/
+    // uploading it, which is exactly what every *public* caller of this
+    // method (Browse, Trending, Similar Dramas) must never show.
+    bool requireEpisodes = true,
   }) async {
     var query = _client.from('series').select('*, profiles(username, display_name, avatar_url)');
     if (genre != null && genre.isNotEmpty) {
       query = query.eq('genre', genre);
     }
-    // A wider pool than `limit` when ranking by engagement — the
+    // A wider pool than `limit`: ranking by engagement needs it (the
     // newest-first order below isn't the final order in that case, so
     // narrowing to exactly `limit` rows first would silently exclude an
-    // older-but-popular series from ever being scored at all. Wider
+    // older-but-popular series from ever being scored at all), and so
+    // does the episode-having filter just below (it can drop rows from
+    // any sort, not just hot/popular) — same "rank/filter a bounded
+    // pool client-side" tradeoff the rest of this method already makes,
+    // just wider now that the filter applies unconditionally. Wider
     // again when filtering by content type, since that filter only
-    // happens after this fetch (see above) — same "rank/filter a
-    // bounded pool client-side" tradeoff the rest of this method
-    // already makes, just one dimension wider.
-    var poolSize = sort == DramaSort.newest ? limit : limit * 4;
+    // happens after this fetch (see above).
+    var poolSize = limit * 4;
     if (contentType != null) poolSize *= 3;
     final data = await query.order('created_at', ascending: false).limit(poolSize);
     var series = (data as List).map((e) => Series.fromJson(e)).toList();
     if (contentType != null) {
       series = series.where((s) => s.effectiveContentType == contentType).toList();
     }
-    for (final s in series) {
-      backfillCoverIfMissing(s);
-    }
-    if (series.isEmpty || sort == DramaSort.newest) {
-      return series.take(limit).toList();
-    }
+    if (series.isEmpty) return [];
 
     final seriesIds = series.map((s) => s.id).toList();
     final episodeRows = await _client
         .from('posts')
         .select('series_id, like_count, comment_count, view_count, created_at, is_boosted')
-        .inFilter('series_id', seriesIds);
+        .inFilter('series_id', seriesIds)
+        .eq('is_private', false)
+        .eq('is_archived', false);
 
+    // Also doubles as the "has at least one real episode" check below —
+    // a series with zero public episodes is still a draft someone's
+    // mid-way through in Studio, never real content for a public browse
+    // row (same reasoning as getNewAiSeries' identical filter above).
+    final counts = <String, int>{};
     final scores = <String, double>{};
     final now = DateTime.now();
     for (final row in (episodeRows as List)) {
       final sid = row['series_id'] as String?;
       if (sid == null) continue;
+      counts[sid] = (counts[sid] ?? 0) + 1;
+
       final likes = (row['like_count'] as num?)?.toInt() ?? 0;
       final comments = (row['comment_count'] as num?)?.toInt() ?? 0;
       final views = (row['view_count'] as num?)?.toInt() ?? 0;
@@ -510,7 +522,18 @@ class SeriesService {
       }
     }
 
-    series.sort((a, b) => (scores[b.id] ?? 0).compareTo(scores[a.id] ?? 0));
+    if (requireEpisodes) {
+      series = series.where((s) => (counts[s.id] ?? 0) > 0).toList();
+    }
+    series = series.map((s) => s.copyWith(episodeCount: counts[s.id] ?? 0)).toList();
+    for (final s in series) {
+      backfillCoverIfMissing(s);
+    }
+    if (series.isEmpty) return [];
+
+    if (sort != DramaSort.newest) {
+      series.sort((a, b) => (scores[b.id] ?? 0).compareTo(scores[a.id] ?? 0));
+    }
     return series.take(limit).toList();
   }
 

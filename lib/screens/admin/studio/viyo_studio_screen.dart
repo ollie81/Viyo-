@@ -94,7 +94,7 @@ class _ViyoStudioScreenState extends State<ViyoStudioScreen> {
   Future<void> _loadSeries() async {
     setState(() => _loadingSeries = true);
     try {
-      final series = await SeriesService.getAllSeries(sort: DramaSort.newest, limit: 100);
+      final series = await SeriesService.getAllSeries(sort: DramaSort.newest, limit: 100, requireEpisodes: false);
       if (!mounted) return;
       setState(() {
         _series = series;

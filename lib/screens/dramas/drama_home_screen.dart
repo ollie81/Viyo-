@@ -93,6 +93,15 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
     try {
       newReleases = await SeriesService.getNewAiSeries(limit: 10);
     } catch (_) {}
+    // With only a handful of series total (the common case early on),
+    // Trending and New Releases are independently-computed rankings
+    // over nearly the same small pool and end up showing the same
+    // tiles twice on one screen — the exact "duplicated" look reported
+    // against this row. Each row below only shows what hasn't already
+    // appeared further up the screen.
+    final shownSoFar = trending.map((s) => s.id).toSet();
+    newReleases = newReleases.where((s) => !shownSoFar.contains(s.id)).toList();
+    shownSoFar.addAll(newReleases.map((s) => s.id));
     final risingCreators = await ProfileService.getRisingCreators();
 
     // Keyed off the most-recently-watched series (continueWatching is
@@ -104,6 +113,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
     if (continueWatching.isNotEmpty) {
       final source = continueWatching.first;
       becauseYouWatched = await SeriesService.getBecauseYouWatched(source.seriesId);
+      becauseYouWatched = becauseYouWatched.where((s) => !shownSoFar.contains(s.id)).toList();
       if (becauseYouWatched.isNotEmpty) becauseYouWatchedTitle = source.seriesTitle;
     }
 
