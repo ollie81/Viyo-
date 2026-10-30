@@ -10,6 +10,7 @@ import '../../models/coach_video_context.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/post_service.dart';
+import '../../services/repurpose_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/guest_gate.dart';
@@ -63,6 +64,10 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   int _selectedClipIndex = 0;
   String? _videoId;
   bool _posting = false;
+  // Live stage text from the worker ("Transcribing (40%)", "Editing
+  // clip 2 of 5", "Waiting for a processing slot"...).
+  String? _serverMessage;
+  double? _serverProgress;
 
   // Optional — only used server-side when the video has no usable
   // speech (silent, or music/ambient audio with nothing to
@@ -97,59 +102,67 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     });
 
     try {
-      // Step 1: Upload the video to Supabase Storage.
-      // This keeps large file data off Railway's inbound proxy, which
-      // has a hard timeout that caused the "Broken pipe" error before.
       final userId = SupabaseService.currentUserId;
       if (userId == null) throw Exception('Not logged in');
 
-      final ext = _selectedVideo!.path.split('.').last.toLowerCase();
-      final storagePath = '$userId/${const Uuid().v4()}.$ext';
-
+      // Step 1: upload to a private, server-chosen path in Supabase
+      // Storage (not the public posts bucket, and never through Railway).
       _uploadTotalBytes = await _selectedVideo!.length();
-
-      // Uses the progress-reporting upload rather than the plain
-      // storage .upload(), which reports nothing — that's why the
-      // percentage never moved off zero before.
-      final videoUrl = await PostService.uploadMediaWithProgress(
+      final contentType = RepurposeService.contentTypeFor(_selectedVideo!);
+      final ticket = await RepurposeService.requestUpload(
+        contentType: contentType,
+        sizeBytes: _uploadTotalBytes,
+      );
+      await RepurposeService.uploadSource(
         _selectedVideo!,
-        userId,
-        storagePath: storagePath,
+        ticket,
+        contentType,
         onProgress: (p) {
           if (mounted) setState(() => _uploadProgress = p);
         },
       );
 
       // This stable ID ties the Coach history to this exact uploaded video.
-      _videoId = storagePath;
+      _videoId = ticket.sourcePath;
 
       setState(() {
         _isUploading = false;
         _isProcessing = true;
+        _serverMessage = null;
+        _serverProgress = null;
       });
 
-      // Step 2: Start the repurpose job. This returns almost immediately
-      // with a job_id — the actual transcription + rendering happens on
-      // the server in the background, so this call is never at risk of
-      // Railway's request-handling timeout no matter how long a video
-      // takes to process.
+      // Step 2: start the job. Returns immediately; the worker service
+      // does the processing. The same client_request_id is re-sent if the
+      // request drops, so a flaky connection can never charge twice.
       final token = SupabaseService.client.auth.currentSession?.accessToken;
       final startUri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
+      final requestId = const Uuid().v4();
+      final startBody = jsonEncode({
+        'source_path': ticket.sourcePath,
+        'client_request_id': requestId,
+        if (_promptController.text.trim().isNotEmpty)
+          'creative_prompt': _promptController.text.trim(),
+      });
 
-      final startResponse = await http.post(
-        startUri,
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'video_url': videoUrl,
-          if (_promptController.text.trim().isNotEmpty)
-            'creative_prompt': _promptController.text.trim(),
-        }),
-      );
+      http.Response? startResponse;
+      for (var attempt = 0; attempt < 3 && startResponse == null; attempt++) {
+        try {
+          startResponse = await http.post(
+            startUri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: startBody,
+          );
+        } catch (_) {
+          if (attempt == 2) rethrow;
+          await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+        }
+      }
 
-      if (startResponse.statusCode != 200) {
+      if (startResponse!.statusCode != 200) {
         final body = jsonDecode(startResponse.body);
         final detail = body['detail'];
         if (startResponse.statusCode == 402 && detail is Map) {
@@ -164,12 +177,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
       final jobId = jsonDecode(startResponse.body)['job_id'] as String;
 
-      // Step 3: Poll for the result instead of holding one HTTP
-      // connection open — Whisper transcription plus up to 5 clip
-      // renders can take several minutes on a long video.
+      // Step 3: poll. A long video can wait in the queue and then take
+      // several minutes to transcribe and edit, so this waits up to 40
+      // minutes. The job keeps running on the server either way.
       final statusUri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId');
       const pollInterval = Duration(seconds: 4);
-      const maxAttempts = 120; // ~8 minutes, generous for the longest allowed video
+      const maxAttempts = 600;
 
       Map<String, dynamic>? finalResult;
       // A dropped request here (weak signal, a brief network blip) is not
@@ -208,6 +221,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
         final statusBody = jsonDecode(statusResponse.body);
         final status = statusBody['status'] as String?;
+        if (mounted) {
+          setState(() {
+            _serverMessage = statusBody['message'] as String?;
+            _serverProgress = (statusBody['progress'] as num?)?.toDouble();
+          });
+        }
         if (status == 'done') {
           finalResult = statusBody['result'] as Map<String, dynamic>?;
           break;
@@ -220,8 +239,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
       if (finalResult == null) {
         throw Exception(
-          "Still processing after several minutes — this can happen on long videos. "
-          "Check back in a bit; your clips may still finish.",
+          "Still processing after 40 minutes. Your clips are still being made on the server; "
+          "if processing fails, your coins are refunded automatically.",
         );
       }
 
@@ -293,7 +312,11 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   String get _statusLabel {
     if (_isUploading) return 'Uploading video...';
-    if (_isProcessing) return 'Processing (can take a few minutes)...';
+    if (_isProcessing) {
+      final message = _serverMessage ?? 'Processing';
+      final progress = _serverProgress;
+      return progress != null && progress > 0 ? '$message · ${(progress * 100).round()}%' : '$message...';
+    }
     return 'Run AI Repurpose';
   }
 
@@ -316,6 +339,11 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   String? get _quoteCardUrl => _selectedClip?['quote_card_url'] as String?;
 
   Map<String, dynamic>? get _feedback => _result?['feedback'] as Map<String, dynamic>?;
+
+  /// The backend's honest note when it found fewer clips than the video's
+  /// length could hold ("Found 3 of up to 6 possible clips — ...").
+  String get _selectionNote =>
+      ((_result?['selection'] as Map<String, dynamic>?)?['note'] as String?)?.trim() ?? '';
 
   String get _hookLine =>
       (_selectedClip?['highlight']?['hook_line'] as String?)?.trim() ?? '';
@@ -389,9 +417,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Upload a longer video — the AI finds up to 3 ranked highlight '
-              'clips, each cropped to 9:16 with burned-in captions and dead '
-              'air trimmed out.',
+              'Upload a longer video — the AI finds its strongest standalone '
+              'moments (up to 6, only as many as the video genuinely supports), '
+              'each cropped to 9:16 with burned-in captions and dead air trimmed out.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 6),
@@ -519,6 +547,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
             if (_clips.isNotEmpty) ...[
               const SizedBox(height: 24),
+              if (_selectionNote.isNotEmpty) ...[
+                Text(
+                  _selectionNote,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 10),
+              ],
               if (_clips.length > 1) ...[
                 const Text(
                   'Pick a clip — ranked best first',
@@ -534,6 +569,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                     itemBuilder: (_, i) {
                       final clip = _clips[i] as Map<String, dynamic>;
                       final score = (clip['highlight']?['score'] as num?)?.toInt() ?? 0;
+                      // Clips written from a description (no speech) have
+                      // nothing measured behind them, so no score is shown.
+                      final scored = clip['highlight']?['category'] != 'prompt';
                       final thumbUrl = clip['thumbnail_url'] as String?;
                       final selected = i == _selectedClipIndex;
                       return GestureDetector(
@@ -584,11 +622,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                                         color: selected ? AppColors.primary : AppColors.textPrimary,
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Score $score',
-                                      style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                    ),
+                                    if (scored) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Score $score',
+                                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
