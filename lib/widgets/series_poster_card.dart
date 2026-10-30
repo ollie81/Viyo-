@@ -20,6 +20,23 @@ class SeriesPosterCard extends StatelessWidget {
 
   const SeriesPosterCard({super.key, required this.series, required this.onTap, this.trendingLabel});
 
+  /// Total height this card needs at [width]: the 2:3 poster, the gap,
+  /// and the genre pill below it. Rows and grids size from this instead
+  /// of a hard-coded height, which used to clip the genre pill.
+  static double heightForWidth(double width) => width * 1.5 + 6 + 26;
+
+  Widget _episodeBadge() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          '${series.episodeCount} ep',
+          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -68,36 +85,35 @@ class SeriesPosterCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (series.episodeCount > 0)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${series.episodeCount} ep',
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                  if (trendingLabel != null)
+                  if (trendingLabel == null && series.episodeCount > 0)
+                    Positioned(top: 6, right: 6, child: _episodeBadge())
+                  // With both badges, a Wrap keeps them on one line when
+                  // the card is wide enough and drops the episode count
+                  // under the label on narrow cards, instead of the two
+                  // overlapping.
+                  else if (trendingLabel != null)
                     Positioned(
                       top: 6,
                       left: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.secondary,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          trendingLabel!,
-                          style: const TextStyle(color: Colors.black, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.2),
-                        ),
+                      right: 6,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.secondary,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              trendingLabel!,
+                              style: const TextStyle(color: Colors.black, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                            ),
+                          ),
+                          if (series.episodeCount > 0) _episodeBadge(),
+                        ],
                       ),
                     ),
                 ],
@@ -114,6 +130,8 @@ class SeriesPosterCard extends StatelessWidget {
             ),
             child: Text(
               series.genre,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w600),
             ),
           ),

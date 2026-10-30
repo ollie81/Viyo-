@@ -10,7 +10,11 @@ class GenreChipRow extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelect;
 
-  const GenreChipRow({super.key, required this.selected, required this.onSelect});
+  // Inner list padding, so the row can sit edge-to-edge and chips scroll
+  // to the screen edge instead of being clipped at an inset.
+  final EdgeInsetsGeometry padding;
+
+  const GenreChipRow({super.key, required this.selected, required this.onSelect, this.padding = EdgeInsets.zero});
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +23,7 @@ class GenreChipRow extends StatelessWidget {
       height: 34,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        padding: padding,
         itemCount: genres.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (ctx, i) {

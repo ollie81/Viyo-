@@ -272,7 +272,8 @@ class _DiscoverBody extends StatelessWidget {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 24),
+      // Clears HomeShell's floating nav (reported as bottom padding).
+      padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         if (!loadingSuggested && suggested.isNotEmpty) ...[
           const _SectionLabel('SUGGESTED CREATORS'),

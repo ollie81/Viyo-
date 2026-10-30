@@ -203,6 +203,25 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final browseFailed = !_loadingBrowse && _browseSeries.isEmpty && _browseError != null;
+    // HomeShell's Scaffold uses extendBody so its floating nav sits over
+    // the page, and reports the nav's height as bottom padding. A
+    // CustomScrollView doesn't apply that padding itself — which is what
+    // let the nav cover the last cards and the empty-state message.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final hasRows = !_loadingRows &&
+        (_continueWatching.isNotEmpty ||
+            _trending.isNotEmpty ||
+            _newReleases.isNotEmpty ||
+            _becauseYouWatched.isNotEmpty ||
+            _risingCreators.isNotEmpty);
+
+    // 2 columns on every phone width (320–430), more on tablets, with
+    // the cell height derived from the real cell width so the genre
+    // pill under each poster never overflows on narrow screens.
+    const gridSpacing = 12.0;
+    final gridColumns = (screenWidth / 180).floor().clamp(2, 6).toInt();
+    final gridCellWidth = (screenWidth - 24 - gridSpacing * (gridColumns - 1)) / gridColumns;
 
     return Scaffold(
       appBar: AppBar(
@@ -232,121 +251,129 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             if (!_loadingRows && _continueWatching.isNotEmpty) ...[
-              const SliverPadding(
-                padding: EdgeInsets.fromLTRB(12, 14, 12, 8),
-                sliver: SliverToBoxAdapter(child: _SectionLabel('CONTINUE WATCHING')),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
-                sliver: SliverToBoxAdapter(
-                  child: _ContinueWatchingRow(entries: _continueWatching, onTap: _openContinueWatching),
-                ),
+              const _SectionHeader('CONTINUE WATCHING', icon: Icons.play_circle_outline_rounded),
+              SliverToBoxAdapter(
+                child: _ContinueWatchingRow(entries: _continueWatching, onTap: _openContinueWatching),
               ),
             ],
             if (!_loadingRows && _trending.isNotEmpty) ...[
-              const SliverPadding(
-                padding: EdgeInsets.fromLTRB(12, 18, 12, 8),
-                sliver: SliverToBoxAdapter(child: _SectionLabel('TRENDING')),
+              const _SectionHeader(
+                'TRENDING',
+                icon: Icons.local_fire_department_rounded,
+                color: AppColors.secondary,
               ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
-                sliver: SliverToBoxAdapter(
-                  child: _SeriesRow(series: _trending, onTap: _openSeries, labels: _trendingLabels),
-                ),
+              SliverToBoxAdapter(
+                child: _SeriesRow(series: _trending, onTap: _openSeries, labels: _trendingLabels),
               ),
             ],
             if (!_loadingRows && _newReleases.isNotEmpty) ...[
-              const SliverPadding(
-                padding: EdgeInsets.fromLTRB(12, 18, 12, 8),
-                sliver: SliverToBoxAdapter(child: _SectionLabel('NEW RELEASES')),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
-                sliver: SliverToBoxAdapter(
-                  child: _SeriesRow(series: _newReleases, onTap: _openSeries),
-                ),
+              const _SectionHeader('NEW RELEASES', icon: Icons.fiber_new_rounded),
+              SliverToBoxAdapter(
+                child: _SeriesRow(series: _newReleases, onTap: _openSeries),
               ),
             ],
             if (!_loadingRows && _becauseYouWatched.isNotEmpty) ...[
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 18, 12, 8),
-                sliver: SliverToBoxAdapter(
-                  child: _SectionLabel('BECAUSE YOU WATCHED ${_becauseYouWatchedTitle?.toUpperCase() ?? ''}'),
-                ),
+              _SectionHeader(
+                'BECAUSE YOU WATCHED ${_becauseYouWatchedTitle?.toUpperCase() ?? ''}',
+                icon: Icons.recommend_outlined,
               ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
-                sliver: SliverToBoxAdapter(
-                  child: _SeriesRow(series: _becauseYouWatched, onTap: _openSeries),
-                ),
+              SliverToBoxAdapter(
+                child: _SeriesRow(series: _becauseYouWatched, onTap: _openSeries),
               ),
             ],
             if (!_loadingRows && _risingCreators.isNotEmpty) ...[
-              const SliverPadding(
-                padding: EdgeInsets.fromLTRB(12, 18, 12, 8),
-                sliver: SliverToBoxAdapter(child: _SectionLabel('RISING CREATORS')),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 0, 4),
-                sliver: SliverToBoxAdapter(
-                  child: _RisingCreatorsRow(creators: _risingCreators),
-                ),
+              const _SectionHeader('RISING CREATORS', icon: Icons.trending_up_rounded),
+              SliverToBoxAdapter(
+                child: _RisingCreatorsRow(creators: _risingCreators),
               ),
             ],
+            // Browse is the full catalog, not a curated row — a divider
+            // and a larger title set it apart from the rows above.
+            if (hasRows)
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(12, 22, 12, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Divider(height: 1, thickness: 1, color: AppColors.surfaceBorder),
+                ),
+              ),
             const SliverPadding(
-              padding: EdgeInsets.fromLTRB(12, 18, 12, 8),
-              sliver: SliverToBoxAdapter(child: _SectionLabel('BROWSE')),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              padding: EdgeInsets.fromLTRB(12, 16, 12, 10),
               sliver: SliverToBoxAdapter(
-                child: ContentTypeChipRow(selected: _selectedContentType, onSelect: _selectContentType),
+                child: Text(
+                  'Browse',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: ContentTypeChipRow(
+                selected: _selectedContentType,
+                onSelect: _selectContentType,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               sliver: SliverToBoxAdapter(
-                child: DramaSortToggle(selected: _selectedSort, onSelect: _selectSort),
+                // Capped so it stays a compact segmented control on
+                // tablets instead of stretching across the whole screen.
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: DramaSortToggle(selected: _selectedSort, onSelect: _selectSort),
+                  ),
+                ),
               ),
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              sliver: SliverToBoxAdapter(
-                child: GenreChipRow(selected: _selectedGenre, onSelect: _selectGenre),
+            SliverToBoxAdapter(
+              child: GenreChipRow(
+                selected: _selectedGenre,
+                onSelect: _selectGenre,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
             ),
             if (_loadingBrowse)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: CircularProgressIndicator(color: AppColors.secondary)),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(0, 32, 0, bottomInset + 32),
+                  child: const Center(child: CircularProgressIndicator(color: AppColors.secondary)),
+                ),
               )
             else if (browseFailed)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: _DramaStateMessage.error(_browseError!, onRetry: _loadBrowse)),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(0, 32, 0, bottomInset + 32),
+                  child: Center(child: _DramaStateMessage.error(_browseError!, onRetry: _loadBrowse)),
+                ),
               )
             else if (_browseSeries.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: _DramaStateMessage(
-                    icon: Icons.auto_awesome,
-                    title: _selectedContentType == ContentTypeChipRow.all
-                        ? 'Nothing here yet'
-                        : 'No ${kContentTypeLabels[_selectedContentType]}s yet',
-                    subtitle: 'Upload one from the + button to get started.',
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(0, 32, 0, bottomInset + 32),
+                  child: Center(
+                    child: _DramaStateMessage(
+                      icon: Icons.auto_awesome,
+                      title: _selectedContentType == ContentTypeChipRow.all
+                          ? 'Nothing here yet'
+                          : 'No ${kContentTypeLabels[_selectedContentType]}s yet',
+                      subtitle: 'Upload one from the + button to get started.',
+                    ),
                   ),
                 ),
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+                padding: EdgeInsets.fromLTRB(12, 14, 12, bottomInset + 24),
                 sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: gridColumns,
                     mainAxisSpacing: 16,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.6,
+                    crossAxisSpacing: gridSpacing,
+                    mainAxisExtent: SeriesPosterCard.heightForWidth(gridCellWidth),
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (ctx, i) => SeriesPosterCard(
@@ -365,15 +392,36 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
+/// A curated row's header, as a sliver so every section gets the same
+/// spacing above and below it.
+class _SectionHeader extends StatelessWidget {
   final String text;
-  const _SectionLabel(this.text);
+  final IconData? icon;
+  final Color color;
+  const _SectionHeader(this.text, {this.icon, this.color = AppColors.textSecondary});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700),
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(12, 20, 12, 10),
+      sliver: SliverToBoxAdapter(
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, letterSpacing: 0.8, color: color, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -390,15 +438,20 @@ class _SeriesRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Roughly 3 cards per phone screen with the next one peeking in as a
+    // swipe hint; clamped so tiny phones stay tappable and tablets don't
+    // get oversized posters. Row height follows the card, so the genre
+    // pill under each poster is never clipped.
+    final cardWidth = (MediaQuery.sizeOf(context).width * 0.3).clamp(100.0, 150.0).toDouble();
     return SizedBox(
-      height: 190,
+      height: SeriesPosterCard.heightForWidth(cardWidth),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         itemCount: series.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, i) => SizedBox(
-          width: 116,
+          width: cardWidth,
           child: SeriesPosterCard(
             series: series[i],
             onTap: () => onTap(series[i]),
@@ -424,7 +477,7 @@ class _RisingCreatorsRow extends StatelessWidget {
       height: 104,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         itemCount: creators.length,
         separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (_, i) => _RisingCreatorChip(creator: creators[i]),
@@ -487,29 +540,33 @@ class _ContinueWatchingRow extends StatelessWidget {
   final void Function(WatchProgressEntry) onTap;
   const _ContinueWatchingRow({required this.entries, required this.onTap});
 
+  static const double _thumbSize = 96;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 130,
+      // Thumbnail + gap + two text lines, with headroom so larger system
+      // font sizes don't overflow the row.
+      height: _thumbSize + 50,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         itemCount: entries.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, i) {
           final e = entries[i];
           return GestureDetector(
             onTap: () => onTap(e),
             child: SizedBox(
-              width: 92,
+              width: _thumbSize,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     child: SizedBox(
-                      width: 92,
-                      height: 92,
+                      width: _thumbSize,
+                      height: _thumbSize,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -546,7 +603,8 @@ class _ContinueWatchingRow extends StatelessWidget {
                   ),
                   Text(
                     'Ep ${e.episodeNumber}',
-                    style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                    maxLines: 1,
+                    style: const TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
                   ),
                 ],
               ),
