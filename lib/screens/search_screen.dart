@@ -174,7 +174,12 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('Discover')),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        toolbarHeight: 48,
+        titleSpacing: 16,
+        title: const Text('Discover', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+      ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Column(
