@@ -66,12 +66,34 @@ class ProfileService {
     // Fetch a larger candidate pool than `limit` so a spotlighted
     // creator who wouldn't otherwise land in the first `limit` rows
     // still gets pulled to the front instead of being missed entirely.
+    //
+    // Only accounts that have actually posted something public count as
+    // creators. Every anonymous visitor gets an auto-created "Guest"
+    // profile, so picking from all profiles filled this row with
+    // @guest_... placeholders instead of real creators.
+    final recentPosts = await _client
+        .from('posts')
+        .select('user_id')
+        .eq('is_private', false)
+        .neq('user_id', excludeUserId)
+        .order('created_at', ascending: false)
+        .limit(500);
+    final creatorIds = <String>[];
+    for (final row in (recentPosts as List)) {
+      final id = row['user_id'] as String?;
+      if (id != null && !creatorIds.contains(id)) creatorIds.add(id);
+      if (creatorIds.length >= limit * 4) break;
+    }
+    if (creatorIds.isEmpty) return [];
+
     final candidates = await _client
         .from('profiles')
         .select('id, username, display_name, avatar_url, niche')
-        .neq('id', excludeUserId)
-        .limit(limit * 4);
-    var pool = List<Map<String, dynamic>>.from(candidates);
+        .inFilter('id', creatorIds);
+    // Most recently active creators first, in the order found above.
+    final order = {for (var i = 0; i < creatorIds.length; i++) creatorIds[i]: i};
+    var pool = List<Map<String, dynamic>>.from(candidates)
+      ..sort((a, b) => (order[a['id']] ?? 0).compareTo(order[b['id']] ?? 0));
 
     final hidden = await ModerationService.getHiddenUserIds(excludeUserId);
     if (hidden.isNotEmpty) {

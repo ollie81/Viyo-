@@ -320,6 +320,10 @@ class SeriesService {
   static Future<List<Post>> _withUnlockState(List<Post> episodes) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null || episodes.isEmpty) return episodes;
+    // Checked on its own: when the subscriptions migration hasn't been
+    // run, this query fails (no is_subscribed column), and sharing one
+    // try with the unlock lookup below made every episode a viewer had
+    // paid coins for show as locked again.
     try {
       final profileRow = await _client
           .from('profiles')
@@ -329,7 +333,9 @@ class SeriesService {
       if (profileRow != null && profileRow['is_subscribed'] == true) {
         return episodes.map((e) => e.copyWith(unlockedByMe: true)).toList();
       }
+    } catch (_) {}
 
+    try {
       final unlocked = await _client
           .from('episode_unlocks')
           .select('post_id')
