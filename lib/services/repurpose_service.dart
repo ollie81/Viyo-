@@ -89,7 +89,26 @@ class RepurposeService {
       if (e.response?.statusCode == 413) {
         throw Exception('This video is larger than uploads currently allow. Try a shorter or smaller file.');
       }
-      rethrow;
+      // Say what the storage service actually answered, instead of a generic
+      // Dio error: the status, the reason it gave, and what we sent.
+      final status = e.response?.statusCode;
+      var reason = '';
+      try {
+        final data = e.response?.data;
+        if (data is Map) {
+          reason = (data['message'] ?? data['error'] ?? data['detail'] ?? '').toString();
+        } else if (data is String) {
+          reason = data;
+        } else if (data is List<int>) {
+          reason = utf8.decode(data, allowMalformed: true);
+        }
+      } catch (_) {}
+      if (reason.length > 200) reason = reason.substring(0, 200);
+      throw Exception(
+        'Upload to storage failed${status != null ? ' ($status)' : ''}'
+        '${reason.isNotEmpty ? ': $reason' : ''} '
+        '[type $contentType, ${(size / (1024 * 1024)).toStringAsFixed(1)} MB]',
+      );
     }
   }
 }
