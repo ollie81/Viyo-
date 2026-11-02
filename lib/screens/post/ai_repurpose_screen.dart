@@ -124,7 +124,10 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           },
         );
         if (mounted) setState(() => _serverMessage = 'Preparing your video…');
-        final prepared = await BunnyStreamService.waitForReady(bunnyTicket.credentials.videoId);
+        final prepared = await BunnyStreamService.waitForReady(
+          bunnyTicket.credentials.videoId,
+          timeout: const Duration(minutes: 30),
+        );
         if (prepared == null) {
           throw Exception('Your video is still being prepared. Please try again in a few minutes.');
         }
