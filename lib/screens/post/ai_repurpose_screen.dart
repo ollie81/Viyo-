@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../constants/supabase_constants.dart';
 import '../../models/coach_video_context.dart';
@@ -14,6 +15,7 @@ import '../../services/bunny_stream_service.dart';
 import '../../services/repurpose_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/clip_preview_player.dart';
 import '../../widgets/guest_gate.dart';
 import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/upload_progress_card.dart';
@@ -68,6 +70,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   int _selectedClipIndex = 0;
   String? _videoId;
   bool _posting = false;
+  bool _sharing = false;
   // Live stage text from the worker ("Transcribing (40%)", "Editing
   // clip 2 of 5", "Waiting for a processing slot"...).
   String? _serverMessage;
@@ -348,6 +351,61 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     }
   }
 
+  String get _postText {
+    final hashtags = _clipHashtags.map((t) => '#$t').join(' ');
+    final title = (_selectedClip?['highlight']?['suggested_title'] as String?)?.trim() ?? '';
+    return [
+      _clipCaption.isNotEmpty ? _clipCaption : title,
+      if (hashtags.isNotEmpty) hashtags,
+    ].where((s) => s.isNotEmpty).join('\n\n');
+  }
+
+  String? get _clipVideoUrl => _selectedClip?['processed_video_url'] as String?;
+
+  /// Opens the phone's share sheet with the clip itself, so it can go to
+  /// TikTok, Instagram, YouTube, WhatsApp... whatever is installed. The
+  /// caption is copied first, because most of those apps ignore shared text.
+  Future<void> _shareClip() async {
+    final url = _clipVideoUrl;
+    if (url == null) return;
+    final text = _postText;
+    setState(() => _sharing = true);
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) throw Exception('download failed (${res.statusCode})');
+      final file = XFile.fromData(res.bodyBytes, name: 'viyo-clip.mp4', mimeType: 'video/mp4');
+      await Share.shareXFiles([file], text: text);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Caption copied — paste it when you post.')),
+        );
+      }
+    } catch (_) {
+      // No share sheet here (e.g. a desktop browser): save the file instead.
+      await _downloadClip(captionAlreadyCopied: true);
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  Future<void> _downloadClip({bool captionAlreadyCopied = false}) async {
+    final url = _clipVideoUrl;
+    if (url == null) return;
+    if (!captionAlreadyCopied) await Clipboard.setData(ClipboardData(text: _postText));
+    // Supabase Storage sends the file as a download when ?download= is set.
+    final sep = url.endsWith('?') ? '' : (url.contains('?') ? '&' : '?');
+    final ok = await launchUrl(Uri.parse('$url${sep}download=viyo-clip.mp4'),
+        mode: LaunchMode.externalApplication);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok
+            ? 'Downloading the clip. Caption copied — paste it when you post.'
+            : 'Could not open the download.'),
+      ));
+    }
+  }
+
   String get _statusLabel {
     if (_isUploading) return 'Uploading video...';
     if (_isProcessing) {
@@ -385,6 +443,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   String get _hookLine =>
       (_selectedClip?['highlight']?['hook_line'] as String?)?.trim() ?? '';
+
+  String get _overlayHook =>
+      (_selectedClip?['highlight']?['overlay_hook'] as String?)?.trim() ?? '';
 
   String get _clipCaption =>
       (_selectedClip?['highlight']?['caption'] as String?)?.trim() ?? '';
@@ -692,6 +753,14 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_clipVideoUrl != null) ...[
+                      ClipPreviewPlayer(
+                        key: ValueKey(_clipVideoUrl),
+                        url: _clipVideoUrl!,
+                        thumbnailUrl: _selectedClip?['thumbnail_url'] as String?,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     Text(
                       _selectedClip?['highlight']?['suggested_title'] ?? 'Clip ready',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -701,7 +770,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       _selectedClip?['highlight']?['reason'] ?? '',
                       style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
-                    if (_hookLine.isNotEmpty) ...[
+                    if (_overlayHook.isNotEmpty || _hookLine.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(11),
@@ -718,7 +787,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                                 const Icon(Icons.bolt, size: 13, color: AppColors.coin),
                                 const SizedBox(width: 5),
                                 Text(
-                                  'HOOK — FIRST 2 SECONDS',
+                                  _overlayHook.isNotEmpty ? 'ON-SCREEN HOOK' : 'OPENING LINE',
                                   style: TextStyle(
                                     fontSize: 9.5,
                                     letterSpacing: 0.8,
@@ -730,7 +799,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              '"$_hookLine"',
+                              '"${_overlayHook.isNotEmpty ? _overlayHook : _hookLine}"',
                               style: const TextStyle(
                                 fontSize: 13,
                                 height: 1.35,
@@ -738,8 +807,10 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            const Text(
-                              'Burned across the top of the clip so it lands before anyone scrolls.',
+                            Text(
+                              _overlayHook.isNotEmpty
+                                  ? 'Shown across the top for the first seconds, in the speaker\'s own words.'
+                                  : 'The first words viewers hear.',
                               style: TextStyle(fontSize: 10.5, color: AppColors.textMuted, height: 1.3),
                             ),
                           ],
@@ -884,6 +955,31 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                                 ? 'Post This ${_selectedClipDurationSeconds}s Clip to My Feed'
                                 : 'Post This Clip to My Feed',
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _sharing || _clipVideoUrl == null ? null : _shareClip,
+                            icon: const Icon(Icons.ios_share, size: 16),
+                            label: Text(_sharing ? 'Preparing...' : 'Share to other apps'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _clipVideoUrl == null ? null : () => _downloadClip(),
+                            icon: const Icon(Icons.download_rounded, size: 16),
+                            label: const Text('Download'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'TikTok, Instagram, YouTube, WhatsApp — the caption is copied for you.',
+                      style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
