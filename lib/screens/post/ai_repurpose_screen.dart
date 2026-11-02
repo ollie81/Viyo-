@@ -61,6 +61,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   double _uploadProgress = 0;
   int _uploadTotalBytes = 0;
   String? _error;
+  // Technical reason from the server for a failed job (which moments were
+  // considered and why each was dropped), shown small so it can be shared.
+  String? _errorDetail;
   Map<String, dynamic>? _result;
   int _selectedClipIndex = 0;
   String? _videoId;
@@ -100,6 +103,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       _isUploading = true;
       _uploadProgress = 0;
       _error = null;
+      _errorDetail = null;
     });
 
     try {
@@ -264,6 +268,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           break;
         }
         if (status == 'failed') {
+          final d = statusBody['error_detail']?.toString();
+          if (mounted && d != null && d.isNotEmpty) setState(() => _errorDetail = d);
           throw Exception(statusBody['error'] ?? 'Processing failed');
         }
         // status == 'processing' — keep polling.
@@ -570,6 +576,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             if (_error != null) ...[
               const SizedBox(height: 14),
               Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+              if (_errorDetail != null) ...[
+                const SizedBox(height: 8),
+                SelectableText(
+                  'Details: ${_errorDetail!.length > 1800 ? _errorDetail!.substring(0, 1800) : _errorDetail!}',
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
             ],
 
             if (_feedback != null) ...[
