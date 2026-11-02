@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'creator_dashboard_screen.dart';
+import 'glow_up/glow_up_screen.dart';
 import 'post/ai_repurpose_screen.dart';
 import 'post/create_post_screen.dart';
 import 'profile/profile_screen.dart';
@@ -105,6 +106,17 @@ class AiHubScreen extends StatelessWidget {
             costLabel: '10 coins/message · 1 free/day',
             onTap: () => _open(context, const AiRepurposeScreen()),
             hint: 'Run the AI Repurposer first, then tap "Open AI Coach" on a clip.',
+          ),
+
+          const SizedBox(height: 22),
+          _SectionHeader('For You'),
+          _FeatureCard(
+            icon: Icons.auto_awesome,
+            iconColor: AppColors.secondary,
+            title: 'Glow Up ✨',
+            description: 'Upload a selfie and get hairstyle, grooming, style and colour ideas picked for you. Your photo is never stored. 18+.',
+            costLabel: '10 coins',
+            onTap: () => _open(context, const GlowUpScreen()),
           ),
 
           const SizedBox(height: 22),
