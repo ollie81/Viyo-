@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../constants/supabase_constants.dart';
+import 'bunny_stream_service.dart';
 import 'supabase_service.dart';
 
 /// Where to PUT the source video for an AI Repurposer job. The path is
@@ -19,7 +20,22 @@ class RepurposeUploadTicket {
   const RepurposeUploadTicket({required this.uploadUrl, required this.sourcePath, required this.maxBytes});
 }
 
+/// Where to upload a video too large for the storage plan's upload cap: a
+/// Bunny Stream video created for this user, plus the repurposer path to
+/// start the job from.
+class RepurposeBunnyTicket {
+  final BunnyStreamCredentials credentials;
+  final String sourcePath;
+  final int maxBytes;
+
+  const RepurposeBunnyTicket({required this.credentials, required this.sourcePath, required this.maxBytes});
+}
+
 class RepurposeService {
+  /// Uploads above this go to Bunny instead of Supabase Storage. A Free
+  /// Supabase project refuses anything over 50 MB.
+  static const supabaseUploadCapBytes = 45 * 1024 * 1024;
+
   static const _contentTypes = {
     'mp4': 'video/mp4',
     'mov': 'video/quicktime',
@@ -54,6 +70,23 @@ class RepurposeService {
     }
     return RepurposeUploadTicket(
       uploadUrl: body['upload_url'] as String,
+      sourcePath: body['source_path'] as String,
+      maxBytes: (body['max_bytes'] as num).toInt(),
+    );
+  }
+
+  static Future<RepurposeBunnyTicket> requestBunnyUpload({required int sizeBytes}) async {
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/bunny-uploads'),
+      headers: _authHeaders(),
+      body: jsonEncode({'size_bytes': sizeBytes}),
+    );
+    final body = jsonDecode(res.body);
+    if (res.statusCode != 200) {
+      throw Exception(body is Map ? (body['detail'] ?? 'Upload could not start') : 'Upload could not start');
+    }
+    return RepurposeBunnyTicket(
+      credentials: BunnyStreamCredentials.fromJson(body as Map<String, dynamic>),
       sourcePath: body['source_path'] as String,
       maxBytes: (body['max_bytes'] as num).toInt(),
     );

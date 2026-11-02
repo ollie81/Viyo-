@@ -10,6 +10,7 @@ import '../../models/coach_video_context.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../services/post_service.dart';
+import '../../services/bunny_stream_service.dart';
 import '../../services/repurpose_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -108,22 +109,49 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       // Step 1: upload to a private, server-chosen path in Supabase
       // Storage (not the public posts bucket, and never through Railway).
       _uploadTotalBytes = await _selectedVideo!.length();
-      final contentType = RepurposeService.contentTypeFor(_selectedVideo!);
-      final ticket = await RepurposeService.requestUpload(
-        contentType: contentType,
-        sizeBytes: _uploadTotalBytes,
-      );
-      await RepurposeService.uploadSource(
-        _selectedVideo!,
-        ticket,
-        contentType,
-        onProgress: (p) {
-          if (mounted) setState(() => _uploadProgress = p);
-        },
-      );
+      String sourcePath;
+      var viaBunny = false;
+      if (_uploadTotalBytes > RepurposeService.supabaseUploadCapBytes) {
+        // Too big for the storage plan's upload cap: send it to Bunny
+        // Stream, wait for Bunny to prepare it, and let the server pull
+        // it from there.
+        final bunnyTicket = await RepurposeService.requestBunnyUpload(sizeBytes: _uploadTotalBytes);
+        await BunnyStreamService.uploadVideo(
+          _selectedVideo!,
+          bunnyTicket.credentials,
+          onProgress: (p) {
+            if (mounted) setState(() => _uploadProgress = p);
+          },
+        );
+        if (mounted) setState(() => _serverMessage = 'Preparing your video…');
+        final prepared = await BunnyStreamService.waitForReady(bunnyTicket.credentials.videoId);
+        if (prepared == null) {
+          throw Exception('Your video is still being prepared. Please try again in a few minutes.');
+        }
+        if (prepared.failed) {
+          throw Exception('We couldn\'t process that video. Try a different file.');
+        }
+        sourcePath = bunnyTicket.sourcePath;
+        viaBunny = true;
+      } else {
+        final contentType = RepurposeService.contentTypeFor(_selectedVideo!);
+        final ticket = await RepurposeService.requestUpload(
+          contentType: contentType,
+          sizeBytes: _uploadTotalBytes,
+        );
+        await RepurposeService.uploadSource(
+          _selectedVideo!,
+          ticket,
+          contentType,
+          onProgress: (p) {
+            if (mounted) setState(() => _uploadProgress = p);
+          },
+        );
+        sourcePath = ticket.sourcePath;
+      }
 
       // This stable ID ties the Coach history to this exact uploaded video.
-      _videoId = ticket.sourcePath;
+      _videoId = sourcePath;
 
       setState(() {
         _isUploading = false;
@@ -139,7 +167,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       final startUri = Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose');
       final requestId = const Uuid().v4();
       final startBody = jsonEncode({
-        'source_path': ticket.sourcePath,
+        'source_path': sourcePath,
+        if (viaBunny) 'source': 'bunny',
         'client_request_id': requestId,
         if (_promptController.text.trim().isNotEmpty)
           'creative_prompt': _promptController.text.trim(),
