@@ -9,9 +9,10 @@ import 'supabase_service.dart';
 
 /// Viyo Glow Up (Stage 1): style suggestions from a selfie.
 ///
-/// The selfie goes to the backend only for the length of one request and
-/// is never stored; only the text suggestions are saved, and only when the
-/// user chooses to. 18+ only.
+/// The selfie is stored only if the user explicitly turns on "Save my photo"
+/// (off by default) — then privately, never with a public link, and it can
+/// be deleted any time. The text suggestions are saved by default so they can
+/// be reopened later. 18+ only.
 class GlowUpService {
   static const costCoins = 10;
 
@@ -54,6 +55,7 @@ class GlowUpService {
     String? styleGoal,
     String? presentation,
     bool save = true,
+    bool savePhoto = false,
   }) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/glow-up/analyze'),
@@ -64,6 +66,7 @@ class GlowUpService {
         if (styleGoal != null) 'style_goal': styleGoal,
         if (presentation != null) 'presentation': presentation,
         'save': save,
+        'save_photo': savePhoto,
       }),
     );
     if (res.statusCode == 402) {
@@ -90,6 +93,25 @@ class GlowUpService {
     if (res.statusCode != 200) throw Exception(_detail(res, 'Could not load your Glow Ups'));
     final list = (jsonDecode(res.body) as Map)['sessions'] as List<dynamic>? ?? const [];
     return list.cast<Map<String, dynamic>>();
+  }
+
+  /// One saved Glow Up, with a fresh private photo link if a photo was saved.
+  static Future<Map<String, dynamic>> session(String id) async {
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/glow-up/sessions/$id'),
+      headers: _headers(),
+    );
+    if (res.statusCode != 200) throw Exception(_detail(res, 'Could not open this Glow Up'));
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Deletes only the saved photo; the ideas stay.
+  static Future<void> deletePhoto(String id) async {
+    final res = await http.delete(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/glow-up/sessions/$id/photo'),
+      headers: _headers(),
+    );
+    if (res.statusCode != 200) throw Exception(_detail(res, 'Could not delete the photo'));
   }
 
   static Future<void> deleteSession(String id) async {

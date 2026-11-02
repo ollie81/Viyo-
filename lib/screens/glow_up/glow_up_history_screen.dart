@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../../services/glow_up_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/friendly_error.dart';
-import 'glow_up_results_view.dart';
+import 'glow_up_session_screen.dart';
 
-/// Saved Glow Ups (text only — photos are never stored). Each can be opened
-/// or deleted, and everything can be deleted at once.
+/// Saved Glow Ups, loaded from the server for the signed-in user. Each can be
+/// reopened or deleted (with its saved photo, if any); everything can be
+/// deleted at once.
 class GlowUpHistoryScreen extends StatefulWidget {
   const GlowUpHistoryScreen({super.key});
 
@@ -48,7 +49,7 @@ class _GlowUpHistoryScreenState extends State<GlowUpHistoryScreen> {
       builder: (c) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: const Text('Delete all Glow Ups?'),
-        content: const Text('Every saved set of ideas will be removed. This can\'t be undone.'),
+        content: const Text('Every saved set of ideas and every saved photo will be removed. This can\'t be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete all')),
@@ -100,11 +101,27 @@ class _GlowUpHistoryScreenState extends State<GlowUpHistoryScreen> {
                         final s = sessions[i];
                         final rec = (s['recommendations'] as Map?)?.cast<String, dynamic>() ?? const {};
                         final goal = GlowUpService.styleGoals[s['style_goal']] ?? 'Glow Up';
+                        final direction = GlowUpService.presentations[s['presentation']];
+                        final photoUrl = s['photo_url'] as String?;
                         return Container(
                           decoration: AppTheme.card(),
                           child: ListTile(
-                            leading: const Icon(Icons.auto_awesome, color: AppColors.secondary),
-                            title: Text('$goal · ${_date(s['created_at'] as String?)}',
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 40,
+                                height: 52,
+                                child: photoUrl != null
+                                    ? Image.network(photoUrl, fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome, color: AppColors.secondary))
+                                    : Container(
+                                        color: AppColors.surfaceBorder,
+                                        child: const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 20)),
+                              ),
+                            ),
+                            title: Text(
+                                [goal, if (direction != null && s['presentation'] != 'any') direction,
+                                 _date(s['created_at'] as String?)].join(' · '),
                                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                             subtitle: Text((rec['summary'] ?? '').toString(),
                                 maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -114,16 +131,12 @@ class _GlowUpHistoryScreenState extends State<GlowUpHistoryScreen> {
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () => _delete(s['id'] as String),
                             ),
-                            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => Scaffold(
-                                backgroundColor: AppColors.background,
-                                appBar: AppBar(title: Text(goal)),
-                                body: ListView(
-                                  padding: const EdgeInsets.all(16),
-                                  children: [GlowUpResultsView(result: rec)],
-                                ),
-                              ),
-                            )),
+                            onTap: () async {
+                              await Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => GlowUpSessionScreen(sessionId: s['id'] as String),
+                              ));
+                              _load();     // reflect deletions made inside
+                            },
                           ),
                         );
                       },

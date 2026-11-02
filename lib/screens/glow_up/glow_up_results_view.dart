@@ -20,6 +20,18 @@ class GlowUpResultsView extends StatelessWidget {
     final summary = (result['summary'] as String?) ?? '';
     final nextStep = (result['next_step'] as String?) ?? '';
     final photoNote = result['photo_note'] as String?;
+    final obs = (result['observed'] as Map?)?.cast<String, dynamic>() ?? const {};
+    const labels = {
+      'hair_length': 'Hair length',
+      'hair_texture': 'Texture',
+      'hair_color': 'Hair colour',
+      'face_shape': 'Face shape',
+      'visible_style': 'Wearing',
+    };
+    final observed = <String, String>{
+      for (final k in labels.keys)
+        if ((obs[k] ?? '').toString().trim().isNotEmpty) labels[k]!: obs[k].toString(),
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -29,6 +41,35 @@ class GlowUpResultsView extends StatelessWidget {
             decoration: AppTheme.glowCard(glowColor: AppColors.secondary, gradient: AppGradients.primary, glowOpacity: 0.2),
             child: Text(summary, style: const TextStyle(fontSize: 15, height: 1.45, fontWeight: FontWeight.w600)),
           ),
+        if (observed.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const _Section(icon: Icons.visibility_outlined, color: AppColors.primary, title: 'What we noticed'),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(13),
+            decoration: AppTheme.card(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final e in observed.entries)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2.5),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(e.key,
+                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                        ),
+                        Expanded(child: Text(e.value, style: const TextStyle(fontSize: 12.5, height: 1.35))),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
         if (photoNote != null && photoNote.trim().isNotEmpty) ...[
           const SizedBox(height: 8),
           Text('Note: $photoNote', style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),

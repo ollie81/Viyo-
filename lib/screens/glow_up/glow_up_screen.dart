@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/insufficient_coins_exception.dart';
 import '../../services/glow_up_service.dart';
+import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
@@ -11,6 +12,7 @@ import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/xfile_preview_image.dart';
 import 'glow_up_history_screen.dart';
 import 'glow_up_results_view.dart';
+import 'glow_up_session_screen.dart';
 
 /// Viyo Glow Up ✨ — style suggestions from a selfie (Stage 1).
 class GlowUpScreen extends StatefulWidget {
@@ -22,9 +24,14 @@ class GlowUpScreen extends StatefulWidget {
 
 class _GlowUpScreenState extends State<GlowUpScreen> {
   static const _ageKey = 'glow_up_age_confirmed';
+  // Per account, so a shared phone never offers one person's Glow Up to another.
+  static String get _lastKey => 'glow_up_last_session_${SupabaseService.currentUserId ?? 'none'}';
 
   bool _ageConfirmed = false;
   bool _save = true;
+  bool _savePhoto = false;          // never on unless the user turns it on
+  bool _photoSaved = false;
+  String? _lastSessionId;           // reopens the latest saved Glow Up after a refresh
   String _goal = 'everyday';
   String _presentation = 'any';
   XFile? _photo;
@@ -37,7 +44,12 @@ class _GlowUpScreenState extends State<GlowUpScreen> {
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((p) {
-      if (mounted) setState(() => _ageConfirmed = p.getBool(_ageKey) ?? false);
+      if (mounted) {
+        setState(() {
+          _ageConfirmed = p.getBool(_ageKey) ?? false;
+          _lastSessionId = p.getString(_lastKey);
+        });
+      }
     }).catchError((_) {});
   }
 
@@ -86,12 +98,22 @@ class _GlowUpScreenState extends State<GlowUpScreen> {
         styleGoal: _goal,
         presentation: _presentation,
         save: _save,
+        savePhoto: _savePhoto,
       );
       if (!mounted) return;
+      final sessionId = res['session_id'] as String?;
       setState(() {
         _result = res['result'] as Map<String, dynamic>?;
         _saved = res['saved'] == true;
+        _photoSaved = res['photo_saved'] == true;
+        if (sessionId != null) _lastSessionId = sessionId;
       });
+      if (sessionId != null) {
+        try {
+          final p = await SharedPreferences.getInstance();
+          await p.setString(_lastKey, sessionId);
+        } catch (_) {}
+      }
     } on InsufficientCoinsException catch (e) {
       if (mounted) showInsufficientCoinsSheet(context, e);
     } catch (e) {
@@ -136,14 +158,26 @@ class _GlowUpScreenState extends State<GlowUpScreen> {
       key: const ValueKey('results'),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
+        GlowUpPhotoHeader(
+          photo: _photo != null ? XFilePreviewImage(file: _photo!) : null,
+          caption: _photoSaved
+              ? 'Saved privately with this Glow Up. Only you can see it, and you can delete it any time.'
+              : 'Not saved. It stays on this screen until you leave, then it\'s gone.',
+          details: [
+            GlowUpService.styleGoals[_goal] ?? '',
+            if (_presentation != 'any') GlowUpService.presentations[_presentation] ?? '',
+            'Today',
+          ].where((x) => x.isNotEmpty).join(' · '),
+        ),
+        const SizedBox(height: 16),
         GlowUpResultsView(result: _result!),
         const SizedBox(height: 16),
-        if (_saved)
-          const Text('Saved to My Glow Ups. Your photo was not stored.',
-              style: TextStyle(fontSize: 11.5, color: AppColors.success))
-        else
-          const Text('Not saved. Your photo was not stored.',
-              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        Text(
+          _saved
+              ? 'Ideas saved to My Glow Ups${_photoSaved ? ' with your photo' : ''}.'
+              : 'Ideas not saved.',
+          style: TextStyle(fontSize: 11.5, color: _saved ? AppColors.success : AppColors.textMuted),
+        ),
         const SizedBox(height: 14),
         ElevatedButton.icon(
           onPressed: _startOver,
@@ -172,12 +206,31 @@ class _GlowUpScreenState extends State<GlowUpScreen> {
               Text('Upload a selfie and get hairstyle, grooming, style and colour ideas picked for you.',
                   style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4)),
               SizedBox(height: 12),
-              _Promise(icon: Icons.lock_outline, text: 'Your photo is never stored or shown to anyone.'),
+              _Promise(icon: Icons.lock_outline, text: 'Your photo is only saved if you choose. Never public.'),
               _Promise(icon: Icons.favorite_border, text: 'Ideas to try. No ratings, no scores, no judgments.'),
-              _Promise(icon: Icons.delete_outline, text: 'Delete saved ideas any time.'),
+              _Promise(icon: Icons.delete_outline, text: 'Delete saved ideas and photos any time.'),
             ],
           ),
         ),
+        if (_lastSessionId != null) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final deleted = await Navigator.of(context).push<bool>(MaterialPageRoute(
+                builder: (_) => GlowUpSessionScreen(sessionId: _lastSessionId!),
+              ));
+              if (deleted == true && mounted) {
+                setState(() => _lastSessionId = null);
+                try {
+                  final p = await SharedPreferences.getInstance();
+                  await p.remove(_lastKey);
+                } catch (_) {}
+              }
+            },
+            icon: const Icon(Icons.history, size: 18),
+            label: const Text('Open my latest Glow Up'),
+          ),
+        ],
         const SizedBox(height: 16),
         _photoPicker(),
         const SizedBox(height: 16),
@@ -191,11 +244,22 @@ class _GlowUpScreenState extends State<GlowUpScreen> {
         const SizedBox(height: 14),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          value: _save,
+          value: _save || _savePhoto,
           activeColor: AppColors.primary,
-          onChanged: (v) => setState(() => _save = v),
+          onChanged: _savePhoto ? null : (v) => setState(() => _save = v),
           title: const Text('Save my ideas to My Glow Ups', style: TextStyle(fontSize: 13.5)),
-          subtitle: const Text('Only the text is saved, never the photo.',
+          subtitle: const Text('Your ideas, the look you chose and the date, so you can reopen them later.',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _savePhoto,
+          activeColor: AppColors.primary,
+          onChanged: (v) => setState(() => _savePhoto = v),
+          title: const Text('Also save my photo (optional)', style: TextStyle(fontSize: 13.5)),
+          subtitle: const Text(
+              'Off by default. If on, your photo is kept privately with this Glow Up. Only you can see it, '
+              'it\'s never public, and you can delete it any time.',
               style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
         ),
         CheckboxListTile(
