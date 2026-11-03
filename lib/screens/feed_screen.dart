@@ -195,16 +195,21 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.background,
+        // Compact header so the feed gets more of the screen.
+        toolbarHeight: 44,
+        titleSpacing: 16,
         title: const Text(
           'Viyo',
           style: TextStyle(
             color: AppColors.primary,
             fontWeight: FontWeight.bold,
-            fontSize: 22,
+            fontSize: 20,
           ),
         ),
+        actionsIconTheme: const IconThemeData(size: 22),
         actions: [
           IconButton(
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.auto_awesome, color: AppColors.secondary),
             tooltip: 'AI Tools',
             onPressed: () => Navigator.of(context).push(
@@ -212,6 +217,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
             ),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.play_circle_outline),
             tooltip: 'Shorts',
             onPressed: () => Navigator.of(context).push(
@@ -219,6 +225,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
             ),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.chat_bubble_outline),
             tooltip: 'Messages',
             onPressed: () => Navigator.of(context).push(
@@ -226,11 +233,13 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
             ),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.notifications_outlined),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const NotificationsScreen()),
             ),
           ),
+          const SizedBox(width: 4),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -239,10 +248,12 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
           unselectedLabelColor: AppColors.textMuted,
           indicatorColor: AppColors.primary,
           tabAlignment: TabAlignment.start,
+          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          unselectedLabelStyle: const TextStyle(fontSize: 14),
           tabs: const [
-            Tab(text: 'For You'),
-            Tab(text: 'Videos'),
-            Tab(text: 'Following'),
+            Tab(text: 'For You', height: 34),
+            Tab(text: 'Videos', height: 34),
+            Tab(text: 'Following', height: 34),
           ],
         ),
       ),

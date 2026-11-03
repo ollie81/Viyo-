@@ -170,6 +170,86 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
     }
   }
 
+  int get _activeFilterCount =>
+      (_selectedSort != DramaSort.newest ? 1 : 0) + (_selectedGenre != GenreChipRow.all ? 1 : 0);
+
+  Future<void> _openFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                        color: AppColors.surfaceBorder, borderRadius: BorderRadius.circular(999)),
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Filters', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                    ),
+                    if (_activeFilterCount > 0)
+                      TextButton(
+                        onPressed: () {
+                          _selectSort(DramaSort.newest);
+                          _selectGenre(GenreChipRow.all);
+                          setSheet(() {});
+                        },
+                        child: const Text('Reset'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Text('Sort by',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                DramaSortToggle(
+                  selected: _selectedSort,
+                  onSelect: (v) {
+                    _selectSort(v);
+                    setSheet(() {});
+                  },
+                ),
+                const SizedBox(height: 16),
+                const Text('Genre',
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                GenreChipRow(
+                  selected: _selectedGenre,
+                  onSelect: (v) {
+                    _selectGenre(v);
+                    setSheet(() {});
+                  },
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Show dramas'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _selectGenre(String genre) {
     if (genre == _selectedGenre) return;
     setState(() => _selectedGenre = genre);
@@ -297,7 +377,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
                 ),
               ),
             const SliverPadding(
-              padding: EdgeInsets.fromLTRB(12, 16, 12, 10),
+              padding: EdgeInsets.fromLTRB(12, 12, 12, 8),
               sliver: SliverToBoxAdapter(
                 child: Text(
                   'Browse',
@@ -305,32 +385,25 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: ContentTypeChipRow(
-                selected: _selectedContentType,
-                onSelect: _selectContentType,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-            ),
+            // One compact row: a Filters button (sort + genre, in a sheet)
+            // next to the content-type chips, so dramas start higher up.
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              padding: const EdgeInsets.only(bottom: 10),
               sliver: SliverToBoxAdapter(
-                // Capped so it stays a compact segmented control on
-                // tablets instead of stretching across the whole screen.
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: DramaSortToggle(selected: _selectedSort, onSelect: _selectSort),
-                  ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    _FiltersButton(activeCount: _activeFilterCount, onTap: _openFilters),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ContentTypeChipRow(
+                        selected: _selectedContentType,
+                        onSelect: _selectContentType,
+                        padding: const EdgeInsets.only(right: 12),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: GenreChipRow(
-                selected: _selectedGenre,
-                onSelect: _selectGenre,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
             ),
             if (_loadingBrowse)
@@ -670,6 +743,49 @@ class _DramaStateMessage extends StatelessWidget {
           OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ],
+    );
+  }
+}
+
+
+/// Opens the sort and genre filters; shows how many are switched on.
+class _FiltersButton extends StatelessWidget {
+  final int activeCount;
+  final VoidCallback onTap;
+
+  const _FiltersButton({required this.activeCount, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = activeCount > 0;
+    return Material(
+      color: active ? AppColors.secondary.withValues(alpha: 0.22) : AppColors.surface,
+      shape: StadiumBorder(side: BorderSide(color: active ? AppColors.secondary : AppColors.surfaceBorder)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          height: 34,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.tune, size: 16, color: active ? AppColors.secondary : AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Text(
+                  active ? 'Filters · $activeCount' : 'Filters',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: active ? AppColors.textPrimary : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
