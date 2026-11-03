@@ -81,6 +81,16 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   // transcribe). A normal video with speech ignores this entirely.
   final _promptController = TextEditingController();
 
+  // Preferred clip length. A target for the AI, not a hard cut: a moment
+  // that needs a little longer to land its hook and payoff keeps it.
+  String _clipLength = 'auto';
+  static const _clipLengths = [
+    ('auto', 'Auto', 'The AI picks the best length for each moment.'),
+    ('short', 'Short', 'About 15–30 seconds. Longer only when the moment needs it.'),
+    ('medium', 'Medium', 'About 30–45 seconds. Longer only when the moment needs it.'),
+    ('long', 'Long', 'About 45–60 seconds.'),
+  ];
+
   // Free first video. Guests see it as free too: a new account gets it.
   RepurposeFreeTrial? _freeTrial;
   bool get _isFree => SupabaseService.isGuest || (_freeTrial?.eligible ?? false);
@@ -196,6 +206,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         'source_path': sourcePath,
         if (viaBunny) 'source': 'bunny',
         'client_request_id': requestId,
+        if (_clipLength != 'auto') 'clip_length': _clipLength,
         if (_promptController.text.trim().isNotEmpty)
           'creative_prompt': _promptController.text.trim(),
       });
@@ -599,6 +610,40 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
               ),
             ],
 
+            const SizedBox(height: 16),
+
+            const Text(
+              'Clip length',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (value, label, _) in _clipLengths)
+                  ChoiceChip(
+                    label: Text(label),
+                    selected: _clipLength == value,
+                    onSelected: _isBusy ? null : (_) => setState(() => _clipLength = value),
+                    selectedColor: AppColors.primary.withValues(alpha: 0.22),
+                    labelStyle: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _clipLength == value ? AppColors.primary : AppColors.textSecondary,
+                    ),
+                    side: BorderSide(
+                        color: _clipLength == value ? AppColors.primary : AppColors.surfaceBorder),
+                    showCheckmark: false,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _clipLengths.firstWhere((l) => l.$1 == _clipLength).$3 +
+                  (_clipLength == 'auto' ? '' : ' A strong hook and ending come first.'),
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
             const SizedBox(height: 16),
 
             // Optional — only matters for a silent video or one with
