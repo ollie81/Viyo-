@@ -240,8 +240,8 @@ FAQ = [
      "framing, sound level and caption timing before you see it."),
     ("How long can the video be, and how long are the clips?",
      "Videos up to about half an hour work. Clips are between about 12 and 60 seconds. You can choose Auto, Short "
-     "(about 15 to 30 seconds), Medium (about 30 to 45 seconds) or Long (about 45 to 60 seconds). The length is a "
-     "target: a moment that needs a few more seconds to land its point keeps them."),
+     "(about 15 to 30 seconds, 40 at most), Medium (about 30 to 45 seconds, 55 at most) or Long (about 45 to 60 "
+     "seconds). Only a standout moment may run past the Short or Medium limit, and no clip is cut before its point."),
     ("What does the AI Repurposer cost?",
      "Your first video is free (up to 10 minutes long). After that it costs 40 Viyo Coins per video. If no clip comes "
      "out good enough to publish, the coins are refunded automatically."),
@@ -464,7 +464,7 @@ def ai_shorts() -> str:
       </ol>
 
       <h2>Clip length</h2>
-      <p>Choose <strong>Auto</strong>, <strong>Short</strong> (about 15–30 seconds), <strong>Medium</strong> (about 30–45 seconds) or <strong>Long</strong> (about 45–60 seconds). The length is a target, not a cut-off: a strong hook and a complete ending come first, and no clip is longer than 60 seconds.</p>
+      <p>Choose <strong>Auto</strong>, <strong>Short</strong> (about 15–30 seconds, 40 at most), <strong>Medium</strong> (about 30–45 seconds, 55 at most) or <strong>Long</strong> (about 45–60 seconds). A clip can be as short as 15 seconds when the point lands in that time. Only a standout moment may run past the Short or Medium limit; otherwise the AI finds a tighter moment that still opens on its hook and ends on its point. No clip is longer than 60 seconds.</p>
 
       <h2>Videos without talking</h2>
       <p>For cooking, travel or music videos with little or no speech, Viyo picks moments from the picture instead, and you can describe the look you want, for example "a slow-motion sunset walk on the beach".</p>
@@ -656,7 +656,7 @@ def llms() -> str:
 Viyo runs in the web browser at {SITE}{APP}. It is free to join. Some AI tools and later drama episodes use Viyo Coins (earned in the app or bought in packs from $0.99); Viyo Premium is an optional subscription for unlimited drama episodes.
 
 Key facts:
-- AI Repurposer: upload a video up to about 30 minutes; get up to 6 vertical 9:16 clips (about 12-60 seconds) with burned-in captions and a hook line. Clip length can be Auto, Short, Medium or Long. First video free (up to 10 minutes), then 40 coins; coins are refunded if no clip is good enough.
+- AI Repurposer: upload a video up to about 30 minutes; get up to 6 vertical 9:16 clips (about 12-60 seconds) with burned-in captions and a hook line. Clip length can be Auto, Short (15-30 s, 40 at most), Medium (30-45 s, 55 at most) or Long (45-60 s). First video free (up to 10 minutes), then 40 coins; coins are refunded if no clip is good enough.
 - Short dramas: series in short episodes; the first 3 episodes of every series are free.
 - Other AI tools: Hook Check, Caption Ideas, Improve with AI, Why This Worked, Voice Consistency Check, AI Video Coach, weekly report, Glow Up (18+).
 - Not available yet: Glow Up hairstyle image previews.

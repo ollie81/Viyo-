@@ -86,8 +86,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   String _clipLength = 'auto';
   static const _clipLengths = [
     ('auto', 'Auto', 'The AI picks the best length for each moment.'),
-    ('short', 'Short', 'About 15–30 seconds. Longer only when the moment needs it.'),
-    ('medium', 'Medium', 'About 30–45 seconds. Longer only when the moment needs it.'),
+    ('short', 'Short', 'About 15–30 seconds, 40 at most unless it\'s a standout moment.'),
+    ('medium', 'Medium', 'About 30–45 seconds, 55 at most unless it\'s a standout moment.'),
     ('long', 'Long', 'About 45–60 seconds.'),
   ];
 
