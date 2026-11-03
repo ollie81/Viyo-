@@ -79,6 +79,22 @@ class RepurposeService {
     }
   }
 
+  /// A copy of a finished clip with a small "Made with Viyo" tag, for
+  /// downloading or sharing outside the app. Null if it couldn't be made.
+  static Future<String?> brandedClipUrl({required String jobId, required int rank}) async {
+    try {
+      final res = await http
+          .post(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId/clips/$rank/branded'),
+              headers: _authHeaders())
+          .timeout(const Duration(seconds: 120));
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body);
+      return body is Map ? body['url'] as String? : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<RepurposeUploadTicket> requestUpload({required String contentType, required int sizeBytes}) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/uploads'),

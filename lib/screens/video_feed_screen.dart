@@ -27,6 +27,7 @@ import '../widgets/retryable_network_image.dart';
 import '../widgets/up_next_overlay.dart';
 import 'profile/profile_screen.dart';
 import 'wallet/subscribe_screen.dart';
+import '../services/share_links.dart';
 
 /// Viyo's video feed — full-screen, immersive playback (system UI
 /// hidden, video filling the whole screen) matching every other
@@ -281,13 +282,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     );
   }
 
-  Future<void> _share(Post post) async {
-    await Share.share(
-      post.caption.trim().isEmpty
-          ? 'Check out this video on Viyo.'
-          : post.caption,
-    );
-  }
+  Future<void> _share(Post post) => ShareLinks.sharePost(post);
 
   void _openProfile(Post post) {
     Navigator.of(context).push(

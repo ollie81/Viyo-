@@ -18,6 +18,7 @@ import 'post/series_detail_screen.dart';
 import 'post/viyo_post_viewer.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
+import '../services/share_links.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -165,11 +166,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _sharePostById(String postId) async {
     final match = _discoverPosts.where((p) => p.id == postId);
     if (match.isEmpty) return;
-    final post = match.first;
-    await Share.share(
-      post.mediaUrl ?? post.caption,
-      subject: 'Viyo post by ${post.authorUsername ?? 'creator'}',
-    );
+    await ShareLinks.sharePost(match.first);
   }
 
   @override

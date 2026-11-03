@@ -13,5 +13,11 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/p/:id",
+      "destination": "https://viyoai-production.up.railway.app/share/p/:id"
+    }
   ]
 }

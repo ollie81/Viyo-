@@ -12,6 +12,7 @@ import 'report_sheet.dart';
 import 'retryable_network_image.dart';
 import 'watchlist_button.dart';
 import '../screens/post/post_detail_screen.dart';
+import '../services/share_links.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -374,10 +375,7 @@ class PostCard extends StatelessWidget {
                   icon: Icons.ios_share_outlined,
                   color: AppColors.textSecondary,
                   label: 'Share',
-                  onTap: onShare ?? () => Share.share(
-                    post.mediaUrl ?? post.caption,
-                    subject: 'Viyo post by ${post.authorUsername ?? 'creator'}',
-                  ),
+                  onTap: onShare ?? () => ShareLinks.sharePost(post),
                 ),
                 const Spacer(),
                 WatchlistButton(targetType: 'post', targetId: post.id),

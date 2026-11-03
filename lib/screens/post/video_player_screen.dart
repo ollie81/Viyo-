@@ -18,6 +18,7 @@ import '../../widgets/comments_sheet.dart';
 import '../../widgets/retryable_network_image.dart';
 import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
+import '../../services/share_links.dart';
 
 /// Standard single-video player for long-form/landscape content (see
 /// Post.isLongForm) — everything the TikTok-style swipe feed
@@ -489,7 +490,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 icon: Icons.share_outlined,
                                 color: Colors.white70,
                                 label: 'Share',
-                                onTap: () => Share.share(post.mediaUrl ?? post.caption),
+                                onTap: () => ShareLinks.sharePost(post),
                               ),
                             ],
                           ),

@@ -1,15 +1,19 @@
 
 import 'package:flutter/material.dart';
+import '../../services/post_service.dart';
+import '../../services/share_links.dart';
 import '../../widgets/create_menu_sheet.dart';
 import '../../widgets/viyo_glass_bottom_nav.dart';
 import '../dramas/drama_home_screen.dart';
 import '../mission_screen.dart';
 import '../post/ai_repurpose_screen.dart';
 import '../post/create_post_screen.dart';
+import '../post/post_detail_screen.dart';
 import '../post/upload_ai_drama_screen.dart';
 import '../profile/profile_screen.dart';
 import '../search_screen.dart';
 import '../feed_screen.dart';
+import '../video_feed_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -20,6 +24,32 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openSharedPost());
+  }
+
+  /// Opened from a shared link (www.viyo.site/p/<id> -> /app/?post=<id>):
+  /// show that post on top of the feed.
+  Future<void> _openSharedPost() async {
+    final id = ShareLinks.takeOpenedPostId();
+    if (id == null) return;
+    try {
+      final found = await PostService.getPostsByIds([id]);
+      if (!mounted || found.isEmpty) return;
+      final post = found.first;
+      if (post.isPrivate) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => post.seriesId != null
+            ? VideoFeedScreen(initialPostId: post.id, seriesId: post.seriesId)
+            : PostDetailScreen(post: post),
+      ));
+    } catch (_) {
+      // A link to a deleted post just lands on the feed.
+    }
+  }
 
   // Every one of these five screens fires its own network calls
   // (posts, series, profile data...) the moment it's built — an

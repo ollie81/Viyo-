@@ -91,6 +91,12 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     ('long', 'Long', 'About 45–60 seconds.'),
   ];
 
+  // Downloads and shares carry a small "Made with Viyo" tag unless turned
+  // off. Clips posted inside Viyo are never tagged.
+  bool _addViyoTag = true;
+  String? _jobId;
+  final Map<String, String> _taggedUrls = {};
+
   // Free first video. Guests see it as free too: a new account gets it.
   RepurposeFreeTrial? _freeTrial;
   bool get _isFree => SupabaseService.isGuest || (_freeTrial?.eligible ?? false);
@@ -242,6 +248,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       }
 
       final jobId = jsonDecode(startResponse.body)['job_id'] as String;
+      _jobId = jobId;
+      _taggedUrls.clear();
 
       // Step 3: poll. A long video can wait in the queue and then take
       // several minutes to transcribe and edit, so this waits up to 40
@@ -391,15 +399,39 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   String? get _clipVideoUrl => _selectedClip?['processed_video_url'] as String?;
 
+  /// The file to download or share: the tagged copy when the tag is on,
+  /// falling back to the plain clip if the tag couldn't be added.
+  Future<String?> _exportUrl() async {
+    final url = _clipVideoUrl;
+    if (url == null || !_addViyoTag) return url;
+    final cached = _taggedUrls[url];
+    if (cached != null) return cached;
+    final rank = int.tryParse(RegExp(r'clip_(\d+)\.mp4').firstMatch(url)?.group(1) ?? '');
+    final jobId = _jobId;
+    if (rank == null || jobId == null) return url;
+    final tagged = await RepurposeService.brandedClipUrl(jobId: jobId, rank: rank);
+    if (tagged == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't add the Viyo tag, so this is the clip without it.")),
+        );
+      }
+      return url;
+    }
+    _taggedUrls[url] = tagged;
+    return tagged;
+  }
+
   /// Opens the phone's share sheet with the clip itself, so it can go to
   /// TikTok, Instagram, YouTube, WhatsApp... whatever is installed. The
   /// caption is copied first, because most of those apps ignore shared text.
   Future<void> _shareClip() async {
-    final url = _clipVideoUrl;
-    if (url == null) return;
+    if (_clipVideoUrl == null) return;
     final text = _postText;
     setState(() => _sharing = true);
     try {
+      final url = await _exportUrl();
+      if (url == null) return;
       await Clipboard.setData(ClipboardData(text: text));
       final res = await http.get(Uri.parse(url));
       if (res.statusCode != 200) throw Exception('download failed (${res.statusCode})');
@@ -419,7 +451,10 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   }
 
   Future<void> _downloadClip({bool captionAlreadyCopied = false}) async {
-    final url = _clipVideoUrl;
+    if (_clipVideoUrl == null) return;
+    setState(() => _sharing = true);
+    final url = await _exportUrl();
+    if (mounted) setState(() => _sharing = false);
     if (url == null) return;
     if (!captionAlreadyCopied) await Clipboard.setData(ClipboardData(text: _postText));
     // Supabase Storage sends the file as a download when ?download= is set.
@@ -1036,7 +1071,20 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                                 : 'Post This Clip to My Feed',
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 6),
+                    SwitchListTile(
+                      value: _addViyoTag,
+                      onChanged: _sharing ? null : (v) => setState(() => _addViyoTag = v),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      activeColor: AppColors.primary,
+                      title: const Text('Add "Made with Viyo" tag', style: TextStyle(fontSize: 13.5)),
+                      subtitle: const Text(
+                        'A small tag on downloads and shares, so viewers can find Viyo. '
+                        'Clips you post on Viyo never have it.',
+                        style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                      ),
+                    ),
                     Row(
                       children: [
                         Expanded(
@@ -1049,7 +1097,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: _clipVideoUrl == null ? null : () => _downloadClip(),
+                            onPressed: _sharing || _clipVideoUrl == null ? null : () => _downloadClip(),
                             icon: const Icon(Icons.download_rounded, size: 16),
                             label: const Text('Download'),
                           ),

@@ -16,6 +16,7 @@ import 'post/post_detail_screen.dart';
 import 'post/video_player_screen.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
+import '../services/share_links.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -108,12 +109,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _share(Post post) async {
-    await Share.share(
-      post.mediaUrl ?? post.caption,
-      subject: 'Viyo post by ${post.authorUsername ?? 'creator'}',
-    );
-  }
+  Future<void> _share(Post post) => ShareLinks.sharePost(post);
 
   Future<void> _delete(Post post) async {
     // Guard: never show the delete dialog for posts the current user
