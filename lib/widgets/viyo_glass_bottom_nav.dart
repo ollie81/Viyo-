@@ -31,13 +31,13 @@ class ViyoGlassBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
-            height: 66,
+            height: 56,
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(.36),
               borderRadius: BorderRadius.circular(28),
@@ -61,8 +61,8 @@ class ViyoGlassBottomNav extends StatelessWidget {
                     child: Center(
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
-                        width: isPost ? 48 : 62,
-                        height: isPost ? 48 : 52,
+                        width: isPost ? 42 : 56,
+                        height: isPost ? 40 : 46,
                         decoration: BoxDecoration(
                           color: isPost
                               ? AppColors.primary
@@ -85,7 +85,7 @@ class ViyoGlassBottomNav extends StatelessWidget {
                           children: [
                             Icon(
                               active ? item.$2 : item.$1,
-                              size: isPost ? 28 : 22,
+                              size: isPost ? 24 : 20,
                               color: isPost
                                   ? Colors.white
                                   : active
@@ -93,9 +93,13 @@ class ViyoGlassBottomNav extends StatelessWidget {
                                       : Colors.white.withOpacity(.58),
                             ),
                             if (!isPost) ...[
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 1),
                               Text(
                                 item.$3,
+                                // Fixed size: the phone's text-size setting
+                                // would otherwise stretch the menu.
+                                textScaler: TextScaler.noScaling,
+                                maxLines: 1,
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: active

@@ -78,7 +78,8 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     try {
-      final suggested = await ProfileService.getSuggestedCreators(excludeUserId: userId);
+      final suggested =
+          await ProfileService.getSuggestedCreators(excludeUserId: userId);
       if (!mounted) return;
       setState(() {
         _suggested = suggested;
@@ -174,63 +175,79 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        toolbarHeight: 48,
-        titleSpacing: 16,
-        title: const Text('Discover', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _query,
-              onChanged: _onChanged,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Search creators by name or username',
-                prefixIcon: Icon(Icons.search, color: AppColors.textMuted),
+      // No title bar: the Discover tab in the bottom menu already says where
+      // you are, so the search box sits at the top and content gets the room.
+      body: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 40,
+                child: TextField(
+                  controller: _query,
+                  onChanged: _onChanged,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'Search creators',
+                    hintStyle:
+                        TextStyle(color: AppColors.textMuted, fontSize: 14),
+                    prefixIcon: Icon(Icons.search,
+                        color: AppColors.textMuted, size: 20),
+                    prefixIconConstraints:
+                        BoxConstraints(minWidth: 40, minHeight: 40),
+                    contentPadding:
+                        EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: !_hasQuery
-                  ? RefreshIndicator(
-                      onRefresh: _loadDefaults,
-                      color: AppColors.primary,
-                      child: _DiscoverBody(
-                        loadingSuggested: _loadingSuggested,
-                        suggested: _suggested,
-                        loadingDiscover: _loadingDiscover,
-                        posts: _discoverPosts,
-                        onOpenPost: _openPost,
-                        loadingDramas: _loadingDramas,
-                        trendingDramas: _trendingDramas,
-                        newSeries: _newSeries,
-                        onOpenDrama: (post) => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => VideoFeedScreen(
-                              initialPostId: post.id,
-                              seriesId: post.seriesId,
+              const SizedBox(height: 10),
+              Expanded(
+                child: !_hasQuery
+                    ? RefreshIndicator(
+                        onRefresh: _loadDefaults,
+                        color: AppColors.primary,
+                        child: _DiscoverBody(
+                          loadingSuggested: _loadingSuggested,
+                          suggested: _suggested,
+                          loadingDiscover: _loadingDiscover,
+                          posts: _discoverPosts,
+                          onOpenPost: _openPost,
+                          loadingDramas: _loadingDramas,
+                          trendingDramas: _trendingDramas,
+                          newSeries: _newSeries,
+                          onOpenDrama: (post) => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => VideoFeedScreen(
+                                initialPostId: post.id,
+                                seriesId: post.seriesId,
+                              ),
                             ),
                           ),
+                          onOpenSeries: (series) => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    SeriesDetailScreen(series: series)),
+                          ),
                         ),
-                        onOpenSeries: (series) => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series)),
-                        ),
-                      ),
-                    )
-                  : _loading
-                      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                      : _results.isEmpty
-                          ? const _NoResultsState()
-                          : ListView.builder(
-                              itemCount: _results.length,
-                              itemBuilder: (ctx, i) => _CreatorTile(creator: _results[i]),
-                            ),
-            ),
-          ],
+                      )
+                    : _loading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary))
+                        : _results.isEmpty
+                            ? const _NoResultsState()
+                            : ListView.builder(
+                                itemCount: _results.length,
+                                itemBuilder: (ctx, i) =>
+                                    _CreatorTile(creator: _results[i]),
+                              ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -273,7 +290,8 @@ class _DiscoverBody extends StatelessWidget {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       // Clears HomeShell's floating nav (reported as bottom padding).
-      padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+      padding:
+          EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         if (!loadingSuggested && suggested.isNotEmpty) ...[
           const _SectionLabel('SUGGESTED CREATORS'),
@@ -283,7 +301,8 @@ class _DiscoverBody extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               itemCount: suggested.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (ctx, i) => _SuggestedCreatorChip(creator: suggested[i]),
+              itemBuilder: (ctx, i) =>
+                  _SuggestedCreatorChip(creator: suggested[i]),
             ),
           ),
           const SizedBox(height: 18),
@@ -296,7 +315,8 @@ class _DiscoverBody extends StatelessWidget {
         // the width per card and wraps onto more rows as more shows up,
         // instead of requiring a sideways scroll to see more.
         if (!loadingDramas && newSeries.isNotEmpty) ...[
-          const _SectionLabel('NEW SERIES', icon: Icons.auto_awesome, color: AppColors.secondary),
+          const _SectionLabel('NEW SERIES',
+              icon: Icons.auto_awesome, color: AppColors.secondary),
           const SizedBox(height: 10),
           GridView.builder(
             shrinkWrap: true,
@@ -316,7 +336,8 @@ class _DiscoverBody extends StatelessWidget {
           const SizedBox(height: 18),
         ],
         if (!loadingDramas && trendingDramas.isNotEmpty) ...[
-          const _SectionLabel('TRENDING DRAMAS', icon: Icons.auto_awesome, color: AppColors.secondary),
+          const _SectionLabel('TRENDING DRAMAS',
+              icon: Icons.auto_awesome, color: AppColors.secondary),
           const SizedBox(height: 10),
           GridView.builder(
             shrinkWrap: true,
@@ -407,7 +428,8 @@ class _TrendingDramaCard extends StatelessWidget {
   // (matching the ranked-grid density of competitor drama apps), gold
   // for the top 3 to call those out the way a real leaderboard would.
   final int rank;
-  const _TrendingDramaCard({required this.post, required this.onTap, required this.rank});
+  const _TrendingDramaCard(
+      {required this.post, required this.onTap, required this.rank});
 
   @override
   Widget build(BuildContext context) {
@@ -433,7 +455,10 @@ class _TrendingDramaCard extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [AppColors.secondary.withOpacity(0.22), AppColors.surface],
+                      colors: [
+                        AppColors.secondary.withOpacity(0.22),
+                        AppColors.surface
+                      ],
                     ),
                   ),
                 ),
@@ -447,12 +472,17 @@ class _TrendingDramaCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [AppColors.secondary.withOpacity(0.22), AppColors.surface],
+                    colors: [
+                      AppColors.secondary.withOpacity(0.22),
+                      AppColors.surface
+                    ],
                   ),
                 ),
               ),
             const Positioned(
-              top: 0, left: 0, right: 0,
+              top: 0,
+              left: 0,
+              right: 0,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -471,9 +501,12 @@ class _TrendingDramaCard extends StatelessWidget {
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: rank <= 3 ? AppColors.coin : Colors.black.withOpacity(0.55),
+                      color: rank <= 3
+                          ? AppColors.coin
+                          : Colors.black.withOpacity(0.55),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
@@ -486,20 +519,26 @@ class _TrendingDramaCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 5),
-                  const Icon(Icons.auto_awesome, size: 11, color: AppColors.secondary),
+                  const Icon(Icons.auto_awesome,
+                      size: 11, color: AppColors.secondary),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       'Ep ${post.episodeNumber ?? ''}',
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
               ),
             ),
             Positioned(
-              left: 0, right: 0, bottom: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
                 decoration: const BoxDecoration(
@@ -517,17 +556,25 @@ class _TrendingDramaCard extends StatelessWidget {
                       post.seriesTitle ?? 'Short Drama',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.2),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2),
                     ),
                     if (post.viewCount > 0) ...[
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          const Icon(Icons.visibility_outlined, size: 10, color: Colors.white70),
+                          const Icon(Icons.visibility_outlined,
+                              size: 10, color: Colors.white70),
                           const SizedBox(width: 3),
                           Text(
                             _compactCount(post.viewCount),
-                            style: const TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -570,8 +617,9 @@ class _SuggestedCreatorChip extends StatelessWidget {
             CircleAvatar(
               radius: 30,
               backgroundColor: AppColors.surfaceBorder,
-              backgroundImage:
-                  creator['avatar_url'] != null ? CachedNetworkImageProvider(creator['avatar_url']) : null,
+              backgroundImage: creator['avatar_url'] != null
+                  ? CachedNetworkImageProvider(creator['avatar_url'])
+                  : null,
               child: creator['avatar_url'] == null
                   ? Text((creator['display_name'] ?? '?')[0].toUpperCase())
                   : null,
@@ -581,7 +629,8 @@ class _SuggestedCreatorChip extends StatelessWidget {
               '@${creator['username'] ?? ''}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              style:
+                  const TextStyle(fontSize: 11, color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -595,7 +644,8 @@ class _DiscoverTile extends StatelessWidget {
   final bool tall;
   final VoidCallback onTap;
 
-  const _DiscoverTile({required this.post, required this.tall, required this.onTap});
+  const _DiscoverTile(
+      {required this.post, required this.tall, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -650,21 +700,26 @@ class _DiscoverTile extends StatelessWidget {
                 const Positioned(
                   top: 8,
                   right: 8,
-                  child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                  child: Icon(Icons.play_arrow_rounded,
+                      color: Colors.white, size: 20),
                 ),
               if (post.isBoosted)
                 Positioned(
                   top: 8,
                   left: 8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
                       color: AppColors.secondary.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
                       'BOOSTED',
-                      style: TextStyle(fontSize: 8.5, color: Colors.white, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          fontSize: 8.5,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
@@ -678,7 +733,10 @@ class _DiscoverTile extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       '${post.likeCount}',
-                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -687,7 +745,8 @@ class _DiscoverTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
-                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 11),
                       ),
                     ),
                   ],
@@ -711,8 +770,9 @@ class _CreatorTile extends StatelessWidget {
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: AppColors.surfaceBorder,
-        backgroundImage:
-            creator['avatar_url'] != null ? NetworkImage(creator['avatar_url']) : null,
+        backgroundImage: creator['avatar_url'] != null
+            ? NetworkImage(creator['avatar_url'])
+            : null,
         child: creator['avatar_url'] == null
             ? Text((creator['display_name'] ?? '?')[0].toUpperCase())
             : null,
@@ -747,10 +807,12 @@ class _EmptyDiscoverState extends StatelessWidget {
                 color: AppColors.primary.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.explore_outlined, color: AppColors.primary, size: 26),
+              child: const Icon(Icons.explore_outlined,
+                  color: AppColors.primary, size: 26),
             ),
             const SizedBox(height: 14),
-            const Text('Nothing to discover yet', style: TextStyle(color: AppColors.textSecondary)),
+            const Text('Nothing to discover yet',
+                style: TextStyle(color: AppColors.textSecondary)),
             const SizedBox(height: 4),
             const Text(
               'Be the first to post something',
@@ -769,7 +831,8 @@ class _NoResultsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('No creators found', style: TextStyle(color: AppColors.textMuted)),
+      child: Text('No creators found',
+          style: TextStyle(color: AppColors.textMuted)),
     );
   }
 }
@@ -795,7 +858,8 @@ class _DiscoverSkeleton extends StatelessWidget {
                 5,
                 (_) => const Padding(
                   padding: EdgeInsets.only(right: 12),
-                  child: CircleAvatar(radius: 30, backgroundColor: Colors.white),
+                  child:
+                      CircleAvatar(radius: 30, backgroundColor: Colors.white),
                 ),
               ),
             ),

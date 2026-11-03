@@ -69,6 +69,15 @@ class ViyoApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: PushNotificationService.navigatorKey,
       theme: AppTheme.dark,
+      // A large phone text-size setting still enlarges text, but capped so
+      // screens built for phones don't overflow or crowd out content.
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(textScaler: mq.textScaler.clamp(maxScaleFactor: 1.15)),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const SplashScreen(),
     );
   }

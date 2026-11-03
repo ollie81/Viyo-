@@ -1,15 +1,8 @@
 {
-  "buildCommand": "git clone https://github.com/flutter/flutter.git -b stable --depth 1 _flutter_sdk && ./_flutter_sdk/bin/flutter config --enable-web && ./_flutter_sdk/bin/flutter pub get && ./_flutter_sdk/bin/flutter build web --release --base-href /app/ && rm -rf public && mkdir -p public && cp -R site/. public/ && cp -R build/web public/app",
+  "buildCommand": "bash vercel-build.sh",
   "outputDirectory": "public",
   "installCommand": "echo 'Flutter installs itself in buildCommand'",
   "cleanUrls": true,
-  "redirects": [
-    {
-      "source": "/index",
-      "destination": "/",
-      "permanent": true
-    }
-  ],
   "headers": [
     {
       "source": "/app/(.*)",
@@ -17,24 +10,6 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex"
-        }
-      ]
-    },
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=86400"
-        }
-      ]
-    },
-    {
-      "source": "/llms.txt",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "text/plain; charset=utf-8"
         }
       ]
     }
