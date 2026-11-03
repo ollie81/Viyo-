@@ -58,6 +58,27 @@ class RepurposeService {
     };
   }
 
+  /// Whether this account's next run is its free first video. Null when it
+  /// can't be checked (guest, offline, older backend) — callers fall back
+  /// to showing the coin price, and the backend still decides at start.
+  static Future<RepurposeFreeTrial?> freeTrialStatus() async {
+    if (SupabaseService.isGuest || SupabaseService.client.auth.currentSession == null) return null;
+    try {
+      final res = await http
+          .get(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/free-trial'), headers: _authHeaders())
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body);
+      if (body is! Map) return null;
+      return RepurposeFreeTrial(
+        eligible: body['eligible'] == true,
+        maxMinutes: (body['max_minutes'] as num?)?.toInt() ?? 10,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<RepurposeUploadTicket> requestUpload({required String contentType, required int sizeBytes}) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/uploads'),
@@ -144,4 +165,11 @@ class RepurposeService {
       );
     }
   }
+}
+
+
+class RepurposeFreeTrial {
+  final bool eligible;
+  final int maxMinutes;
+  const RepurposeFreeTrial({required this.eligible, required this.maxMinutes});
 }

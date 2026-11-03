@@ -43,6 +43,17 @@ class AiHubScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
+          _SectionHeader('Make Clips'),
+          _FeatureCard(
+            icon: Icons.movie_creation_outlined,
+            iconColor: AppColors.secondary,
+            title: 'AI Repurposer',
+            description: 'Upload one longer video and get up to 6 short clips of its best moments, cropped for phones, with captions and hooks.',
+            costLabel: 'First video free · then 40 coins',
+            onTap: () => _open(context, const AiRepurposeScreen()),
+          ),
+
+          const SizedBox(height: 22),
           _SectionHeader('Before You Post'),
           _FeatureCard(
             icon: Icons.bolt,
@@ -91,14 +102,6 @@ class AiHubScreen extends StatelessWidget {
           const SizedBox(height: 22),
           _SectionHeader('Grow Faster'),
           _FeatureCard(
-            icon: Icons.movie_creation_outlined,
-            iconColor: AppColors.secondary,
-            title: 'AI Repurposer',
-            description: 'Upload one longer video — get back up to 3 ranked highlight clips, auto-cropped with burned-in captions and dead air trimmed out.',
-            costLabel: '40 coins',
-            onTap: () => _open(context, const AiRepurposeScreen()),
-          ),
-          _FeatureCard(
             icon: Icons.chat_bubble_outline,
             iconColor: AppColors.coin,
             title: 'AI Video Coach',
@@ -114,7 +117,7 @@ class AiHubScreen extends StatelessWidget {
             icon: Icons.auto_awesome,
             iconColor: AppColors.secondary,
             title: 'Glow Up ✨',
-            description: 'Upload a selfie and get hairstyle, grooming, style and colour ideas picked for you. Your photo is never stored. 18+.',
+            description: 'Upload a selfie and get hairstyle, grooming, style and colour ideas picked for you. Your photo is only saved if you choose to. 18+.',
             costLabel: '10 coins',
             onTap: () => _open(context, const GlowUpScreen()),
           ),

@@ -3,7 +3,7 @@ import '../theme/app_theme.dart';
 
 /// What the creator picked from the "+" menu. Callers decide what each
 /// choice actually navigates to — this sheet only presents the choice.
-enum CreateMenuChoice { photoVideo, aiDrama, challenge }
+enum CreateMenuChoice { aiClips, photoVideo, aiDrama, challenge }
 
 /// The "+" tab used to jump straight to CreatePostScreen. Now it opens
 /// this menu first — a normal upload and an AI Short Drama upload are
@@ -38,6 +38,14 @@ Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
               child: Text('Create', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 14),
+            _CreateMenuTile(
+              icon: Icons.content_cut,
+              iconColor: AppColors.primary,
+              title: 'Make Clips with AI',
+              subtitle: 'Turn a long video into short clips with captions',
+              onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.aiClips),
+            ),
+            const SizedBox(height: 10),
             _CreateMenuTile(
               icon: Icons.add_photo_alternate_outlined,
               iconColor: AppColors.primary,

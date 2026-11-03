@@ -81,6 +81,22 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   // transcribe). A normal video with speech ignores this entirely.
   final _promptController = TextEditingController();
 
+  // Free first video. Guests see it as free too: a new account gets it.
+  RepurposeFreeTrial? _freeTrial;
+  bool get _isFree => SupabaseService.isGuest || (_freeTrial?.eligible ?? false);
+  int get _freeMaxMinutes => _freeTrial?.maxMinutes ?? 10;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshFreeTrial();
+  }
+
+  Future<void> _refreshFreeTrial() async {
+    final status = await RepurposeService.freeTrialStatus();
+    if (mounted) setState(() => _freeTrial = status);
+  }
+
   @override
   void dispose() {
     _promptController.dispose();
@@ -299,6 +315,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           _isUploading = false;
           _isProcessing = false;
         });
+        // A finished run uses the free video; a failed one gives it back.
+        _refreshFreeTrial();
       }
     }
   }
@@ -522,9 +540,16 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Limits: configured by the backend/storage plan. The Coach keeps a separate history for each video.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+            Text(
+              _isFree
+                  ? 'Your first video is free (up to $_freeMaxMinutes minutes). '
+                      'After that it costs ${FeatureCoinCosts.repurpose} coins per video.'
+                  : '${FeatureCoinCosts.repurpose} coins per video. '
+                      'If no good clips come out, your coins are refunded.',
+              style: TextStyle(
+                  color: _isFree ? AppColors.success : AppColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: _isFree ? FontWeight.w600 : FontWeight.normal),
             ),
             const SizedBox(height: 20),
 
@@ -551,7 +576,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                             const Icon(Icons.check_circle, size: 36, color: AppColors.success),
                             const SizedBox(height: 8),
                             Text(
-                              _selectedVideo!.path.split('/').last,
+                              // On web the path is a blob id, so use the file's own name.
+                              _selectedVideo!.name.isNotEmpty
+                                  ? _selectedVideo!.name
+                                  : _selectedVideo!.path.split('/').last,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -618,17 +649,21 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                             color: Colors.black.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(999),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.monetization_on, size: 13, color: Colors.white),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${FeatureCoinCosts.repurpose}',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
-                            ],
-                          ),
+                          child: _isFree
+                              ? const Text('Free',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white))
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.monetization_on, size: 13, color: Colors.white),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '${FeatureCoinCosts.repurpose}',
+                                      style: const TextStyle(
+                                          fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ],
                     ),

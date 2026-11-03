@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../models/insufficient_coins_exception.dart';
 import '../screens/mission_screen.dart';
@@ -142,12 +143,15 @@ class _InsufficientCoinsSheetState extends State<_InsufficientCoinsSheet> {
               ),
               label: const Text('Buy Coins'),
             ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: _watchingAd ? null : _watchAd,
-              icon: const Icon(Icons.smart_display_outlined, size: 18),
-              label: Text(_watchingAd ? 'Loading ad...' : 'Watch an Ad for Free Coins'),
-            ),
+            // Rewarded ads only exist in the mobile app.
+            if (!kIsWeb) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _watchingAd ? null : _watchAd,
+                icon: const Icon(Icons.smart_display_outlined, size: 18),
+                label: Text(_watchingAd ? 'Loading ad...' : 'Watch an Ad for Free Coins'),
+              ),
+            ],
             if (_adResultMessage != null) ...[
               const SizedBox(height: 8),
               Text(

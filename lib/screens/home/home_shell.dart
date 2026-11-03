@@ -4,6 +4,7 @@ import '../../widgets/create_menu_sheet.dart';
 import '../../widgets/viyo_glass_bottom_nav.dart';
 import '../dramas/drama_home_screen.dart';
 import '../mission_screen.dart';
+import '../post/ai_repurpose_screen.dart';
 import '../post/create_post_screen.dart';
 import '../post/upload_ai_drama_screen.dart';
 import '../profile/profile_screen.dart';
@@ -61,6 +62,11 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted || choice == null) return;
 
     switch (choice) {
+      case CreateMenuChoice.aiClips:
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AiRepurposeScreen()),
+        );
+        break;
       case CreateMenuChoice.photoVideo:
         setState(() { _index = 2; _visited.add(2); });
         break;
