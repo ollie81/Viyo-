@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#0B0B1A",
     "theme_color": "#0B0B1A",
-    "description": "AI Short Dramas and creator tools — post, watch series, and earn Viyo Coins.",
+    "description": "Watch short drama series and creator videos, and turn long videos into short clips with AI.",
     "id": "/",
     "categories": ["entertainment", "social", "video"],
     "orientation": "portrait-primary",

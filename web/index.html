@@ -18,7 +18,12 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="AI Short Dramas and creator tools — post, watch series, and earn Viyo Coins.">
+  <meta name="description" content="Viyo web app: watch short drama series and creator videos, and turn long videos into short clips with AI.">
+  <!-- The public, crawlable pages live at the site root (www.viyo.site/).
+       This is the signed-in app shell, which has no readable content for
+       search engines, so it stays out of search results. -->
+  <meta name="robots" content="noindex">
+  <link rel="canonical" href="https://www.viyo.site/">
 
   <!-- Mobile-first: fills the viewport edge-to-edge and disables the
        pinch-zoom gesture a native app wouldn't have either, so the
@@ -104,6 +109,8 @@
     <div class="spinner"></div>
   </div>
   <script>
+    // Lets the homepage send returning users straight to the app.
+    try { localStorage.setItem('viyo_app_seen', '1'); } catch (err) {}
     window.addEventListener('flutter-first-frame', function () {
       var el = document.getElementById('viyo-boot-loader');
       if (!el) return;

@@ -1,0 +1,17 @@
+# Viyo public pages are open to search engines and AI search crawlers.
+# /app/ is the signed-in web app; its shell carries a noindex tag rather
+# than a block here, so crawlers can see that tag.
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://www.viyo.site/sitemap.xml
