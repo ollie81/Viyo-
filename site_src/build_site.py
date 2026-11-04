@@ -259,11 +259,11 @@ FAQ = [
      "Short dramas are series told in short episodes. On Viyo the first 3 episodes of a series are free. Later "
      "episodes are unlocked with Viyo Coins, or watched without coins with a Viyo Premium subscription. You can "
      "save series to a watchlist."),
-    ("Can I publish my own drama, series or movie?",
-     "Yes. From the Create menu, choose Upload Drama or Movie. You can publish a short drama or series episode by "
+    ("Can I publish my own drama, series, movie or film?",
+     "Yes. From the Create menu, choose Upload Drama, Movie or Film. You can publish a short drama or series episode by "
      "episode, or a movie, short film or AI film as a single video, in vertical or landscape. You set the title, "
      "genre, cover and coin price."),
-    ("Do creators earn from their dramas and movies?",
+    ("Do creators earn from their dramas, movies and films?",
      f"Yes. When viewers spend coins to unlock your episodes or your movie, you keep {CREATOR_SHARE} of those coins as "
      f"earnings. You can request a withdrawal once you have {MIN_WITHDRAWAL} coins in earnings; for now the Viyo team "
      "processes withdrawals by hand. The first 3 episodes of a series are free for viewers; a movie or short film is "
@@ -332,7 +332,7 @@ def home() -> str:
       <div class="card feature-band">
         <div>
           <p class="eyebrow">For filmmakers and storytellers</p>
-          <h2 id="bring">Bring your drama or movie to Viyo</h2>
+          <h2 id="bring">Bring your drama, movie or film to Viyo</h2>
           <p class="muted">Upload a short drama, a series, a movie, a short film or an AI film. You set the coin price, viewers watch the first 3 episodes of a series free, and you keep {CREATOR_SHARE} of the coins they spend to unlock the rest.</p>
         </div>
         <p class="actions"><a class="btn btn-primary" href="/publish">How publishing works</a></p>
@@ -550,12 +550,12 @@ def publish() -> str:
     <section class="wrap hero hero-tight">
       <div class="hero-text">
         <p class="eyebrow">Publish on Viyo</p>
-        <h1>Bring your drama, series or movie to Viyo</h1>
-        <p class="lead">Made a short drama, a web series, a movie or a short film? Publish it on Viyo, set your own price, and earn coins every time a viewer unlocks it.</p>
+        <h1>Bring your drama, series, movie or film to Viyo</h1>
+        <p class="lead">Made a short drama, a web series, a movie or a film? Publish it on Viyo, set your own price, and earn coins every time a viewer unlocks it.</p>
         <p class="actions"><a class="btn btn-primary" href="{APP}">Publish your first title</a></p>
-        <p class="muted small">Free to publish. In the app: tap + then Upload Drama or Movie.</p>
+        <p class="muted small">Free to publish. In the app: tap + then Upload Drama, Movie or Film.</p>
       </div>
-      {phone("/assets/create_menu.webp", "The Viyo Create menu, where creators upload a drama or movie")}
+      {phone("/assets/create_menu.webp", "The Viyo Create menu, where creators upload a drama, movie or film")}
     </section>
 
     <section class="wrap prose">
@@ -593,8 +593,8 @@ def publish() -> str:
     </section>
     {cta("Publish your first title", "Free to publish. Viewers get the first 3 episodes of a series free.")}
 """
-    return page("/publish", "Publish Your Short Drama, Series or Movie on Viyo",
-                "Publish your own short drama, series, movie or short film on Viyo. Set your coin price and keep "
+    return page("/publish", "Publish Your Short Drama, Series, Movie or Film on Viyo",
+                "Publish your own short drama, series, movie or film on Viyo. Set your coin price and keep "
                 "65% of the coins viewers spend to unlock it.",
                 body, schema=[APPLICATION], crumbs=[("/publish", "Publish your film")])
 
