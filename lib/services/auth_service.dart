@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/supabase_constants.dart';
@@ -13,6 +14,64 @@ class AuthService {
     required String password,
   }) {
     return _client.auth.signUp(email: email, password: password);
+  }
+
+  /// Where Google sends people back after they choose their account: the
+  /// web app on the site they came from, or the Android app (an intent
+  /// filter in AndroidManifest.xml catches com.viyo.app://login-callback).
+  static String get googleRedirect =>
+      kIsWeb ? '${Uri.base.origin}/app/' : 'com.viyo.app://login-callback/';
+
+  /// "Continue with Google". A guest keeps everything from this session:
+  /// Google is linked to the guest account (needs Manual Linking enabled
+  /// in Supabase Auth). If that's off, or someone isn't a guest, it's a
+  /// normal Google sign-in. If that Google account already belongs to an
+  /// existing Viyo account, the app retries as a normal sign-in when it
+  /// comes back (see SplashScreen).
+  static Future<void> continueWithGoogle() async {
+    final user = _client.auth.currentUser;
+    if (user != null && user.isAnonymous) {
+      try {
+        await _client.auth.linkIdentity(OAuthProvider.google, redirectTo: googleRedirect);
+        return;
+      } catch (_) {
+        // Manual linking switched off: fall back to a fresh sign-in.
+      }
+    }
+    await signInWithGoogle();
+  }
+
+  static Future<bool>? _googleEnabled;
+
+  /// Whether Google sign-in is switched on in Supabase (Auth > Providers),
+  /// read from the project's public auth settings. Until it is, the
+  /// "Continue with Google" button stays hidden instead of leading to an
+  /// error page.
+  static Future<bool> googleEnabled() => _googleEnabled ??= () async {
+        try {
+          final res = await http
+              .get(Uri.parse('${SupabaseConstants.url}/auth/v1/settings'),
+                  headers: {'apikey': SupabaseConstants.anonKey})
+              .timeout(const Duration(seconds: 10));
+          if (res.statusCode != 200) return false;
+          final body = jsonDecode(res.body);
+          return body is Map && body['external'] is Map && body['external']['google'] == true;
+        } catch (_) {
+          return false;
+        }
+      }();
+
+  static Future<void> signInWithGoogle() async {
+    await _client.auth.signInWithOAuth(OAuthProvider.google, redirectTo: googleRedirect);
+  }
+
+  /// True when the app was opened by Google's redirect saying this Google
+  /// account already belongs to another Viyo account.
+  static bool get returnedWithExistingGoogleAccount {
+    if (!kIsWeb) return false;
+    final all = '${Uri.base.query}&${Uri.base.fragment}';
+    return all.contains('identity_already_exists') || all.contains('already+linked') ||
+        all.contains('already%20linked');
   }
 
   static Future<AuthResponse> signIn({

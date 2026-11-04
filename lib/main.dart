@@ -101,6 +101,27 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
+    // Back from Google: the Google account already has a Viyo account, so
+    // linking it to this guest failed. Sign in to that account instead.
+    if (AuthService.returnedWithExistingGoogleAccount) {
+      try {
+        await AuthService.signInWithGoogle();
+        return;
+      } catch (_) {}
+    }
+
+    // Back from Google with a code to exchange: give it a moment to turn
+    // into a session before deciding the visitor is a new guest.
+    if (kIsWeb && SupabaseService.currentUserId == null &&
+        (Uri.base.queryParameters.containsKey('code') || Uri.base.fragment.contains('access_token'))) {
+      try {
+        await SupabaseService.client.auth.onAuthStateChange
+            .firstWhere((s) => s.session != null)
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+      if (!mounted) return;
+    }
+
     var userId = SupabaseService.currentUserId;
 
     // No session at all yet — start one anonymously instead of showing a

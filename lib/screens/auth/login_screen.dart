@@ -4,6 +4,7 @@ import '../../services/profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../home/home_shell.dart';
 import 'signup_screen.dart';
+import '../../widgets/google_sign_in_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -124,6 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 28),
+              const GoogleSignInButton(padding: EdgeInsets.only(bottom: 12)),
               OutlinedButton(
                 onPressed: _continuingAsGuest ? null : _continueAsGuest,
                 child: _continuingAsGuest

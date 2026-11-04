@@ -3,6 +3,7 @@ import '../screens/auth/login_screen.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'google_sign_in_button.dart';
 
 /// The single check every gated action (posting, coins, AI features,
 /// social actions) runs before doing anything — keeps the "is this a
@@ -138,7 +139,24 @@ class _UpgradeSheetState extends State<_UpgradeSheet> {
               "you've already done in this session carries over, nothing is lost.",
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
+            GoogleSignInButton(
+              padding: const EdgeInsets.only(bottom: 14),
+              onSignedIn: () {
+                if (mounted) Navigator.of(context).pop(true);
+              },
+            ),
+            const Row(
+              children: [
+                Expanded(child: Divider(color: AppColors.surfaceBorder)),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('or use email', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                ),
+                Expanded(child: Divider(color: AppColors.surfaceBorder)),
+              ],
+            ),
+            const SizedBox(height: 14),
             TextField(
               controller: _email,
               keyboardType: TextInputType.emailAddress,

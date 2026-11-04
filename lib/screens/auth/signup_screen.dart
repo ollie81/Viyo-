@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import 'onboarding_screen.dart';
+import '../../widgets/google_sign_in_button.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -75,6 +76,18 @@ class _SignupScreenState extends State<SignupScreen> {
                 style: TextStyle(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 28),
+              const GoogleSignInButton(padding: EdgeInsets.only(bottom: 20)),
+              const Row(
+                children: [
+                  Expanded(child: Divider(color: AppColors.surfaceBorder)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('or', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ),
+                  Expanded(child: Divider(color: AppColors.surfaceBorder)),
+                ],
+              ),
+              const SizedBox(height: 20),
               TextField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
