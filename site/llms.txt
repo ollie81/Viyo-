@@ -7,7 +7,7 @@ Viyo runs in the web browser at https://www.viyo.site/app/. It is free to join. 
 Key facts:
 - AI Repurposer: upload a video up to about 30 minutes; get up to 6 vertical 9:16 clips (about 12-60 seconds) with burned-in captions and a hook line. Clip length can be Auto, Short (15-30 s, 40 at most), Medium (30-45 s, 55 at most) or Long (45-60 s). First video free (up to 10 minutes), then 40 coins; coins are refunded if no clip is good enough.
 - Short dramas: series in short episodes; the first 3 episodes of every series are free.
-- Publishing: creators upload their own short dramas, series, movies, short films and AI films, set the coin price, and keep 65% of the coins viewers spend unlocking them (withdrawal from 100 coins, processed by the Viyo team).
+- Publishing: creators upload their own short dramas, series, movies, short films and AI films, set the coin price, and keep 65% of the coins viewers spend unlocking them (only bought coins count; each earned coin is worth $0.006; withdraw from $10 to PayPal or mobile money, sent by the Viyo team).
 - Other AI tools: Hook Check, Caption Ideas, Improve with AI, Why This Worked, Voice Consistency Check, AI Video Coach, weekly report, Glow Up (18+).
 - Not available yet: Glow Up hairstyle image previews.
 

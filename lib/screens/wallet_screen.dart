@@ -13,6 +13,7 @@ import '../utils/coin_format.dart';
 import '../widgets/viyo_toast.dart';
 import 'wallet/buy_coins_screen.dart';
 import 'wallet/subscribe_screen.dart';
+import 'wallet/payout_settings_screen.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -57,11 +58,22 @@ class _WalletScreenState extends State<WalletScreen> {
     });
   }
 
+  Future<void> _editPayoutDetails() async {
+    final saved = await Navigator.of(context).push<PayoutSettings>(
+      MaterialPageRoute(builder: (_) => PayoutSettingsScreen(current: _earnings.payoutSettings)),
+    );
+    if (saved != null) {
+      _showToast('Payout details saved');
+      _load();
+    }
+  }
+
   Future<void> _requestWithdrawal() async {
+    if (_earnings.payoutSettings == null) return _editPayoutDetails();
     setState(() => _withdrawing = true);
     try {
-      final coins = await WalletService.requestWithdrawal();
-      _showToast('Withdrawal requested for $coins coins 💸');
+      final usd = await WalletService.requestWithdrawal();
+      _showToast('Withdrawal of \$${usd.toStringAsFixed(2)} requested. We\'ll send it soon 💸');
       _load();
     } catch (e) {
       _showToast('$e');
@@ -220,6 +232,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           earnings: _earnings,
                           withdrawing: _withdrawing,
                           onWithdraw: _requestWithdrawal,
+                          onEditPayout: _editPayoutDetails,
                         ),
                       ],
                       const SizedBox(height: 14),
@@ -346,49 +359,98 @@ class _EarningsCard extends StatelessWidget {
   final WalletEarnings earnings;
   final bool withdrawing;
   final VoidCallback onWithdraw;
+  final VoidCallback onEditPayout;
 
   const _EarningsCard({
     required this.earnings,
     required this.withdrawing,
     required this.onWithdraw,
+    required this.onEditPayout,
   });
+
+  static String _usd(double v) => '\$${v.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
-    final canWithdraw = earnings.availableCoins >= earnings.minWithdrawalCoins;
+    final e = earnings;
+    final settings = e.payoutSettings;
+    final enough = e.availableCoins >= e.minWithdrawalCoins;
+    String label;
+    if (withdrawing) {
+      label = 'Requesting...';
+    } else if (e.pendingRequestUsd != null) {
+      label = 'Withdrawal on its way';
+    } else if (settings == null) {
+      label = 'Add payout details';
+    } else if (enough) {
+      label = 'Withdraw ${_usd(e.availableUsd)}';
+    } else {
+      label = 'Withdraw from ${_usd(e.minWithdrawalUsd)}';
+    }
+    final canTap = !withdrawing && e.pendingRequestUsd == null && (settings == null || enough);
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.card(borderColor: AppColors.secondary.withOpacity(0.35)),
+      decoration: AppTheme.card(borderColor: AppColors.secondary.withValues(alpha: 0.35)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 15, color: AppColors.secondary),
-              const SizedBox(width: 6),
-              const Text('Short Drama earnings', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              Icon(Icons.auto_awesome, size: 15, color: AppColors.secondary),
+              SizedBox(width: 6),
+              Text('Creator earnings', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ],
           ),
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _EarningsStat(label: 'Available', value: earnings.availableCoins, color: AppColors.success)),
-              Expanded(child: _EarningsStat(label: 'Pending', value: earnings.pendingWithdrawalCoins, color: AppColors.coin)),
-              Expanded(child: _EarningsStat(label: 'Lifetime', value: earnings.lifetimeCoins, color: AppColors.textSecondary)),
+              Expanded(child: _EarningsStat(label: 'Available', usd: e.availableUsd, coins: e.availableCoins, color: AppColors.success)),
+              Expanded(child: _EarningsStat(label: 'Pending', usd: e.pendingWithdrawalUsd, coins: e.pendingWithdrawalCoins, color: AppColors.coin)),
+              Expanded(child: _EarningsStat(label: 'Paid out', usd: e.paidUsd, coins: e.paidCoins, color: AppColors.textSecondary)),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
+          Text(
+            'You earn 65% of the coins viewers buy and spend on your titles. 1 coin = \$${e.coinUsd}. '
+            'Withdraw from ${_usd(e.minWithdrawalUsd)}.',
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+          if (e.pendingRequestUsd != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              '${_usd(e.pendingRequestUsd!)} is on its way to ${e.pendingRequestDestination ?? 'you'}.',
+              style: const TextStyle(fontSize: 12, color: AppColors.coin, fontWeight: FontWeight.w600),
+            ),
+          ],
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: onEditPayout,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.payments_outlined, size: 16, color: AppColors.textSecondary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      settings == null ? 'No payout details yet' : 'Paid to ${settings.summary}',
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(settings == null ? 'Add' : 'Change',
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: (!canWithdraw || withdrawing) ? null : onWithdraw,
-              child: Text(
-                withdrawing
-                    ? 'Requesting...'
-                    : canWithdraw
-                        ? 'Request Withdrawal'
-                        : 'Min. ${earnings.minWithdrawalCoins} coins to withdraw',
-              ),
+              onPressed: canTap ? onWithdraw : null,
+              child: Text(label),
             ),
           ),
         ],
@@ -399,18 +461,19 @@ class _EarningsCard extends StatelessWidget {
 
 class _EarningsStat extends StatelessWidget {
   final String label;
-  final int value;
+  final double usd;
+  final int coins;
   final Color color;
-  const _EarningsStat({required this.label, required this.value, required this.color});
+  const _EarningsStat({required this.label, required this.usd, required this.coins, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(formatCoins(value), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+        Text('\$${usd.toStringAsFixed(2)}', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+        Text('$label · ${formatCoins(coins)} coins', style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
       ],
     );
   }

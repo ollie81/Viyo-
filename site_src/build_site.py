@@ -34,7 +34,8 @@ SHORT_DESCRIPTION = (
     "Watch and publish short dramas, series and movies, and turn your long videos into short clips with AI."
 )
 CREATOR_SHARE = "65%"        # episodes.py CREATOR_SHARE
-MIN_WITHDRAWAL = 100         # wallet.py MIN_WITHDRAWAL_COINS
+MIN_WITHDRAWAL = "$10"       # wallet.py MIN_WITHDRAWAL_USD
+COIN_USD = "$0.006"          # wallet.py COIN_USD
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "site")
 
@@ -265,7 +266,8 @@ FAQ = [
      "genre, cover and coin price."),
     ("Do creators earn from their dramas, movies and films?",
      f"Yes. When viewers spend coins to unlock your episodes or your movie, you keep {CREATOR_SHARE} of those coins as "
-     f"earnings. You can request a withdrawal once you have {MIN_WITHDRAWAL} coins in earnings; for now the Viyo team "
+     f"earnings. Only coins viewers bought count; free coins from check-ins, missions and ads don't. Each earned coin "
+     f"is worth {COIN_USD}, and you can withdraw from {MIN_WITHDRAWAL} to PayPal or mobile money; for now the Viyo team "
      "processes withdrawals by hand. The first 3 episodes of a series are free for viewers; a movie or short film is "
      "priced from the first watch."),
     ("How do I earn Viyo Coins?",
@@ -571,8 +573,8 @@ def publish() -> str:
       <ol class="steps">
         <li><strong>You set the price</strong> in Viyo Coins, per episode or for the whole movie.</li>
         <li><strong>Viewers unlock</strong> your episodes or movie with coins.</li>
-        <li><strong>You keep {CREATOR_SHARE}</strong> of the coins they spend, added to your earnings in the Wallet.</li>
-        <li><strong>Request a withdrawal</strong> once you have {MIN_WITHDRAWAL} coins in earnings. For now the Viyo team processes withdrawals by hand.</li>
+        <li><strong>You keep {CREATOR_SHARE}</strong> of the coins they bought and spend on your title, added to your Wallet in dollars. Each earned coin is worth {COIN_USD}. Free coins from check-ins, missions and ads don't count.</li>
+        <li><strong>Withdraw from {MIN_WITHDRAWAL}</strong> to PayPal or mobile money (MTN, Airtel and others). For now the Viyo team sends payouts by hand.</li>
       </ol>
       <p class="muted small">Viewers with Viyo Premium can watch episodes without spending coins.</p>
 
@@ -737,7 +739,7 @@ Viyo runs in the web browser at {SITE}{APP}. It is free to join. Some AI tools a
 Key facts:
 - AI Repurposer: upload a video up to about 30 minutes; get up to 6 vertical 9:16 clips (about 12-60 seconds) with burned-in captions and a hook line. Clip length can be Auto, Short (15-30 s, 40 at most), Medium (30-45 s, 55 at most) or Long (45-60 s). First video free (up to 10 minutes), then 40 coins; coins are refunded if no clip is good enough.
 - Short dramas: series in short episodes; the first 3 episodes of every series are free.
-- Publishing: creators upload their own short dramas, series, movies, short films and AI films, set the coin price, and keep 65% of the coins viewers spend unlocking them (withdrawal from 100 coins, processed by the Viyo team).
+- Publishing: creators upload their own short dramas, series, movies, short films and AI films, set the coin price, and keep 65% of the coins viewers spend unlocking them (only bought coins count; each earned coin is worth $0.006; withdraw from $10 to PayPal or mobile money, sent by the Viyo team).
 - Other AI tools: Hook Check, Caption Ideas, Improve with AI, Why This Worked, Voice Consistency Check, AI Video Coach, weekly report, Glow Up (18+).
 - Not available yet: Glow Up hairstyle image previews.
 

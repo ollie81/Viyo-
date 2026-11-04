@@ -13,6 +13,7 @@ import 'auth/login_screen.dart';
 import 'copyright_screen.dart';
 import 'invite_screen.dart';
 import 'privacy_screen.dart';
+import 'admin/creator_payouts_screen.dart';
 
 // Same inbox as copyright_screen.dart's takedown contact — one address
 // for both since there's no separate support team to split them across.
@@ -34,6 +35,14 @@ void _showAdminToolsSheet(BuildContext context) {
             onTap: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModerationReviewScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.payments_outlined),
+            title: const Text('Creator payouts'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreatorPayoutsScreen()));
             },
           ),
           ListTile(
