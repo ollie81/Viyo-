@@ -358,7 +358,7 @@ class _FeedTabBody extends StatelessWidget {
       color: AppColors.primary,
       child: posts.isEmpty
           ? ListView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 20),
               children: [
                 if (showHeader) const HomeHeaderSection(),
                 Padding(
@@ -372,7 +372,7 @@ class _FeedTabBody extends StatelessWidget {
               ],
             )
           : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 20),
               itemCount: posts.length + (showHeader ? 1 : 0),
               itemBuilder: (ctx, i) {
                 if (showHeader) {
@@ -397,7 +397,7 @@ class _FeedSkeleton extends StatelessWidget {
       baseColor: AppColors.surface,
       highlightColor: AppColors.surfaceBorder,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+        padding: const EdgeInsets.fromLTRB(6, 6, 6, 20),
         physics: const NeverScrollableScrollPhysics(),
         itemCount: 3,
         itemBuilder: (_, __) => Container(

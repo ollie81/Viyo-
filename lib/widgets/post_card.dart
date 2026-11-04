@@ -51,15 +51,45 @@ class PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasMedia = post.mediaUrl != null;
+    // Caption and setup note: under the like/comment row for photo and
+    // video posts (the picture comes first), above it for text posts.
+    final captionWidgets = <Widget>[
+          // ── Caption ──
+          if (post.caption.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: _ExpandableCaption(text: post.caption),
+            ),
+
+          // ── Steal My Setup ──
+          if ((post.setupNote ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.build_outlined, size: 14, color: AppColors.textMuted),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      post.setupNote!,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    ];
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: AppTheme.card(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Header: avatar + name + time + overflow menu ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 6),
             child: GestureDetector(
               onTap: onOpenProfile,
               child: Row(
@@ -178,42 +208,17 @@ class PostCard extends StatelessWidget {
             ),
           ),
 
-          // ── Caption ──
-          if (post.caption.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: _ExpandableCaption(text: post.caption),
-            ),
-
-          // ── Steal My Setup ──
-          if ((post.setupNote ?? '').isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.build_outlined, size: 14, color: AppColors.textMuted),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      post.setupNote!,
-                      style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, height: 1.3),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           // ── Media (photo or video thumbnail) ──
-          if (post.mediaUrl != null) ...[
+          if (!hasMedia) ...captionWidgets,
+          if (hasMedia) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: EdgeInsets.zero,
               child: GestureDetector(
                 onTap: enableMediaTap
                     ? (onOpenMedia ?? () => _openPostDetail(context))
                     : null,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.zero,
                   child: AspectRatio(
                     // The post's own real shape when known (see
                     // Post.displayAspectRatio) — a landscape or square
@@ -349,12 +354,9 @@ class PostCard extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 4),
-          const Divider(height: 1, thickness: 1, color: AppColors.surfaceBorder),
-
           // ── Action bar: like + comment ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+            padding: EdgeInsets.fromLTRB(12, 4, 4, hasMedia ? 2 : 6),
             child: Row(
               children: [
                 _likeButton(),
@@ -382,6 +384,8 @@ class PostCard extends StatelessWidget {
               ],
             ),
           ),
+          if (hasMedia) ...captionWidgets,
+          if (hasMedia) const SizedBox(height: 4),
         ],
       ),
     );
