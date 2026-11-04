@@ -182,7 +182,7 @@ class PostCard extends StatelessWidget {
           if (post.caption.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: Text(post.caption, style: const TextStyle(height: 1.3)),
+              child: _ExpandableCaption(text: post.caption),
             ),
 
           // ── Steal My Setup ──
@@ -449,5 +449,58 @@ class PostCard extends StatelessWidget {
         Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
       ],
     );
+  }
+}
+
+
+/// A caption that shows its first 3 lines in the feed, with "more" to
+/// read the rest, so a long caption never pushes the video off screen.
+class _ExpandableCaption extends StatefulWidget {
+  final String text;
+  const _ExpandableCaption({required this.text});
+
+  @override
+  State<_ExpandableCaption> createState() => _ExpandableCaptionState();
+}
+
+class _ExpandableCaptionState extends State<_ExpandableCaption> {
+  static const _collapsedLines = 3;
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(height: 1.3);
+    return LayoutBuilder(builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: widget.text, style: DefaultTextStyle.of(context).style.merge(style)),
+        maxLines: _collapsedLines,
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout(maxWidth: constraints.maxWidth);
+      final overflows = painter.didExceedMaxLines;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: overflows ? () => setState(() => _expanded = !_expanded) : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.text,
+              style: style,
+              maxLines: _expanded ? null : _collapsedLines,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            ),
+            if (overflows)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  _expanded ? 'less' : 'more',
+                  style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                ),
+              ),
+          ],
+        ),
+      );
+    });
   }
 }
