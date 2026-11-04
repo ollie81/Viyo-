@@ -1,9 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../services/post_service.dart';
+import 'wallet_screen.dart';
+import 'video_feed_screen.dart';
+import 'post/post_detail_screen.dart';
+import 'post/ai_repurpose_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -32,6 +39,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _notifications = data;
       _loading = false;
     });
+    // Opening the list counts as seeing them; the bell badge clears.
+    unawaited(NotificationService.markAllRead(userId));
+  }
+
+  /// Takes you to what the notification is about.
+  Future<void> _open(Map<String, dynamic> n) async {
+    final type = n['type'] as String? ?? '';
+    final postId = n['post_id'] as String?;
+    final entityId = n['entity_id']?.toString();
+    Widget? target;
+    if (type == 'clips_ready' || type == 'clips_failed') {
+      target = AiRepurposeScreen(openJobId: entityId);
+    } else if (type == 'payout_paid' || type == 'payout_rejected') {
+      target = const WalletScreen();
+    } else if (postId != null) {
+      try {
+        final found = await PostService.getPostsByIds([postId]);
+        if (!mounted) return;
+        if (found.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That post is no longer available.')),
+          );
+          return;
+        }
+        final post = found.first;
+        target = post.seriesId != null
+            ? VideoFeedScreen(initialPostId: post.id, seriesId: post.seriesId)
+            : PostDetailScreen(post: post);
+      } catch (_) {
+        return;
+      }
+    }
+    if (target != null && mounted) {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => target!));
+    }
   }
 
   IconData _iconFor(String type) {
@@ -48,6 +90,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.flag;
       case 'new_episode':
         return Icons.auto_awesome;
+      case 'unlock':
+        return Icons.lock_open;
+      case 'payout_paid':
+        return Icons.payments;
+      case 'payout_rejected':
+        return Icons.error_outline;
+      case 'clips_ready':
+        return Icons.movie_creation_outlined;
+      case 'clips_failed':
+        return Icons.report_gmailerrorred;
       default:
         return Icons.notifications;
     }
@@ -87,7 +139,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             timeago.format(DateTime.parse(n['created_at'])),
                             style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
                           ),
-                          onTap: () => NotificationService.markRead(n['id']),
+                          onTap: () => _open(n),
                         );
                       },
                     ),

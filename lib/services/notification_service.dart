@@ -19,6 +19,12 @@ class NotificationService {
         .eq('id', notificationId);
   }
 
+  static Future<void> markAllRead(String userId) async {
+    try {
+      await _client.from('notifications').update({'is_read': true}).eq('user_id', userId).eq('is_read', false);
+    } catch (_) {}
+  }
+
   static Future<int> getUnreadCount(String userId) async {
     final res = await _client
         .from('notifications')

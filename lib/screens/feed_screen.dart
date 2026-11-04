@@ -17,6 +17,7 @@ import 'post/video_player_screen.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
 import '../services/share_links.dart';
+import '../services/notification_service.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -36,8 +37,18 @@ class FeedScreen extends StatefulWidget {
 /// dedicated Dramas tab in the bottom nav (see DramaHomeScreen) instead
 /// of being nested two levels deep.
 class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateMixin {
+  Future<void> _loadUnread() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    try {
+      final n = await NotificationService.getUnreadCount(userId);
+      if (mounted) setState(() => _unread = n);
+    } catch (_) {}
+  }
+
   late final TabController _tabController = TabController(length: 3, vsync: this);
 
+  int _unread = 0;
   List<Post> _forYouPosts = [];
   List<Post> _followingPosts = [];
   bool _loading = true;
@@ -46,6 +57,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    _loadUnread();
     _load();
   }
 
@@ -230,10 +242,17 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+            icon: Badge(
+              isLabelVisible: _unread > 0,
+              label: Text(_unread > 99 ? '99+' : '$_unread'),
+              child: const Icon(Icons.notifications_outlined),
             ),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              );
+              _loadUnread();
+            },
           ),
           const SizedBox(width: 4),
         ],

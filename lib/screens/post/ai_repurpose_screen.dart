@@ -48,7 +48,9 @@ import 'video_coach_screen.dart';
 ///   /api/v1/repurpose/{job_id} until the job is done or failed instead
 ///   of waiting on one long HTTP call.
 class AiRepurposeScreen extends StatefulWidget {
-  const AiRepurposeScreen({super.key});
+  /// Opens the results of an earlier job, e.g. from a "clips ready" notification.
+  final String? openJobId;
+  const AiRepurposeScreen({super.key, this.openJobId});
 
   @override
   State<AiRepurposeScreen> createState() => _AiRepurposeScreenState();
@@ -106,6 +108,44 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   void initState() {
     super.initState();
     _refreshFreeTrial();
+    final jobId = widget.openJobId;
+    if (jobId != null) _openJob(jobId);
+  }
+
+  /// Shows a finished job's clips (or why it failed) without uploading again.
+  Future<void> _openJob(String jobId) async {
+    setState(() {
+      _isProcessing = true;
+      _serverMessage = 'Loading your clips';
+      _error = null;
+    });
+    try {
+      final token = SupabaseService.client.auth.currentSession?.accessToken;
+      final res = await http.get(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId'),
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
+      );
+      final body = jsonDecode(res.body);
+      if (res.statusCode != 200) throw Exception(body['detail'] ?? 'Could not load these clips');
+      final status = body['status'] as String?;
+      if (!mounted) return;
+      setState(() {
+        if (status == 'done' && body['result'] != null) {
+          _jobId = jobId;
+          _taggedUrls.clear();
+          _result = body['result'] as Map<String, dynamic>;
+          _selectedClipIndex = 0;
+        } else if (status == 'failed') {
+          _error = body['error'] as String? ?? 'This job failed.';
+        } else {
+          _error = "These clips are still being made. We'll notify you when they're ready.";
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 
   Future<void> _refreshFreeTrial() async {
