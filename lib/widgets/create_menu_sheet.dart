@@ -13,13 +13,14 @@ enum CreateMenuChoice { aiClips, photoVideo, aiDrama, challenge }
 Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
   return showModalBottomSheet<CreateMenuChoice>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: AppColors.background,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
     builder: (ctx) => SafeArea(
       top: false,
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -42,7 +43,7 @@ Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
               icon: Icons.content_cut,
               iconColor: AppColors.primary,
               title: 'Make Clips with AI',
-              subtitle: 'Turn a long video into short clips with captions',
+              subtitle: 'Long video into short clips with captions',
               onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.aiClips),
             ),
             const SizedBox(height: 10),
@@ -61,7 +62,7 @@ Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
               icon: Icons.auto_awesome,
               iconColor: AppColors.secondary,
               title: 'Upload Drama, Movie or Film',
-              subtitle: 'Short drama, series, movie, short film or AI film. Earn coins',
+              subtitle: 'Drama, series, movie or film. Earn coins',
               highlighted: true,
               onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.aiDrama),
             ),
@@ -103,7 +104,7 @@ class _CreateMenuTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: highlighted ? iconColor.withOpacity(0.10) : AppColors.surface,
           borderRadius: BorderRadius.circular(14),
@@ -115,8 +116,8 @@ class _CreateMenuTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
                 color: iconColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
@@ -138,7 +139,10 @@ class _CreateMenuTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  Text(subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 ],
               ),
             ),
