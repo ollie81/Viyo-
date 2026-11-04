@@ -26,13 +26,15 @@ UPDATED = date.today().isoformat()
 CONTACT_EMAIL = "olli1234x@gmail.com"   # same address the app's Copyright screen shows
 
 DESCRIPTION = (
-    "Viyo is a creator-focused video platform where people watch short drama series and "
-    "creators' videos, and creators can post their work and use AI tools, including one that "
-    "turns a long video into ready-to-post short clips."
+    "Viyo is a creator-focused video platform where people watch short dramas, series, movies and "
+    "creators' videos, and creators can publish their own dramas and films, post their work and use "
+    "AI tools, including one that turns a long video into ready-to-post short clips."
 )
 SHORT_DESCRIPTION = (
-    "Watch short drama series and creator videos, and turn your long videos into short clips with AI."
+    "Watch and publish short dramas, series and movies, and turn your long videos into short clips with AI."
 )
+CREATOR_SHARE = "65%"        # episodes.py CREATOR_SHARE
+MIN_WITHDRAWAL = 100         # wallet.py MIN_WITHDRAWAL_COINS
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "site")
 
@@ -75,6 +77,7 @@ APPLICATION = {
                "description": "Free to join. Optional Viyo Coin packs and a Viyo Premium subscription."},
     "featureList": [
         "Short drama series with free first episodes",
+        "Creators publish their own short dramas, series, movies and short films and keep 65% of coins from unlocks",
         "Feed of creator photos, videos and text posts",
         "AI Repurposer: turns a long video into up to 6 vertical short clips with captions",
         "AI caption tools: Hook Check, Caption Ideas, Improve with AI",
@@ -88,6 +91,7 @@ NAV = [
     ("/creators", "For creators"),
     ("/ai-video-to-shorts", "AI video to shorts"),
     ("/short-drama", "Short dramas"),
+    ("/publish", "Publish your film"),
     ("/faq", "FAQ"),
     ("/about", "About"),
 ]
@@ -200,7 +204,7 @@ def cta(text: str = "Open Viyo", sub: str = "Free to join. Your first AI clip vi
 
 def phone(src: str, alt: str) -> str:
     return (f'<figure class="phone"><img src="{src}" alt="{e(alt)}" width="520" height="1126" '
-            f'loading="lazy" decoding="async"></figure>')
+            f'fetchpriority="high" decoding="async"></figure>')
 
 
 # ---------------------------------------------------------------- content
@@ -255,8 +259,15 @@ FAQ = [
      "Short dramas are series told in short episodes. On Viyo the first 3 episodes of a series are free. Later "
      "episodes are unlocked with Viyo Coins, or watched without coins with a Viyo Premium subscription. You can "
      "save series to a watchlist."),
-    ("Can I publish my own short drama?",
-     "Yes. Creators can upload episodes to a series from the Create menu."),
+    ("Can I publish my own drama, series or movie?",
+     "Yes. From the Create menu, choose Upload Drama or Movie. You can publish a short drama or series episode by "
+     "episode, or a movie, short film or AI film as a single video, in vertical or landscape. You set the title, "
+     "genre, cover and coin price."),
+    ("Do creators earn from their dramas and movies?",
+     f"Yes. When viewers spend coins to unlock your episodes or your movie, you keep {CREATOR_SHARE} of those coins as "
+     f"earnings. You can request a withdrawal once you have {MIN_WITHDRAWAL} coins in earnings; for now the Viyo team "
+     "processes withdrawals by hand. The first 3 episodes of a series are free for viewers; a movie or short film is "
+     "priced from the first watch."),
     ("How do I earn Viyo Coins?",
      "Through daily check-ins, streak bonuses and missions in the app. You can also buy coin packs on the web, from "
      "100 coins for $0.99 to 3,000 coins for $19.99."),
@@ -308,11 +319,23 @@ def home() -> str:
       <div class="card">
         <h3>For creators</h3>
         <ul class="ticks">
-          <li>Post videos up to 40 minutes, photos and text, and publish short drama episodes.</li>
+          <li>Publish your own short drama, series, movie or short film, and earn coins when viewers unlock it.</li>
+          <li>Post videos up to 40 minutes, photos and text.</li>
           <li>Turn one long video into up to 6 vertical clips with captions and hooks.</li>
           <li>AI help with hooks and captions, and plain feedback on how your posts did.</li>
         </ul>
         <p><a href="/creators">What Viyo offers creators →</a></p>
+      </div>
+    </section>
+
+    <section class="wrap" aria-labelledby="bring">
+      <div class="card feature-band">
+        <div>
+          <p class="eyebrow">For filmmakers and storytellers</p>
+          <h2 id="bring">Bring your drama or movie to Viyo</h2>
+          <p class="muted">Upload a short drama, a series, a movie, a short film or an AI film. You set the coin price, viewers watch the first 3 episodes of a series free, and you keep {CREATOR_SHARE} of the coins they spend to unlock the rest.</p>
+        </div>
+        <p class="actions"><a class="btn btn-primary" href="/publish">How publishing works</a></p>
       </div>
     </section>
 
@@ -366,7 +389,7 @@ def features() -> str:
       <h2>Create and connect</h2>
       <ul class="ticks">
         <li><strong>Post</strong> text, photos, or videos up to 40 minutes.</li>
-        <li><strong>Publish short drama episodes</strong> to a series.</li>
+        <li><strong>Publish your own titles:</strong> short dramas, series, movies, short films and AI films. You set the coin price and keep {CREATOR_SHARE} of the coins from unlocks. <a href="/publish">How it works</a>.</li>
         <li><strong>Likes, comments, follows and direct messages.</strong></li>
         <li><strong>Coin gifts</strong> to creators you like.</li>
         <li><strong>Boosts:</strong> Boost Post (30 coins), Discover Spotlight (25 coins) and Boost Series (60 coins) give your work extra visibility on Viyo.</li>
@@ -418,7 +441,7 @@ def creators() -> str:
       <ul class="ticks">
         <li><strong>Turn long videos into shorts.</strong> The AI Repurposer finds up to 6 moments that work on their own and edits each into a vertical clip with captions and a hook. <a href="/ai-video-to-shorts">How it works</a>.</li>
         <li><strong>Post anything.</strong> Videos up to 40 minutes, photos and text posts.</li>
-        <li><strong>Publish a short drama.</strong> Add episodes to a series; viewers get the first 3 free.</li>
+        <li><strong>Publish your drama or movie.</strong> Short dramas, series, movies, short films and AI films. You set the coin price and keep {CREATOR_SHARE} of the coins viewers spend to unlock it. <a href="/publish">How publishing works</a>.</li>
         <li><strong>Write better hooks and captions.</strong> Hook Check, Caption Ideas and Improve with AI each have one free use a day.</li>
         <li><strong>Learn from your numbers.</strong> Why This Worked explains a post's performance from its real stats, and a weekly report card arrives automatically.</li>
         <li><strong>Get noticed.</strong> Boost a post or a series, or appear in Discover Spotlight, using coins.</li>
@@ -508,8 +531,8 @@ def short_drama() -> str:
         <li><strong>Watchlist</strong> to save series for later.</li>
       </ul>
 
-      <h2>Publishing</h2>
-      <p>Creators can upload episodes to a series from the Create menu, and use coins to boost a series so more viewers find it.</p>
+      <h2>Publish your own</h2>
+      <p>Anyone can bring their work to Viyo: short dramas, series, movies, short films and AI films. You set the coin price, keep {CREATOR_SHARE} of the coins from unlocks, and can boost a title so more viewers find it. <a href="/publish">How publishing works</a>.</p>
 
       <h2>Coins and Premium</h2>
       <p>Coins come from daily check-ins and missions, or coin packs from $0.99. Viyo Premium is an optional weekly, monthly or yearly subscription for unlimited episodes.</p>
@@ -520,6 +543,60 @@ def short_drama() -> str:
                 "Watch short drama series on Viyo in quick episodes made for your phone. The first 3 episodes of "
                 "every series are free; creators can publish their own episodes.",
                 body, schema=[APPLICATION], crumbs=[("/short-drama", "Short dramas")])
+
+
+def publish() -> str:
+    body = f"""
+    <section class="wrap hero hero-tight">
+      <div class="hero-text">
+        <p class="eyebrow">Publish on Viyo</p>
+        <h1>Bring your drama, series or movie to Viyo</h1>
+        <p class="lead">Made a short drama, a web series, a movie or a short film? Publish it on Viyo, set your own price, and earn coins every time a viewer unlocks it.</p>
+        <p class="actions"><a class="btn btn-primary" href="{APP}">Publish your first title</a></p>
+        <p class="muted small">Free to publish. In the app: tap + then Upload Drama or Movie.</p>
+      </div>
+      {phone("/assets/create_menu.webp", "The Viyo Create menu, where creators upload a drama or movie")}
+    </section>
+
+    <section class="wrap prose">
+      <h2>What you can publish</h2>
+      <ul class="ticks">
+        <li><strong>Short dramas and series</strong>, published episode by episode. Viewers watch the first 3 episodes free, then unlock the rest.</li>
+        <li><strong>Movies and short films</strong>, as a single video, priced from the first watch.</li>
+        <li><strong>AI films</strong>, made with AI tools, listed in their own category.</li>
+        <li>Vertical or landscape, with your own title, genre, cover image and description.</li>
+      </ul>
+
+      <h2>How you earn</h2>
+      <ol class="steps">
+        <li><strong>You set the price</strong> in Viyo Coins, per episode or for the whole movie.</li>
+        <li><strong>Viewers unlock</strong> your episodes or movie with coins.</li>
+        <li><strong>You keep {CREATOR_SHARE}</strong> of the coins they spend, added to your earnings in the Wallet.</li>
+        <li><strong>Request a withdrawal</strong> once you have {MIN_WITHDRAWAL} coins in earnings. For now the Viyo team processes withdrawals by hand.</li>
+      </ol>
+      <p class="muted small">Viewers with Viyo Premium can watch episodes without spending coins.</p>
+
+      <h2>Getting viewers</h2>
+      <ul class="ticks">
+        <li>Your title appears in the Dramas tab, where viewers browse by type, genre and New, Popular or Hot.</li>
+        <li><strong>Boost Series</strong> (60 coins) puts your title in front of more viewers.</li>
+        <li>Every episode and post has its own share link with a proper preview for WhatsApp, X and Facebook.</li>
+        <li>Use the <a href="/ai-video-to-shorts">AI Repurposer</a> to cut trailers and highlight clips for TikTok, Reels and Shorts.</li>
+        <li>Series analytics show how each episode is doing.</li>
+      </ul>
+
+      <h2>What you need</h2>
+      <ul class="plain">
+        <li>A free Viyo account.</li>
+        <li>The rights to everything you upload. Don't upload work that belongs to someone else.</li>
+      </ul>
+    </section>
+    {cta("Publish your first title", "Free to publish. Viewers get the first 3 episodes of a series free.")}
+"""
+    return page("/publish", "Publish Your Short Drama, Series or Movie on Viyo",
+                "Publish your own short drama, series, movie or short film on Viyo. Set your coin price and keep "
+                "65% of the coins viewers spend to unlock it.",
+                body, schema=[APPLICATION], crumbs=[("/publish", "Publish your film")])
 
 
 def about() -> str:
@@ -535,7 +612,7 @@ def about() -> str:
       <h2>What Viyo is today</h2>
       <ul class="ticks">
         <li>A web app for phones and computers, at <a href="{APP}">{SITE}{APP}</a>.</li>
-        <li>Short drama series with free first episodes, and a feed of creator videos, photos and posts.</li>
+        <li>Short dramas, series and movies with free first episodes, published by creators themselves, and a feed of creator videos, photos and posts.</li>
         <li>AI tools for creators, led by the AI Repurposer, which turns long videos into short clips.</li>
         <li>Viyo Coins, earned in the app or bought, for AI tools, drama episodes and boosts.</li>
       </ul>
@@ -603,6 +680,7 @@ PAGES = {
     "/creators": ("creators.html", creators, "0.8", "monthly"),
     "/ai-video-to-shorts": ("ai-video-to-shorts.html", ai_shorts, "0.9", "monthly"),
     "/short-drama": ("short-drama.html", short_drama, "0.8", "monthly"),
+    "/publish": ("publish.html", publish, "0.9", "monthly"),
     "/faq": ("faq.html", faq, "0.7", "monthly"),
     "/about": ("about.html", about, "0.6", "monthly"),
     "/contact": ("contact.html", contact, "0.4", "yearly"),
@@ -645,6 +723,7 @@ def llms() -> str:
         ("/ai-video-to-shorts", "AI video to shorts", "How the AI Repurposer turns long videos into short clips"),
         ("/creators", "For creators", "Posting, short drama publishing and AI tools for creators"),
         ("/short-drama", "Short dramas", "Watching short drama series; first 3 episodes free"),
+        ("/publish", "Publish your film", "How creators publish their own dramas, series and movies and earn coins"),
         ("/faq", "FAQ", "Pricing, limits, privacy and common questions"),
         ("/about", "About", "About Viyo and how it treats user content"),
         ("/contact", "Contact", "How to reach Viyo"),
@@ -658,6 +737,7 @@ Viyo runs in the web browser at {SITE}{APP}. It is free to join. Some AI tools a
 Key facts:
 - AI Repurposer: upload a video up to about 30 minutes; get up to 6 vertical 9:16 clips (about 12-60 seconds) with burned-in captions and a hook line. Clip length can be Auto, Short (15-30 s, 40 at most), Medium (30-45 s, 55 at most) or Long (45-60 s). First video free (up to 10 minutes), then 40 coins; coins are refunded if no clip is good enough.
 - Short dramas: series in short episodes; the first 3 episodes of every series are free.
+- Publishing: creators upload their own short dramas, series, movies, short films and AI films, set the coin price, and keep 65% of the coins viewers spend unlocking them (withdrawal from 100 coins, processed by the Viyo team).
 - Other AI tools: Hook Check, Caption Ideas, Improve with AI, Why This Worked, Voice Consistency Check, AI Video Coach, weekly report, Glow Up (18+).
 - Not available yet: Glow Up hairstyle image previews.
 

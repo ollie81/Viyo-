@@ -46,7 +46,7 @@
    "name": "Viyo",
    "url": "https://www.viyo.site/",
    "logo": "https://www.viyo.site/assets/logo-512.png",
-   "description": "Viyo is a creator-focused video platform where people watch short drama series and creators' videos, and creators can post their work and use AI tools, including one that turns a long video into ready-to-post short clips.",
+   "description": "Viyo is a creator-focused video platform where people watch short dramas, series, movies and creators' videos, and creators can publish their own dramas and films, post their work and use AI tools, including one that turns a long video into ready-to-post short clips.",
    "email": "olli1234x@gmail.com"
   },
   {
@@ -54,7 +54,7 @@
    "@id": "https://www.viyo.site/#website",
    "name": "Viyo",
    "url": "https://www.viyo.site/",
-   "description": "Viyo is a creator-focused video platform where people watch short drama series and creators' videos, and creators can post their work and use AI tools, including one that turns a long video into ready-to-post short clips.",
+   "description": "Viyo is a creator-focused video platform where people watch short dramas, series, movies and creators' videos, and creators can publish their own dramas and films, post their work and use AI tools, including one that turns a long video into ready-to-post short clips.",
    "publisher": {
     "@id": "https://www.viyo.site/#organization"
    },
@@ -67,7 +67,7 @@
    "url": "https://www.viyo.site/app/",
    "applicationCategory": "MultimediaApplication",
    "operatingSystem": "Web browser",
-   "description": "Viyo is a creator-focused video platform where people watch short drama series and creators' videos, and creators can post their work and use AI tools, including one that turns a long video into ready-to-post short clips.",
+   "description": "Viyo is a creator-focused video platform where people watch short dramas, series, movies and creators' videos, and creators can publish their own dramas and films, post their work and use AI tools, including one that turns a long video into ready-to-post short clips.",
    "publisher": {
     "@id": "https://www.viyo.site/#organization"
    },
@@ -79,6 +79,7 @@
    },
    "featureList": [
     "Short drama series with free first episodes",
+    "Creators publish their own short dramas, series, movies and short films and keep 65% of coins from unlocks",
     "Feed of creator photos, videos and text posts",
     "AI Repurposer: turns a long video into up to 6 vertical short clips with captions",
     "AI caption tools: Hook Check, Caption Ideas, Improve with AI",
@@ -98,7 +99,7 @@
    "about": {
     "@id": "https://www.viyo.site/#app"
    },
-   "dateModified": "2026-11-03",
+   "dateModified": "2026-11-04",
    "inLanguage": "en"
   }
  ]
@@ -110,7 +111,7 @@
   <header class="top">
     <div class="wrap top-row">
       <a class="brand" href="/?home" aria-label="Viyo home">Viyo</a>
-      <nav class="nav" aria-label="Main"><a href="/features">Features</a><a href="/creators">For creators</a><a href="/ai-video-to-shorts">AI video to shorts</a><a href="/short-drama">Short dramas</a><a href="/faq">FAQ</a><a href="/about">About</a></nav>
+      <nav class="nav" aria-label="Main"><a href="/features">Features</a><a href="/creators">For creators</a><a href="/ai-video-to-shorts">AI video to shorts</a><a href="/short-drama">Short dramas</a><a href="/publish">Publish your film</a><a href="/faq">FAQ</a><a href="/about">About</a></nav>
       <a class="btn btn-primary btn-sm" href="/app/">Open Viyo</a>
     </div>
   </header>
@@ -120,14 +121,14 @@
       <div class="hero-text">
         <p class="eyebrow">Short dramas · creator videos · AI clip tools</p>
         <h1>Watch short dramas. Turn your long videos into shorts.</h1>
-        <p class="lead">Viyo is a creator-focused video platform where people watch short drama series and creators&#x27; videos, and creators can post their work and use AI tools, including one that turns a long video into ready-to-post short clips.</p>
+        <p class="lead">Viyo is a creator-focused video platform where people watch short dramas, series, movies and creators&#x27; videos, and creators can publish their own dramas and films, post their work and use AI tools, including one that turns a long video into ready-to-post short clips.</p>
         <p class="actions">
           <a class="btn btn-primary" href="/app/">Open Viyo</a>
           <a class="btn btn-ghost" href="/ai-video-to-shorts">How the AI clips work</a>
         </p>
         <p class="muted small">Free to join. Works in your browser on phone and computer.</p>
       </div>
-      <figure class="phone"><img src="/assets/repurposer.webp" alt="The Viyo AI Repurposer screen: select a video, choose a clip length, run it free for your first video" width="520" height="1126" loading="lazy" decoding="async"></figure>
+      <figure class="phone"><img src="/assets/repurposer.webp" alt="The Viyo AI Repurposer screen: select a video, choose a clip length, run it free for your first video" width="520" height="1126" fetchpriority="high" decoding="async"></figure>
     </section>
 
     <section class="wrap split" aria-labelledby="who">
@@ -144,11 +145,23 @@
       <div class="card">
         <h3>For creators</h3>
         <ul class="ticks">
-          <li>Post videos up to 40 minutes, photos and text, and publish short drama episodes.</li>
+          <li>Publish your own short drama, series, movie or short film, and earn coins when viewers unlock it.</li>
+          <li>Post videos up to 40 minutes, photos and text.</li>
           <li>Turn one long video into up to 6 vertical clips with captions and hooks.</li>
           <li>AI help with hooks and captions, and plain feedback on how your posts did.</li>
         </ul>
         <p><a href="/creators">What Viyo offers creators →</a></p>
+      </div>
+    </section>
+
+    <section class="wrap" aria-labelledby="bring">
+      <div class="card feature-band">
+        <div>
+          <p class="eyebrow">For filmmakers and storytellers</p>
+          <h2 id="bring">Bring your drama or movie to Viyo</h2>
+          <p class="muted">Upload a short drama, a series, a movie, a short film or an AI film. You set the coin price, viewers watch the first 3 episodes of a series free, and you keep 65% of the coins they spend to unlock the rest.</p>
+        </div>
+        <p class="actions"><a class="btn btn-primary" href="/publish">How publishing works</a></p>
       </div>
     </section>
 
@@ -185,9 +198,9 @@
     <div class="wrap foot-grid">
       <div>
         <p class="brand">Viyo</p>
-        <p class="muted small">Watch short drama series and creator videos, and turn your long videos into short clips with AI.</p>
+        <p class="muted small">Watch and publish short dramas, series and movies, and turn your long videos into short clips with AI.</p>
       </div>
-      <nav class="foot-links" aria-label="Footer"><a href="/features">Features</a><a href="/creators">For creators</a><a href="/ai-video-to-shorts">AI video to shorts</a><a href="/short-drama">Short dramas</a><a href="/faq">FAQ</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/app/">Open the app</a></nav>
+      <nav class="foot-links" aria-label="Footer"><a href="/features">Features</a><a href="/creators">For creators</a><a href="/ai-video-to-shorts">AI video to shorts</a><a href="/short-drama">Short dramas</a><a href="/publish">Publish your film</a><a href="/faq">FAQ</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/app/">Open the app</a></nav>
     </div>
     <div class="wrap"><p class="muted small">© 2026 Viyo. Prices and features are described as they are today and may change.</p></div>
   </footer>

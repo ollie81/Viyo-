@@ -32,7 +32,8 @@ h3 { font-size: 1.1rem; font-weight: 700; }
 p { margin: 0 0 1em; }
 
 .wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
-.prose { max-width: 760px; }
+.prose > * { max-width: 760px; }
+.prose > .steps, .prose > .faq { max-width: 760px; }
 .muted { color: var(--muted); }
 .small { font-size: .875rem; }
 .nowrap { white-space: nowrap; }
@@ -99,6 +100,12 @@ section { padding: 24px 0; }
   content: counter(s); position: absolute; left: 14px; top: 14px; width: 28px; height: 28px; border-radius: 50%;
   display: grid; place-items: center; font-weight: 800; font-size: .85rem; color: #05121A; background: var(--cyan);
 }
+
+/* publish band on the homepage */
+.feature-band { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; border-color: #2c2257; background: linear-gradient(135deg, #1b1440, var(--surface) 70%); }
+.feature-band h2 { margin-top: 0; }
+.feature-band .actions { margin: 0; }
+@media (max-width: 760px) { .feature-band { grid-template-columns: 1fr; } }
 
 /* long video -> clips illustration */
 .timeline { max-width: 760px; margin: 8px 0 28px; }

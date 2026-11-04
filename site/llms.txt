@@ -1,12 +1,13 @@
 # Viyo
 
-> Viyo is a creator-focused video platform where people watch short drama series and creators' videos, and creators can post their work and use AI tools, including one that turns a long video into ready-to-post short clips.
+> Viyo is a creator-focused video platform where people watch short dramas, series, movies and creators' videos, and creators can publish their own dramas and films, post their work and use AI tools, including one that turns a long video into ready-to-post short clips.
 
 Viyo runs in the web browser at https://www.viyo.site/app/. It is free to join. Some AI tools and later drama episodes use Viyo Coins (earned in the app or bought in packs from $0.99); Viyo Premium is an optional subscription for unlimited drama episodes.
 
 Key facts:
 - AI Repurposer: upload a video up to about 30 minutes; get up to 6 vertical 9:16 clips (about 12-60 seconds) with burned-in captions and a hook line. Clip length can be Auto, Short (15-30 s, 40 at most), Medium (30-45 s, 55 at most) or Long (45-60 s). First video free (up to 10 minutes), then 40 coins; coins are refunded if no clip is good enough.
 - Short dramas: series in short episodes; the first 3 episodes of every series are free.
+- Publishing: creators upload their own short dramas, series, movies, short films and AI films, set the coin price, and keep 65% of the coins viewers spend unlocking them (withdrawal from 100 coins, processed by the Viyo team).
 - Other AI tools: Hook Check, Caption Ideas, Improve with AI, Why This Worked, Voice Consistency Check, AI Video Coach, weekly report, Glow Up (18+).
 - Not available yet: Glow Up hairstyle image previews.
 
@@ -17,6 +18,7 @@ Key facts:
 - [AI video to shorts](https://www.viyo.site/ai-video-to-shorts): How the AI Repurposer turns long videos into short clips
 - [For creators](https://www.viyo.site/creators): Posting, short drama publishing and AI tools for creators
 - [Short dramas](https://www.viyo.site/short-drama): Watching short drama series; first 3 episodes free
+- [Publish your film](https://www.viyo.site/publish): How creators publish their own dramas, series and movies and earn coins
 - [FAQ](https://www.viyo.site/faq): Pricing, limits, privacy and common questions
 - [About](https://www.viyo.site/about): About Viyo and how it treats user content
 - [Contact](https://www.viyo.site/contact): How to reach Viyo
