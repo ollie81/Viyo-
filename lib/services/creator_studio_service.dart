@@ -1,0 +1,321 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:http/http.dart' as http;
+
+import '../constants/supabase_constants.dart';
+import 'supabase_service.dart';
+
+/// Viyo Studio (for creators): AI dramas, episodes and films made scene by
+/// scene and paid with Studio credits. See creator_studio.py on the backend,
+/// which prices, checks ownership and charges everything server-side.
+
+class StudioBalance {
+  final int available, purchased, promotional, held;
+  const StudioBalance({this.available = 0, this.purchased = 0, this.promotional = 0, this.held = 0});
+  factory StudioBalance.fromJson(Map? j) => StudioBalance(
+        available: (j?['available'] as num?)?.toInt() ?? 0,
+        purchased: (j?['purchased'] as num?)?.toInt() ?? 0,
+        promotional: (j?['promotional'] as num?)?.toInt() ?? 0,
+        held: (j?['held'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class StudioVoice {
+  final String name, gender, style;
+  StudioVoice(this.name, this.gender, this.style);
+}
+
+class StudioPack {
+  final String id, label;
+  final int credits;
+  final double priceUsd;
+  StudioPack(this.id, this.label, this.credits, this.priceUsd);
+}
+
+class StudioAccount {
+  final StudioBalance balance;
+  final List<StudioVoice> voices;
+  final List<StudioPack> packs;
+  final bool checkoutAvailable;
+  StudioAccount(this.balance, this.voices, this.packs, this.checkoutAvailable);
+}
+
+class StudioProjectSummary {
+  final String id, title, logline, kind, aspectRatio, genre;
+  final int sceneCount, scenesWithImages, renderCount;
+  final String? thumbnailUrl;
+  final DateTime? updatedAt;
+  StudioProjectSummary.fromJson(Map j)
+      : id = j['id'],
+        title = j['title'] ?? 'Untitled',
+        logline = j['logline'] ?? '',
+        kind = j['kind'] ?? 'episode',
+        aspectRatio = j['aspect_ratio'] ?? '9:16',
+        genre = j['genre'] ?? '',
+        sceneCount = (j['scene_count'] as num?)?.toInt() ?? 0,
+        scenesWithImages = (j['scenes_with_images'] as num?)?.toInt() ?? 0,
+        renderCount = (j['render_count'] as num?)?.toInt() ?? 0,
+        thumbnailUrl = j['thumbnail_url'],
+        updatedAt = DateTime.tryParse(j['updated_at'] ?? '');
+}
+
+class StudioProject {
+  final String id;
+  String title, logline, kind, aspectRatio, genre, visualStyle, language, script;
+  int targetSeconds;
+  bool captions;
+  StudioProject.fromJson(Map j)
+      : id = j['id'],
+        title = j['title'] ?? '',
+        logline = j['logline'] ?? '',
+        kind = j['kind'] ?? 'episode',
+        aspectRatio = j['aspect_ratio'] ?? '9:16',
+        genre = j['genre'] ?? '',
+        visualStyle = j['visual_style'] ?? '',
+        language = j['language'] ?? 'English',
+        script = j['script'] ?? '',
+        targetSeconds = (j['target_seconds'] as num?)?.toInt() ?? 90,
+        captions = j['captions'] ?? true;
+  bool get vertical => aspectRatio == '9:16';
+}
+
+class StudioCharacter {
+  final String id;
+  String name, description, voice;
+  final String? portraitUrl;
+  StudioCharacter.fromJson(Map j)
+      : id = j['id'],
+        name = j['name'] ?? '',
+        description = j['description'] ?? '',
+        voice = j['voice'] ?? '',
+        portraitUrl = j['portrait_url'];
+}
+
+class StudioLine {
+  String character, text;
+  StudioLine(this.character, this.text);
+  Map<String, dynamic> toJson() => {'character': character, 'text': text};
+}
+
+class StudioScene {
+  final String id;
+  final int position;
+  String heading, visual, mode;
+  double durationSeconds;
+  List<StudioLine> dialogue;
+  final String? imageUrl, videoUrl, audioUrl;
+  final double? audioSeconds;
+  final bool hasImage, hasVideo, hasAudio;
+  StudioScene.fromJson(Map j)
+      : id = j['id'],
+        position = (j['position'] as num?)?.toInt() ?? 0,
+        heading = j['heading'] ?? '',
+        visual = j['visual'] ?? '',
+        mode = j['mode'] ?? 'still',
+        durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 5,
+        dialogue = ((j['dialogue'] as List?) ?? [])
+            .map((d) => StudioLine((d['character'] ?? '') as String, (d['text'] ?? '') as String))
+            .toList(),
+        imageUrl = j['image_url'],
+        videoUrl = j['video_url'],
+        audioUrl = j['audio_url'],
+        audioSeconds = (j['audio_seconds'] as num?)?.toDouble(),
+        hasImage = j['has_image'] == true,
+        hasVideo = j['has_video'] == true,
+        hasAudio = j['has_audio'] == true;
+  bool get ready => hasImage || (mode == 'video' && hasVideo);
+}
+
+class StudioJob {
+  final String id, kind, status;
+  final String? sceneId, characterId, error;
+  final int estimatedCredits, chargedCredits;
+  final DateTime? createdAt;
+  StudioJob.fromJson(Map j)
+      : id = j['id'],
+        kind = j['kind'],
+        status = j['status'],
+        sceneId = j['scene_id'],
+        characterId = j['character_id'],
+        error = j['error'],
+        estimatedCredits = (j['estimated_credits'] as num?)?.toInt() ?? 0,
+        chargedCredits = (j['charged_credits'] as num?)?.toInt() ?? 0,
+        createdAt = DateTime.tryParse(j['created_at'] ?? '');
+  bool get active => status == 'queued' || status == 'running';
+}
+
+class StudioRender {
+  final String id, aspectRatio;
+  final int version;
+  final int? width, height, bytes;
+  final double durationSeconds;
+  final DateTime? createdAt;
+  StudioRender.fromJson(Map j)
+      : id = j['id'],
+        aspectRatio = j['aspect_ratio'] ?? '9:16',
+        version = (j['version'] as num).toInt(),
+        width = (j['width'] as num?)?.toInt(),
+        height = (j['height'] as num?)?.toInt(),
+        bytes = (j['bytes'] as num?)?.toInt(),
+        durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 0,
+        createdAt = DateTime.tryParse(j['created_at'] ?? '');
+}
+
+class StudioProjectDetail {
+  final StudioProject project;
+  final List<StudioCharacter> characters;
+  final List<StudioScene> scenes;
+  final List<StudioRender> renders;
+  final List<StudioJob> jobs;
+  final StudioBalance balance;
+  StudioProjectDetail.fromJson(Map j)
+      : project = StudioProject.fromJson(j['project']),
+        characters = ((j['characters'] as List?) ?? []).map((e) => StudioCharacter.fromJson(e)).toList(),
+        scenes = ((j['scenes'] as List?) ?? []).map((e) => StudioScene.fromJson(e)).toList(),
+        renders = ((j['renders'] as List?) ?? []).map((e) => StudioRender.fromJson(e)).toList(),
+        jobs = ((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(),
+        balance = StudioBalance.fromJson(j['balance']);
+}
+
+class StudioEstimate {
+  final String kind;
+  final int totalCredits, readyCount;
+  final List<Map<String, dynamic>> items;
+  final StudioBalance balance;
+  final String? note;
+  StudioEstimate.fromJson(Map j)
+      : kind = j['kind'],
+        totalCredits = (j['total_credits'] as num?)?.toInt() ?? 0,
+        readyCount = (j['ready_count'] as num?)?.toInt() ?? 0,
+        items = ((j['items'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
+        balance = StudioBalance.fromJson(j['balance']),
+        note = j['note'];
+  List<String> get blockedReasons =>
+      items.map((i) => i['blocked']).whereType<String>().toSet().toList();
+}
+
+class StudioException implements Exception {
+  final String message;
+  final int status;
+  StudioException(this.message, this.status);
+  bool get notEnoughCredits => status == 402;
+  @override
+  String toString() => message;
+}
+
+class CreatorStudioService {
+  static String get _base => '${AiBackendConstants.baseUrl}/api/v1/studio';
+  static final _rnd = Random.secure();
+
+  static Map<String, String> _headers() {
+    final token = SupabaseService.client.auth.currentSession?.accessToken;
+    return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
+  }
+
+  static String newRequestId() =>
+      List.generate(16, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+
+  static Future<dynamic> _send(String method, String path, [Object? body]) async {
+    final uri = Uri.parse('$_base$path');
+    final h = _headers();
+    final payload = body == null ? null : jsonEncode(body);
+    late http.Response res;
+    try {
+      res = await switch (method) {
+        'GET' => http.get(uri, headers: h),
+        'POST' => http.post(uri, headers: h, body: payload),
+        'PATCH' => http.patch(uri, headers: h, body: payload),
+        'DELETE' => http.delete(uri, headers: h),
+        _ => throw ArgumentError(method),
+      }
+          .timeout(const Duration(seconds: 45));
+    } catch (_) {
+      throw StudioException("Couldn't reach Viyo. Check your connection and try again.", 0);
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return res.body.isEmpty ? null : jsonDecode(res.body);
+    }
+    var message = 'Something went wrong (${res.statusCode}).';
+    try {
+      final d = jsonDecode(res.body)['detail'];
+      if (d is String) message = d;
+      if (d is Map && d['message'] is String) message = d['message'];
+    } catch (_) {}
+    throw StudioException(message, res.statusCode);
+  }
+
+  static Future<StudioAccount> account() async {
+    final j = await _send('GET', '/me');
+    return StudioAccount(
+      StudioBalance.fromJson(j['balance']),
+      ((j['voices'] as List?) ?? []).map((v) => StudioVoice(v['name'], v['gender'], v['style'])).toList(),
+      ((j['packs'] as List?) ?? [])
+          .map((p) => StudioPack(p['id'], p['label'], (p['credits'] as num).toInt(), (p['price_usd'] as num).toDouble()))
+          .toList(),
+      j['checkout_available'] == true,
+    );
+  }
+
+  static Future<(StudioBalance, List<StudioProjectSummary>)> projects() async {
+    final j = await _send('GET', '/projects');
+    return (
+      StudioBalance.fromJson(j['balance']),
+      ((j['projects'] as List?) ?? []).map((p) => StudioProjectSummary.fromJson(p)).toList(),
+    );
+  }
+
+  static Future<String> createProject(Map<String, dynamic> body) async =>
+      (await _send('POST', '/projects', body))['id'] as String;
+
+  static Future<StudioProjectDetail> project(String id) async =>
+      StudioProjectDetail.fromJson(await _send('GET', '/projects/$id'));
+
+  static Future<void> updateProject(String id, Map<String, dynamic> fields) => _send('PATCH', '/projects/$id', fields);
+
+  static Future<void> archiveProject(String id) => _send('POST', '/projects/$id/archive');
+
+  static Future<void> addCharacter(String projectId, String name, String description) =>
+      _send('POST', '/projects/$projectId/characters', {'name': name, 'description': description});
+
+  static Future<void> updateCharacter(String id, Map<String, dynamic> fields) => _send('PATCH', '/characters/$id', fields);
+
+  static Future<void> deleteCharacter(String id) => _send('DELETE', '/characters/$id');
+
+  static Future<void> addScene(String projectId, {int? position}) =>
+      _send('POST', '/projects/$projectId/scenes', {'heading': '', 'visual': '', if (position != null) 'position': position});
+
+  static Future<void> updateScene(String id, Map<String, dynamic> fields) => _send('PATCH', '/scenes/$id', fields);
+
+  static Future<void> deleteScene(String id) => _send('DELETE', '/scenes/$id');
+
+  static Future<void> reorderScenes(String projectId, List<String> ids) =>
+      _send('POST', '/projects/$projectId/scenes/order', {'scene_ids': ids});
+
+  static Future<StudioEstimate> estimate(String projectId, String kind, [List<String> targets = const []]) async =>
+      StudioEstimate.fromJson(await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets}));
+
+  static Future<StudioBalance> startJobs(String projectId, String kind, List<String> targets, String requestId) async {
+    final j = await _send('POST', '/projects/$projectId/jobs',
+        {'kind': kind, 'target_ids': targets, 'request_id': requestId});
+    return StudioBalance.fromJson(j['balance']);
+  }
+
+  static Future<(List<StudioJob>, StudioBalance)> jobs(String projectId) async {
+    final j = await _send('GET', '/projects/$projectId/jobs');
+    return (((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(), StudioBalance.fromJson(j['balance']));
+  }
+
+  static Future<void> cancelJob(String id) => _send('POST', '/jobs/$id/cancel');
+
+  static Future<(String, String)> renderLink(String renderId) async {
+    final j = await _send('POST', '/renders/$renderId/download');
+    return (j['url'] as String, j['file_name'] as String);
+  }
+
+  static Future<(StudioBalance, List<Map<String, dynamic>>)> credits() async {
+    final j = await _send('GET', '/credits');
+    return (StudioBalance.fromJson(j['balance']),
+        ((j['history'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e)).toList());
+  }
+}

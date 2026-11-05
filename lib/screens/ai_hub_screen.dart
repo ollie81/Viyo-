@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import 'creator_dashboard_screen.dart';
 import 'glow_up/glow_up_screen.dart';
 import 'post/ai_repurpose_screen.dart';
+import 'studio/studio_home_screen.dart';
 import 'post/create_post_screen.dart';
 import 'profile/profile_screen.dart';
 
@@ -43,6 +44,17 @@ class AiHubScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
+          _SectionHeader('Make Dramas & Films'),
+          _FeatureCard(
+            icon: Icons.movie_filter_outlined,
+            iconColor: AppColors.primary,
+            title: 'Viyo Studio',
+            description: 'Turn an idea into a finished AI drama, episode or film: script, cast, scenes, voices and video, in 9:16 or 16:9. Works great on a computer.',
+            costLabel: 'Pay per step with Studio credits',
+            onTap: () => _open(context, const StudioHomeScreen()),
+          ),
+
+          const SizedBox(height: 22),
           _SectionHeader('Make Clips'),
           _FeatureCard(
             icon: Icons.movie_creation_outlined,

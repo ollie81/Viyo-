@@ -1,0 +1,1168 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+
+import '../../services/creator_studio_service.dart';
+import '../../services/file_saver_io.dart' if (dart.library.html) '../../services/file_saver_web.dart' as saver;
+import '../../theme/app_theme.dart';
+import 'studio_widgets.dart';
+
+/// One production's workspace: Story -> Cast -> Scenes -> Export, with a
+/// live activity panel. Three columns on a desktop browser, tabs on a phone.
+class StudioProjectScreen extends StatefulWidget {
+  final String projectId;
+  const StudioProjectScreen({super.key, required this.projectId});
+  @override
+  State<StudioProjectScreen> createState() => _StudioProjectScreenState();
+}
+
+class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTickerProviderStateMixin {
+  StudioProjectDetail? _d;
+  List<StudioVoice> _voices = [];
+  String? _error;
+  int _section = 0;
+  Timer? _poll;
+  late final TabController _tabs = TabController(length: 4, vsync: this)
+    ..addListener(() {
+      if (!_tabs.indexIsChanging) setState(() => _section = _tabs.index);
+    });
+
+  static const _sections = [
+    (Icons.edit_note, 'Story'),
+    (Icons.groups_outlined, 'Cast'),
+    (Icons.view_carousel_outlined, 'Scenes'),
+    (Icons.movie_outlined, 'Export'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    CreatorStudioService.account().then((a) {
+      if (mounted) setState(() => _voices = a.voices);
+    }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final d = await CreatorStudioService.project(widget.projectId);
+      if (!mounted) return;
+      setState(() {
+        _d = d;
+        _error = null;
+      });
+      _schedulePoll();
+    } on StudioException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  void _schedulePoll() {
+    _poll?.cancel();
+    if (!(_d?.jobs.any((j) => j.active) ?? false)) return;
+    _poll = Timer(const Duration(seconds: 3), () async {
+      try {
+        final before = _d?.jobs.where((j) => j.active).map((j) => j.id).toSet() ?? {};
+        final (jobs, _) = await CreatorStudioService.jobs(widget.projectId);
+        final stillActive = jobs.where((j) => j.active).map((j) => j.id).toSet();
+        if (!mounted) return;
+        if (before.difference(stillActive).isNotEmpty) {
+          final failed = jobs.where((j) => before.contains(j.id) && j.status == 'failed').toList();
+          if (failed.isNotEmpty) showStudioError(context, failed.first.error ?? 'Something failed. Your credits were returned.');
+          await _load();
+        } else {
+          _schedulePoll();
+        }
+      } catch (_) {
+        _schedulePoll();
+      }
+    });
+  }
+
+  void _started(StudioBalance _) {
+    showStudioInfo(context, 'Started. You can keep working; this updates by itself.');
+    _load();
+  }
+
+  Future<void> _needCredits() async {
+    await showCreditsSheet(context);
+    _load();
+  }
+
+  Future<bool> _run(String kind, {List<String> targets = const [], String? warning}) => confirmAndRun(
+        context,
+        projectId: widget.projectId,
+        kind: kind,
+        targets: targets,
+        extraWarning: warning,
+        onStarted: _started,
+        onNeedCredits: _needCredits,
+      );
+
+  bool _busy(String kind, {String? sceneId, String? characterId}) => (_d?.jobs ?? []).any((j) =>
+      j.active && j.kind == kind && (sceneId == null || j.sceneId == sceneId) && (characterId == null || j.characterId == characterId));
+
+  Future<void> _archive() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Archive this production?'),
+        content: const Text('It disappears from your list. Its files and renders are kept.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Archive')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await CreatorStudioService.archiveProject(widget.projectId);
+      if (mounted) Navigator.pop(context);
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = _d;
+    final width = MediaQuery.of(context).size.width;
+    final wide = width >= 1150, mid = width >= 760;
+    final active = d?.jobs.where((j) => j.active).length ?? 0;
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      endDrawer: wide || d == null ? null : Drawer(backgroundColor: AppColors.background, width: 340, child: SafeArea(child: _ActivityPanel(d, onCancel: _cancel))),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: Text(d?.project.title ?? 'Production', style: const TextStyle(fontWeight: FontWeight.w700)),
+        bottom: mid || d == null
+            ? null
+            : TabBar(controller: _tabs, isScrollable: false, tabs: [for (final (_, label) in _sections) Tab(text: label)]),
+        actions: [
+          if (d != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Center(child: CreditPill(balance: d.balance, onTap: _needCredits))),
+          if (d != null && !wide)
+            Builder(
+              builder: (ctx) => IconButton(
+                tooltip: 'Activity',
+                onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+                icon: Badge(isLabelVisible: active > 0, label: Text('$active'), child: const Icon(Icons.pending_actions_outlined)),
+              ),
+            ),
+          PopupMenuButton<String>(
+            onSelected: (v) => v == 'archive' ? _archive() : _load(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+              PopupMenuItem(value: 'archive', child: Text('Archive production')),
+            ],
+          ),
+        ],
+      ),
+      body: d == null
+          ? Center(
+              child: _error == null
+                  ? const CircularProgressIndicator()
+                  : Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_error!, style: const TextStyle(color: AppColors.textSecondary)),
+                      const SizedBox(height: 12),
+                      OutlinedButton(onPressed: _load, child: const Text('Try again')),
+                    ]))
+          : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (mid)
+                NavigationRail(
+                  backgroundColor: StudioColors.panel,
+                  selectedIndex: _section,
+                  labelType: NavigationRailLabelType.all,
+                  indicatorColor: AppColors.primary.withValues(alpha: 0.15),
+                  selectedIconTheme: const IconThemeData(color: AppColors.primary),
+                  onDestinationSelected: (i) => setState(() => _section = i),
+                  destinations: [
+                    for (final (icon, label) in _sections) NavigationRailDestination(icon: Icon(icon), label: Text(label)),
+                  ],
+                ),
+              Expanded(child: _content(d, mid)),
+              if (wide)
+                Container(
+                  width: 330,
+                  decoration: const BoxDecoration(border: Border(left: BorderSide(color: StudioColors.panelBorder))),
+                  child: _ActivityPanel(d, onCancel: _cancel),
+                ),
+            ]),
+    );
+  }
+
+  Future<void> _cancel(StudioJob j) async {
+    try {
+      await CreatorStudioService.cancelJob(j.id);
+      if (mounted) showStudioInfo(context, 'Cancelled. Credits returned.');
+      _load();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
+  Widget _content(StudioProjectDetail d, bool mid) {
+    final section = switch (_section) {
+      0 => _StoryPanel(d, run: _run, busy: _busy, reload: _load, goTo: (i) => setState(() => _section = i)),
+      1 => _CastPanel(d, voices: _voices, run: _run, busy: _busy, reload: _load),
+      2 => _ScenesPanel(d, run: _run, busy: _busy, reload: _load),
+      _ => _ExportPanel(d, run: _run, busy: _busy, reload: _load),
+    };
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 980), child: section),
+    );
+  }
+}
+
+typedef _Run = Future<bool> Function(String kind, {List<String> targets, String? warning});
+typedef _Busy = bool Function(String kind, {String? sceneId, String? characterId});
+
+Widget _sectionHeader(String title, String subtitle, {List<Widget> actions = const []}) => Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 10, children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+        ]),
+        Wrap(spacing: 8, runSpacing: 8, children: actions),
+      ]),
+    );
+
+Widget _busyChip(String text) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 8),
+        Text(text, style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+      ]),
+    );
+
+ButtonStyle get _primaryBtn => FilledButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black);
+
+// ================================================================ Story
+
+class _StoryPanel extends StatefulWidget {
+  final StudioProjectDetail d;
+  final _Run run;
+  final _Busy busy;
+  final Future<void> Function() reload;
+  final void Function(int) goTo;
+  const _StoryPanel(this.d, {required this.run, required this.busy, required this.reload, required this.goTo});
+  @override
+  State<_StoryPanel> createState() => _StoryPanelState();
+}
+
+class _StoryPanelState extends State<_StoryPanel> {
+  late final _idea = TextEditingController(text: widget.d.project.logline);
+  late final _script = TextEditingController(text: widget.d.project.script);
+  late final _style = TextEditingController(text: widget.d.project.visualStyle);
+  bool _saving = false;
+
+  @override
+  void didUpdateWidget(covariant _StoryPanel old) {
+    super.didUpdateWidget(old);
+    // A finished AI script replaces the editor text unless the creator is mid-edit.
+    if (old.d.project.script != widget.d.project.script && _script.text == old.d.project.script) {
+      _script.text = widget.d.project.script;
+    }
+  }
+
+  @override
+  void dispose() {
+    _idea.dispose();
+    _script.dispose();
+    _style.dispose();
+    super.dispose();
+  }
+
+  bool get _dirty =>
+      _idea.text != widget.d.project.logline || _script.text != widget.d.project.script || _style.text != widget.d.project.visualStyle;
+
+  Future<bool> _save() async {
+    if (!_dirty) return true;
+    setState(() => _saving = true);
+    try {
+      await CreatorStudioService.updateProject(widget.d.project.id,
+          {'logline': _idea.text, 'script': _script.text, 'visual_style': _style.text});
+      await widget.reload();
+      return true;
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.d.project;
+    final writing = widget.busy('script'), splitting = widget.busy('breakdown');
+    final sceneCount = widget.d.scenes.length;
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
+      _sectionHeader('Story', '${p.vertical ? 'Vertical 9:16' : 'Landscape 16:9'} · ${p.genre.isEmpty ? 'Drama' : p.genre} · about ${p.targetSeconds} s · ${p.language}',
+          actions: [
+            if (_dirty)
+              OutlinedButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save_outlined, size: 18), label: const Text('Save')),
+          ]),
+      Container(
+        decoration: studioPanel(),
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          TextField(controller: _idea, onChanged: (_) => setState(() {}), maxLines: 3, maxLength: 2000,
+              decoration: studioField('Idea', hint: 'Who is it about, what do they want, what goes wrong?')),
+          const SizedBox(height: 6),
+          TextField(controller: _style, onChanged: (_) => setState(() {}), decoration: studioField('Visual style')),
+          const SizedBox(height: 12),
+          Row(children: [
+            FilledButton.icon(
+              style: _primaryBtn,
+              onPressed: writing ? null : () async {
+                if (await _save()) {
+                  widget.run('script', warning: p.script.trim().isNotEmpty ? 'This replaces the script below.' : null);
+                }
+              },
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: Text(p.script.trim().isEmpty ? 'Write script with AI' : 'Rewrite script with AI'),
+            ),
+            const SizedBox(width: 10),
+            if (writing) _busyChip('Writing…'),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 16),
+      Container(
+        decoration: studioPanel(),
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Script', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 4),
+          const Text('Write or paste your own, or let AI draft it. Edit anything before breaking it into scenes.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _script,
+            onChanged: (_) => setState(() {}),
+            minLines: 14,
+            maxLines: 40,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.5),
+            decoration: studioField('', hint: 'INT. KITCHEN - NIGHT\n\nMAYA stares at the phone…'),
+          ),
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            FilledButton.icon(
+              style: _primaryBtn,
+              onPressed: splitting || _script.text.trim().isEmpty ? null : () async {
+                if (await _save()) {
+                  final ok = await widget.run('breakdown',
+                      warning: sceneCount > 0 ? 'This replaces your $sceneCount current scenes (their pictures stay in your history).' : null);
+                  if (ok) widget.goTo(2);
+                }
+              },
+              icon: const Icon(Icons.view_carousel_outlined, size: 18),
+              label: const Text('Break into cast & scenes'),
+            ),
+            if (splitting) _busyChip('Building scenes…'),
+            if (sceneCount > 0)
+              TextButton(onPressed: () => widget.goTo(2), child: Text('Go to $sceneCount scenes →')),
+          ]),
+        ]),
+      ),
+    ]);
+  }
+}
+
+// ================================================================ Cast
+
+class _CastPanel extends StatelessWidget {
+  final StudioProjectDetail d;
+  final List<StudioVoice> voices;
+  final _Run run;
+  final _Busy busy;
+  final Future<void> Function() reload;
+  const _CastPanel(this.d, {required this.voices, required this.run, required this.busy, required this.reload});
+
+  Future<void> _add(BuildContext context) async {
+    final name = TextEditingController(), desc = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Add character'),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: name, decoration: studioField('Name')),
+            const SizedBox(height: 10),
+            TextField(controller: desc, maxLines: 3, decoration: studioField('Looks', hint: 'Age, build, hair, face, usual clothes')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+        ],
+      ),
+    );
+    if (ok == true && name.text.trim().isNotEmpty) {
+      try {
+        await CreatorStudioService.addCharacter(d.project.id, name.text.trim(), desc.text.trim());
+        await reload();
+      } on StudioException catch (e) {
+        if (context.mounted) showStudioError(context, e.message);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final missing = d.characters.where((c) => c.portraitUrl == null && c.description.trim().isNotEmpty).map((c) => c.id).toList();
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
+      _sectionHeader('Cast', 'A reference portrait keeps each face the same in every scene.', actions: [
+        OutlinedButton.icon(onPressed: () => _add(context), icon: const Icon(Icons.person_add_alt, size: 18), label: const Text('Add character')),
+        if (missing.isNotEmpty)
+          FilledButton.icon(
+            style: _primaryBtn,
+            onPressed: () => run('portrait', targets: missing),
+            icon: const Icon(Icons.auto_awesome, size: 18),
+            label: Text('Make ${missing.length} portrait${missing.length == 1 ? '' : 's'}'),
+          ),
+      ]),
+      if (d.characters.isEmpty)
+        Container(
+          decoration: studioPanel(),
+          padding: const EdgeInsets.all(28),
+          child: const Column(children: [
+            Icon(Icons.groups_outlined, size: 36, color: AppColors.textMuted),
+            SizedBox(height: 10),
+            Text('No characters yet', style: TextStyle(fontWeight: FontWeight.w700)),
+            SizedBox(height: 4),
+            Text('Break your script into scenes and the cast is created for you, or add characters by hand.',
+                textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          ]),
+        ),
+      LayoutBuilder(builder: (ctx, box) {
+        final cols = box.maxWidth > 760 ? 2 : 1;
+        final w = (box.maxWidth - (cols - 1) * 12) / cols;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          for (final c in d.characters)
+            SizedBox(
+              width: w,
+              child: _CharacterCard(key: ValueKey('${c.id}:${c.portraitUrl}'), c: c, voices: voices,
+                  busy: busy('portrait', characterId: c.id), run: run, reload: reload),
+            ),
+        ]);
+      }),
+    ]);
+  }
+}
+
+class _CharacterCard extends StatefulWidget {
+  final StudioCharacter c;
+  final List<StudioVoice> voices;
+  final bool busy;
+  final _Run run;
+  final Future<void> Function() reload;
+  const _CharacterCard({super.key, required this.c, required this.voices, required this.busy, required this.run, required this.reload});
+  @override
+  State<_CharacterCard> createState() => _CharacterCardState();
+}
+
+class _CharacterCardState extends State<_CharacterCard> {
+  late final _name = TextEditingController(text: widget.c.name);
+  late final _desc = TextEditingController(text: widget.c.description);
+  late String _voice = widget.c.voice;
+  bool _saving = false;
+
+  bool get _dirty => _name.text != widget.c.name || _desc.text != widget.c.description || _voice != widget.c.voice;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _desc.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await CreatorStudioService.updateCharacter(widget.c.id,
+          {'name': _name.text.trim(), 'description': _desc.text.trim(), if (_voice.isNotEmpty) 'voice': _voice});
+      await widget.reload();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: Text('Remove ${widget.c.name}?'),
+        content: const Text('Scenes keep their pictures. You can add the character again later.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await CreatorStudioService.deleteCharacter(widget.c.id);
+    await widget.reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final voiceNames = widget.voices.map((v) => v.name).toSet();
+    return Container(
+      decoration: studioPanel(),
+      padding: const EdgeInsets.all(12),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Column(children: [
+          AspectFrame(
+            vertical: true,
+            width: 96,
+            imageUrl: widget.c.portraitUrl,
+            placeholder: Icons.person_outline,
+            overlay: widget.busy ? Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5))) : null,
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 96,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 6), textStyle: const TextStyle(fontSize: 12)),
+              onPressed: widget.busy || _desc.text.trim().isEmpty
+                  ? null
+                  : () async {
+                      if (_dirty) await _save();
+                      widget.run('portrait', targets: [widget.c.id]);
+                    },
+              child: Text(widget.c.portraitUrl == null ? 'Portrait' : 'Redo'),
+            ),
+          ),
+        ]),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: TextField(controller: _name, onChanged: (_) => setState(() {}), decoration: studioField('Name'))),
+              IconButton(tooltip: 'Remove', onPressed: _delete, icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted)),
+            ]),
+            const SizedBox(height: 8),
+            TextField(controller: _desc, onChanged: (_) => setState(() {}), minLines: 2, maxLines: 5,
+                decoration: studioField('Looks', hint: 'Age, build, hair, face, clothes')),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: voiceNames.contains(_voice) ? _voice : null,
+              isExpanded: true,
+              dropdownColor: StudioColors.panel,
+              decoration: studioField('Voice'),
+              items: [
+                for (final v in widget.voices)
+                  DropdownMenuItem(value: v.name, child: Text('${v.name} · ${v.style} · ${v.gender}', overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => setState(() => _voice = v ?? _voice),
+            ),
+            if (_dirty) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(onPressed: _saving ? null : _save, child: const Text('Save changes')),
+              ),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ================================================================ Scenes
+
+class _ScenesPanel extends StatelessWidget {
+  final StudioProjectDetail d;
+  final _Run run;
+  final _Busy busy;
+  final Future<void> Function() reload;
+  const _ScenesPanel(this.d, {required this.run, required this.busy, required this.reload});
+
+  @override
+  Widget build(BuildContext context) {
+    final scenes = d.scenes;
+    final noImage = scenes.where((s) => !s.hasImage && (s.visual.trim().isNotEmpty || s.heading.trim().isNotEmpty)).map((s) => s.id).toList();
+    final noVoice = scenes.where((s) => !s.hasAudio && s.dialogue.any((l) => l.text.trim().isNotEmpty)).map((s) => s.id).toList();
+    final ready = scenes.where((s) => s.ready).length;
+    final noPortraits = d.characters.isNotEmpty && d.characters.every((c) => c.portraitUrl == null);
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 60), children: [
+      _sectionHeader('Scenes', '${scenes.length} scenes · $ready with pictures · ${scenes.where((s) => s.hasAudio).length} voiced', actions: [
+        OutlinedButton.icon(
+          onPressed: () async {
+            await CreatorStudioService.addScene(d.project.id);
+            await reload();
+          },
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add scene'),
+        ),
+        if (noImage.isNotEmpty)
+          FilledButton.icon(
+            style: _primaryBtn,
+            onPressed: () => run('image', targets: noImage,
+                warning: noPortraits ? 'Tip: make character portraits first so faces stay the same in every scene.' : null),
+            icon: const Icon(Icons.image_outlined, size: 18),
+            label: Text('Make ${noImage.length} image${noImage.length == 1 ? '' : 's'}'),
+          ),
+        if (noVoice.isNotEmpty)
+          FilledButton.icon(
+            style: _primaryBtn,
+            onPressed: () => run('voice', targets: noVoice),
+            icon: const Icon(Icons.record_voice_over_outlined, size: 18),
+            label: Text('Voice ${noVoice.length} scene${noVoice.length == 1 ? '' : 's'}'),
+          ),
+      ]),
+      if (scenes.isEmpty)
+        Container(
+          decoration: studioPanel(),
+          padding: const EdgeInsets.all(28),
+          child: const Column(children: [
+            Icon(Icons.view_carousel_outlined, size: 36, color: AppColors.textMuted),
+            SizedBox(height: 10),
+            Text('No scenes yet', style: TextStyle(fontWeight: FontWeight.w700)),
+            SizedBox(height: 4),
+            Text('Go to Story and break your script into scenes, or add scenes one by one.',
+                textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          ]),
+        ),
+      for (var i = 0; i < scenes.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _SceneCard(
+            key: ValueKey('${scenes[i].id}:${scenes[i].imageUrl}:${scenes[i].audioUrl}:${scenes[i].videoUrl}'),
+            scene: scenes[i],
+            index: i,
+            count: scenes.length,
+            d: d,
+            run: run,
+            busy: busy,
+            reload: reload,
+          ),
+        ),
+    ]);
+  }
+}
+
+class _SceneCard extends StatefulWidget {
+  final StudioScene scene;
+  final int index, count;
+  final StudioProjectDetail d;
+  final _Run run;
+  final _Busy busy;
+  final Future<void> Function() reload;
+  const _SceneCard({super.key, required this.scene, required this.index, required this.count, required this.d,
+      required this.run, required this.busy, required this.reload});
+  @override
+  State<_SceneCard> createState() => _SceneCardState();
+}
+
+class _SceneCardState extends State<_SceneCard> {
+  late final _heading = TextEditingController(text: widget.scene.heading);
+  late final _visual = TextEditingController(text: widget.scene.visual);
+  late List<(String, TextEditingController)> _lines =
+      widget.scene.dialogue.map((l) => (l.character, TextEditingController(text: l.text))).toList();
+  late double _duration = widget.scene.durationSeconds;
+  late String _mode = widget.scene.mode;
+  bool _saving = false;
+  AudioPlayer? _player;
+  bool _playing = false;
+
+  @override
+  void dispose() {
+    _heading.dispose();
+    _visual.dispose();
+    for (final (_, c) in _lines) {
+      c.dispose();
+    }
+    _player?.dispose();
+    super.dispose();
+  }
+
+  bool get _dirty {
+    final s = widget.scene;
+    final lines = _lines.map((l) => '${l.$1}|${l.$2.text}').join('\n');
+    final orig = s.dialogue.map((l) => '${l.character}|${l.text}').join('\n');
+    return _heading.text != s.heading || _visual.text != s.visual || lines != orig || _duration != s.durationSeconds || _mode != s.mode;
+  }
+
+  Future<bool> _save() async {
+    if (!_dirty) return true;
+    setState(() => _saving = true);
+    try {
+      await CreatorStudioService.updateScene(widget.scene.id, {
+        'heading': _heading.text, 'visual': _visual.text, 'duration_seconds': _duration, 'mode': _mode,
+        'dialogue': [for (final (ch, c) in _lines) if (c.text.trim().isNotEmpty) {'character': ch, 'text': c.text.trim()}],
+      });
+      await widget.reload();
+      return true;
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _move(int delta) async {
+    final ids = widget.d.scenes.map((s) => s.id).toList();
+    final i = widget.index, j = i + delta;
+    if (j < 0 || j >= ids.length) return;
+    final t = ids[i];
+    ids[i] = ids[j];
+    ids[j] = t;
+    await CreatorStudioService.reorderScenes(widget.d.project.id, ids);
+    await widget.reload();
+  }
+
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: Text('Delete scene ${widget.index + 1}?'),
+        content: const Text('Its pictures and voices stay in your project history.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await CreatorStudioService.deleteScene(widget.scene.id);
+    await widget.reload();
+  }
+
+  Future<void> _toggleAudio() async {
+    final url = widget.scene.audioUrl;
+    if (url == null) return;
+    _player ??= AudioPlayer()..onPlayerComplete.listen((_) => mounted ? setState(() => _playing = false) : null);
+    if (_playing) {
+      await _player!.stop();
+      setState(() => _playing = false);
+    } else {
+      await _player!.play(UrlSource(url));
+      setState(() => _playing = true);
+    }
+  }
+
+  Future<void> _runFor(String kind) async {
+    if (await _save()) widget.run(kind, targets: [widget.scene.id]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scene;
+    final vertical = widget.d.project.vertical;
+    final names = ['NARRATOR', ...widget.d.characters.map((c) => c.name)];
+    final imgBusy = widget.busy('image', sceneId: s.id), voiceBusy = widget.busy('voice', sceneId: s.id), vidBusy = widget.busy('video', sceneId: s.id);
+    final media = AspectFrame(
+      vertical: vertical,
+      width: vertical ? 132 : 220,
+      imageUrl: s.imageUrl,
+      overlay: Stack(children: [
+        if (imgBusy || vidBusy) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5))),
+        Positioned(left: 6, top: 6, child: _badge('${widget.index + 1}')),
+        if (s.hasVideo) Positioned(right: 6, top: 6, child: _badge('VIDEO', color: AppColors.secondary)),
+      ]),
+    );
+    final actions = Wrap(spacing: 6, runSpacing: 6, children: [
+      _act(Icons.image_outlined, s.hasImage ? 'New image' : 'Make image', imgBusy ? null : () => _runFor('image')),
+      _act(Icons.record_voice_over_outlined, s.hasAudio ? 'Re-voice' : 'Voice', voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
+      if (_mode == 'video') _act(Icons.videocam_outlined, s.hasVideo ? 'New AI video' : 'Make AI video', vidBusy ? null : () => _runFor('video')),
+      if (s.audioUrl != null) _act(_playing ? Icons.stop : Icons.play_arrow, _playing ? 'Stop' : 'Play voice', _toggleAudio),
+    ]);
+    final editor = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: TextField(controller: _heading, onChanged: (_) => setState(() {}), decoration: studioField('Scene', hint: 'INT. ROOFTOP - NIGHT'))),
+        IconButton(tooltip: 'Move up', onPressed: widget.index == 0 ? null : () => _move(-1), icon: const Icon(Icons.arrow_upward, size: 18)),
+        IconButton(tooltip: 'Move down', onPressed: widget.index == widget.count - 1 ? null : () => _move(1), icon: const Icon(Icons.arrow_downward, size: 18)),
+        IconButton(tooltip: 'Delete scene', onPressed: _delete, icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.textMuted)),
+      ]),
+      const SizedBox(height: 8),
+      TextField(controller: _visual, onChanged: (_) => setState(() {}), minLines: 2, maxLines: 5,
+          decoration: studioField('What we see', hint: 'Who is in frame, what they do, the place, the light, the camera')),
+      const SizedBox(height: 10),
+      for (var i = 0; i < _lines.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            SizedBox(
+              width: MediaQuery.of(context).size.width < 500 ? 112 : 150,
+              child: DropdownButtonFormField<String>(
+                initialValue: names.firstWhere((n) => n.toLowerCase() == _lines[i].$1.toLowerCase(), orElse: () => 'NARRATOR'),
+                isExpanded: true,
+                dropdownColor: StudioColors.panel,
+                decoration: studioField('Who'),
+                items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)))],
+                onChanged: (v) => setState(() => _lines[i] = (v ?? 'NARRATOR', _lines[i].$2)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: TextField(controller: _lines[i].$2, onChanged: (_) => setState(() {}), decoration: studioField('Line'))),
+            IconButton(
+              tooltip: 'Remove line',
+              onPressed: () => setState(() {
+                _lines[i].$2.dispose();
+                _lines = [..._lines]..removeAt(i);
+              }),
+              icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+            ),
+          ]),
+        ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _lines.length >= 12 ? null : () => setState(() => _lines = [..._lines, (names.length > 1 ? names[1] : 'NARRATOR', TextEditingController())]),
+          icon: const Icon(Icons.add_comment_outlined, size: 18),
+          label: const Text('Add line'),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Wrap(spacing: 14, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        SegmentedButton<String>(
+          style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact),
+          segments: const [
+            ButtonSegment(value: 'still', icon: Icon(Icons.photo_outlined, size: 16), label: Text('Still')),
+            ButtonSegment(value: 'video', icon: Icon(Icons.videocam_outlined, size: 16), label: Text('AI video')),
+          ],
+          selected: {_mode},
+          onSelectionChanged: (v) => setState(() => _mode = v.first),
+        ),
+        SizedBox(
+          width: 240,
+          child: Row(children: [
+            Text('${_duration.toStringAsFixed(0)} s', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            Expanded(child: Slider(value: _duration, min: 2, max: 20, divisions: 18, onChanged: (v) => setState(() => _duration = v))),
+          ]),
+        ),
+        if (s.audioSeconds != null) Text('Voice ${s.audioSeconds!.toStringAsFixed(1)} s', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ]),
+      const SizedBox(height: 8),
+      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        actions,
+        if (_dirty) FilledButton(onPressed: _saving ? null : _save, child: const Text('Save')),
+        if (voiceBusy) _busyChip('Voicing…'),
+      ]),
+    ]);
+    return Container(
+      decoration: studioPanel(border: s.ready ? null : AppColors.coin.withValues(alpha: 0.25)),
+      padding: const EdgeInsets.all(12),
+      child: LayoutBuilder(builder: (ctx, box) {
+        if (box.maxWidth < 560) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Center(child: media), const SizedBox(height: 10), editor]);
+        }
+        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [media, const SizedBox(width: 14), Expanded(child: editor)]);
+      }),
+    );
+  }
+
+  Widget _badge(String t, {Color color = Colors.black87}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+        child: Text(t, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+      );
+
+  Widget _act(IconData icon, String label, VoidCallback? onTap) => OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 12.5)),
+        onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+      );
+}
+
+// ================================================================ Export
+
+class _ExportPanel extends StatefulWidget {
+  final StudioProjectDetail d;
+  final _Run run;
+  final _Busy busy;
+  final Future<void> Function() reload;
+  const _ExportPanel(this.d, {required this.run, required this.busy, required this.reload});
+  @override
+  State<_ExportPanel> createState() => _ExportPanelState();
+}
+
+class _ExportPanelState extends State<_ExportPanel> {
+  final Map<String, double?> _progress = {};
+
+  Future<void> _download(StudioRender r) async {
+    setState(() => _progress[r.id] = null);
+    try {
+      final path = await saver.saveFromUrl(
+        freshUrl: () => CreatorStudioService.renderLink(r.id),
+        onProgress: (got, total) => mounted ? setState(() => _progress[r.id] = total == null ? null : got / total) : null,
+      );
+      if (!mounted) return;
+      if (saver.savesInBrowser) {
+        showStudioInfo(context, 'Download started — check your browser downloads.');
+      } else if (path != null) {
+        await saver.shareSavedFile(path, 'video/mp4');
+      }
+    } catch (e) {
+      if (mounted) showStudioError(context, 'Download failed. Tap Download to try again.');
+    } finally {
+      if (mounted) setState(() => _progress.remove(r.id));
+    }
+  }
+
+  Future<void> _preview(StudioRender r) async {
+    try {
+      final (url, _) = await CreatorStudioService.renderLink(r.id);
+      if (!mounted) return;
+      await showDialog(context: context, builder: (_) => _PreviewDialog(url: url, vertical: r.aspectRatio == '9:16'));
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.d;
+    final scenes = d.scenes;
+    final ready = scenes.where((s) => s.ready).length;
+    final voiced = scenes.where((s) => s.hasAudio).length;
+    final withLines = scenes.where((s) => s.dialogue.any((l) => l.text.trim().isNotEmpty)).length;
+    final runtime = scenes.fold<double>(0, (t, s) => t + (s.audioSeconds != null && s.audioSeconds! + 0.5 > s.durationSeconds ? s.audioSeconds! + 0.5 : s.durationSeconds));
+    final rendering = widget.busy('render');
+    final canRender = scenes.isNotEmpty && ready == scenes.length;
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
+      _sectionHeader('Export', '${d.project.vertical ? '1080×1920 vertical' : '1920×1080 landscape'} MP4 · captions ${d.project.captions ? 'on' : 'off'}'),
+      Container(
+        decoration: studioPanel(),
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _check(scenes.isNotEmpty, 'Scenes', scenes.isEmpty ? 'No scenes yet' : '${scenes.length} scenes · about ${runtime.round()} s'),
+          _check(canRender, 'Pictures', '$ready of ${scenes.length} scenes have a picture or AI video'),
+          _check(voiced >= withLines, 'Voices', withLines == 0 ? 'No dialogue (music-free silent scenes)' : '$voiced of $withLines scenes with lines are voiced',
+              optional: true),
+          const SizedBox(height: 14),
+          Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            FilledButton.icon(
+              style: _primaryBtn,
+              onPressed: canRender && !rendering ? () => widget.run('render') : null,
+              icon: const Icon(Icons.movie_creation_outlined, size: 18),
+              label: Text(d.renders.isEmpty ? 'Render film' : 'Render new version'),
+            ),
+            if (rendering) _busyChip('Rendering… this can take a few minutes'),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 18),
+      const Text('Versions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+      const SizedBox(height: 8),
+      if (d.renders.isEmpty)
+        const Text('Your rendered films appear here. Every version is kept.', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+      for (final r in d.renders)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: studioPanel(),
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+              child: Center(child: Text('v${r.version}', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800))),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${r.width}×${r.height} · ${_dur(r.durationSeconds)} · ${_size(r.bytes)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (r.createdAt != null)
+                  Text(_when(r.createdAt!), style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                if (_progress.containsKey(r.id)) ...[
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(value: _progress[r.id], minHeight: 3),
+                ],
+              ]),
+            ),
+            IconButton(tooltip: 'Preview', onPressed: () => _preview(r), icon: const Icon(Icons.play_circle_outline)),
+            FilledButton.tonalIcon(
+              onPressed: _progress.containsKey(r.id) ? null : () => _download(r),
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text('Download'),
+            ),
+          ]),
+        ),
+      const SizedBox(height: 14),
+      Container(
+        decoration: studioPanel(),
+        padding: const EdgeInsets.all(14),
+        child: const Text(
+          'Your film is yours to post anywhere — YouTube, TikTok, Instagram, Facebook or Viyo. '
+          'To put it on Viyo Watch, download it and upload it from Create → Upload Drama, Movie or Film. '
+          'Viyo keeps your project files and every rendered version.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.45),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _check(bool ok, String title, String detail, {bool optional = false}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          Icon(ok ? Icons.check_circle : (optional ? Icons.info_outline : Icons.radio_button_unchecked),
+              color: ok ? AppColors.success : (optional ? AppColors.textMuted : AppColors.coin), size: 20),
+          const SizedBox(width: 10),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(detail, style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5))),
+        ]),
+      );
+
+  String _dur(double s) => s >= 60 ? '${s ~/ 60}:${(s % 60).round().toString().padLeft(2, '0')}' : '${s.toStringAsFixed(1)} s';
+  String _size(int? b) => b == null ? '' : b > 1e6 ? '${(b / 1e6).toStringAsFixed(1)} MB' : '${(b / 1e3).round()} KB';
+  String _when(DateTime t) {
+    final l = t.toLocal();
+    return '${l.day}/${l.month}/${l.year} ${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _PreviewDialog extends StatefulWidget {
+  final String url;
+  final bool vertical;
+  const _PreviewDialog({required this.url, required this.vertical});
+  @override
+  State<_PreviewDialog> createState() => _PreviewDialogState();
+}
+
+class _PreviewDialogState extends State<_PreviewDialog> {
+  late final VideoPlayerController _c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+  bool _ready = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _c.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => _ready = true);
+      _c.play();
+    }).catchError((_) {
+      if (mounted) setState(() => _error = "Couldn't play the preview. Try Download instead.");
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final maxH = size.height * 0.8;
+    final w = widget.vertical ? maxH * 9 / 16 : (size.width * 0.8).clamp(0, 1100).toDouble();
+    return Dialog(
+      backgroundColor: Colors.black,
+      child: SizedBox(
+        width: w,
+        child: AspectRatio(
+          aspectRatio: widget.vertical ? 9 / 16 : 16 / 9,
+          child: _error != null
+              ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.textSecondary)))
+              : !_ready
+                  ? const Center(child: CircularProgressIndicator())
+                  : GestureDetector(
+                      onTap: () => setState(() => _c.value.isPlaying ? _c.pause() : _c.play()),
+                      child: Stack(alignment: Alignment.bottomCenter, children: [
+                        VideoPlayer(_c),
+                        VideoProgressIndicator(_c, allowScrubbing: true),
+                      ]),
+                    ),
+        ),
+      ),
+    );
+  }
+}
+
+// ================================================================ Activity
+
+class _ActivityPanel extends StatelessWidget {
+  final StudioProjectDetail d;
+  final Future<void> Function(StudioJob) onCancel;
+  const _ActivityPanel(this.d, {required this.onCancel});
+
+  String _target(StudioJob j) {
+    if (j.sceneId != null) {
+      final i = d.scenes.indexWhere((s) => s.id == j.sceneId);
+      return i >= 0 ? 'Scene ${i + 1}' : 'Scene';
+    }
+    if (j.characterId != null) {
+      final c = d.characters.where((c) => c.id == j.characterId);
+      return c.isNotEmpty ? c.first.name : 'Character';
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final jobs = d.jobs;
+    final spent = jobs.fold<int>(0, (t, j) => t + j.chargedCredits);
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 24), children: [
+      const Text('Activity', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+      const SizedBox(height: 4),
+      Text('${creditsLabel(spent)} spent on this production (${usdOf(spent)})',
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+      const SizedBox(height: 12),
+      if (jobs.isEmpty) const Text('Nothing yet. Everything you start shows here.', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+      for (final j in jobs)
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: studioPanel(border: j.status == 'failed' ? AppColors.danger.withValues(alpha: 0.4) : null),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 2), child: _statusIcon(j)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${kindTitle(j.kind)}${_target(j).isEmpty ? '' : ' · ${_target(j)}'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(_statusText(j), style: TextStyle(fontSize: 12, color: j.status == 'failed' ? AppColors.danger : AppColors.textMuted)),
+              ]),
+            ),
+            if (j.status == 'queued')
+              TextButton(onPressed: () => onCancel(j), child: const Text('Cancel', style: TextStyle(fontSize: 12))),
+          ]),
+        ),
+    ]);
+  }
+
+  Widget _statusIcon(StudioJob j) => switch (j.status) {
+        'running' => const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        'queued' => const Icon(Icons.schedule, size: 18, color: AppColors.textMuted),
+        'succeeded' => const Icon(Icons.check_circle, size: 18, color: AppColors.success),
+        'failed' => const Icon(Icons.error_outline, size: 18, color: AppColors.danger),
+        _ => const Icon(Icons.block, size: 18, color: AppColors.textMuted),
+      };
+
+  String _statusText(StudioJob j) => switch (j.status) {
+        'queued' => 'Waiting · ${creditsLabel(j.estimatedCredits)} reserved',
+        'running' => 'Making… · ${creditsLabel(j.estimatedCredits)} reserved',
+        'succeeded' => 'Done · ${creditsLabel(j.chargedCredits)}',
+        'failed' => '${j.error ?? 'Failed'} Credits returned.',
+        _ => 'Cancelled · credits returned',
+      };
+}
