@@ -170,18 +170,48 @@ Future<bool> confirmAndRun(
     ),
   );
   if (go != true || !context.mounted) return false;
-  try {
-    final bal = await CreatorStudioService.startJobs(projectId, kind, targets, CreatorStudioService.newRequestId());
-    onStarted(bal);
-    return true;
-  } on StudioException catch (e) {
-    if (!context.mounted) return false;
-    if (e.notEnoughCredits) {
-      onNeedCredits();
-    } else {
-      showStudioError(context, e.message);
+  // A new scene list for a production that has scenes: the creator just saw
+  // and accepted the warning in this dialog.
+  var confirmReplace = kind == 'breakdown' && extraWarning != null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      final bal = await CreatorStudioService.startJobs(projectId, kind, targets, CreatorStudioService.newRequestId(),
+          confirmReplace: confirmReplace);
+      onStarted(bal);
+      return true;
+    } on StudioException catch (e) {
+      if (!context.mounted) return false;
+      if (e.needsReplaceConfirm && !confirmReplace) {
+        final yes = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: StudioColors.panel,
+            title: const Text('Replace the scene list?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Text(e.message, style: const TextStyle(height: 1.4))),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Make new scene list')),
+            ],
+          ),
+        );
+        if (yes != true || !context.mounted) return false;
+        confirmReplace = true;
+        continue;
+      }
+      _startFailed(context, e, onNeedCredits);
+      return false;
     }
-    return false;
+  }
+  return false;
+}
+
+void _startFailed(BuildContext context, StudioException e, VoidCallback onNeedCredits) {
+  if (e.notEnoughCredits) {
+    onNeedCredits();
+  } else {
+    showStudioError(context, e.message);
   }
 }
 

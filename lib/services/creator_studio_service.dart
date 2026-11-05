@@ -217,6 +217,9 @@ class StudioException implements Exception {
   final int status;
   StudioException(this.message, this.status);
   bool get notEnoughCredits => status == 402;
+  /// The server wants the creator to confirm replacing existing scenes.
+  bool get needsReplaceConfirm => status == 409 && code == 'confirm_replace';
+  String? code;
   @override
   String toString() => message;
 }
@@ -254,12 +257,14 @@ class CreatorStudioService {
       return res.body.isEmpty ? null : jsonDecode(res.body);
     }
     var message = 'Something went wrong (${res.statusCode}).';
+    String? code;
     try {
       final d = jsonDecode(res.body)['detail'];
       if (d is String) message = d;
       if (d is Map && d['message'] is String) message = d['message'];
+      if (d is Map && d['code'] is String) code = d['code'];
     } catch (_) {}
-    throw StudioException(message, res.statusCode);
+    throw StudioException(message, res.statusCode)..code = code;
   }
 
   static Future<StudioAccount> account() async {
@@ -315,9 +320,10 @@ class CreatorStudioService {
   static Future<StudioEstimate> estimate(String projectId, String kind, [List<String> targets = const []]) async =>
       StudioEstimate.fromJson(await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets}));
 
-  static Future<StudioBalance> startJobs(String projectId, String kind, List<String> targets, String requestId) async {
+  static Future<StudioBalance> startJobs(String projectId, String kind, List<String> targets, String requestId,
+      {bool confirmReplace = false}) async {
     final j = await _send('POST', '/projects/$projectId/jobs',
-        {'kind': kind, 'target_ids': targets, 'request_id': requestId});
+        {'kind': kind, 'target_ids': targets, 'request_id': requestId, if (confirmReplace) 'confirm_replace': true});
     return StudioBalance.fromJson(j['balance']);
   }
 

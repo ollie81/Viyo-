@@ -374,7 +374,10 @@ class _StoryPanelState extends State<_StoryPanel> {
               onPressed: splitting || _script.text.trim().isEmpty ? null : () async {
                 if (await _save()) {
                   final ok = await widget.run('breakdown',
-                      warning: sceneCount > 0 ? 'This replaces your $sceneCount current scenes (their pictures stay in your history).' : null);
+                      warning: sceneCount > 0
+                          ? 'You have $sceneCount scenes. Scenes that haven\'t changed keep their pictures and voice. '
+                              'Changed scenes are replaced, and the old versions are saved, not deleted.'
+                          : null);
                   if (ok) widget.goTo(2);
                 }
               },
