@@ -313,6 +313,37 @@ class CreatorStudioService {
     return (j['url'] as String, j['file_name'] as String);
   }
 
+  /// Admin only (X-Admin-Key): add credits to an account by @username or id.
+  /// kind 'grant' = promotional (free); 'purchase' = paid outside the app.
+  static Future<StudioBalance> adminGrant({
+    required String adminKey,
+    required String user,
+    required int credits,
+    required String kind,
+    String note = '',
+    double amountUsd = 0,
+    String reference = '',
+    int? expiresDays,
+  }) async {
+    final res = await http
+        .post(Uri.parse('$_base/admin/credits/grant'),
+            headers: {'Content-Type': 'application/json', 'X-Admin-Key': adminKey},
+            body: jsonEncode({
+              'user': user, 'credits': credits, 'kind': kind, 'note': note, 'amount_usd': amountUsd,
+              'reference': reference, if (expiresDays != null) 'expires_days': expiresDays,
+            }))
+        .timeout(const Duration(seconds: 30));
+    final body = res.body.isEmpty ? {} : jsonDecode(res.body);
+    if (res.statusCode != 200) {
+      final d = body is Map ? body['detail'] : null;
+      throw StudioException(d is String ? d : 'Could not add credits (${res.statusCode}).', res.statusCode);
+    }
+    if (body['duplicate'] == true) {
+      throw StudioException('That reference was already used, so nothing was added again.', 409);
+    }
+    return StudioBalance.fromJson(body['balance']);
+  }
+
   static Future<(StudioBalance, List<Map<String, dynamic>>)> credits() async {
     final j = await _send('GET', '/credits');
     return (StudioBalance.fromJson(j['balance']),
