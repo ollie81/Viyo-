@@ -14,6 +14,7 @@ import '../widgets/daily_streak_card.dart';
 import '../widgets/engagement_digest_card.dart';
 import '../widgets/trending_card.dart';
 import '../widgets/weekly_report_card.dart';
+import 'creator/my_productions_screen.dart';
 import 'creator_feed_screen.dart';
 import 'leaderboard_screen.dart';
 
@@ -147,6 +148,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             ),
             const SizedBox(height: 16),
 
+            _myProductionsTile(),
+            const SizedBox(height: 16),
+
             const WeeklyReportCard(),
             const SizedBox(height: 16),
 
@@ -226,6 +230,40 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _myProductionsTile() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const MyProductionsScreen()),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: AppTheme.card(),
+          child: const Row(
+            children: [
+              Icon(Icons.video_library_outlined, color: AppColors.primary, size: 26),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('My Productions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    SizedBox(height: 3),
+                    Text('Your dramas, films and videos — download them to post anywhere',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: AppColors.textMuted),
+            ],
+          ),
         ),
       ),
     );
