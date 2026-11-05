@@ -1,3 +1,4 @@
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -49,7 +50,18 @@ class PrivacyScreen extends StatelessWidget {
                 'at any time from Settings. This removes your Coach history, posts, '
                 'and profile, and disables your login — it cannot be undone.',
           ),
+          _section(
+            'Ads and payments',
+            'The Android app shows ads through Google AdMob, which uses your device\'s advertising ID. '
+                'Payments are handled by payment providers; Viyo never sees your card number.',
+          ),
           const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => launchUrl(Uri.parse('https://www.viyo.site/privacy'), mode: LaunchMode.externalApplication),
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('Read the full privacy policy'),
+          ),
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: AppTheme.card(),

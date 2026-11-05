@@ -37,6 +37,11 @@ dependencies:
   # DefaultCacheManager API explicitly, not just through the widget.
   flutter_cache_manager: ^3.4.1
   image_picker: ^1.1.2
+  # Declared directly so main.dart can turn on Android's system photo
+  # picker, which needs no photo/video storage permissions (Google Play
+  # restricts those).
+  image_picker_android: ^0.8.13
+  image_picker_platform_interface: ^2.10.0
   # image_picker's own file type — used directly (instead of always
   # wrapping picks in dart:io's File) so upload code works on web too,
   # where File is unavailable at runtime.

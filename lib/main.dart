@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -40,6 +42,10 @@ Future<void> main() async {
   // both entirely on web; RewardedAdService's own calls stay guarded
   // too; see its doc comment.
   if (!kIsWeb) {
+    // Android's own photo picker: no READ_MEDIA_* permissions needed.
+    final picker = ImagePickerPlatform.instance;
+    if (picker is ImagePickerAndroid) picker.useAndroidPhotoPicker = true;
+
     // Fire-and-forget: MobileAds.instance.initialize() resolves once ad
     // SDKs are ready, but nothing here needs to block app start on that.
     // preload() queues the first rewarded ad request right behind it.

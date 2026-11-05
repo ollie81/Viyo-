@@ -201,8 +201,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
             padding: const EdgeInsets.all(16),
             decoration: AppTheme.card(),
             child: const Text(
-              "Subscriptions aren't available in the Android app yet — open viyo.app in your "
-              'phone or computer\'s browser to subscribe.',
+              "Viyo Premium isn't available in this app yet.",
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               textAlign: TextAlign.center,
             ),

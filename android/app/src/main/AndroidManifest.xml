@@ -1,12 +1,9 @@
 
   <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Required for image_picker to read photos/videos from the gallery.
-         Android 13+ (API 33+) uses the granular READ_MEDIA_* permissions;
-         older versions fall back to READ_EXTERNAL_STORAGE. Without these,
-         opening the gallery picker crashes the app instead of just being
-         denied gracefully. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <!-- Photos/videos are picked with Android's system photo picker
+         (enabled in main.dart), which needs no READ_MEDIA_* permission;
+         Google Play restricts those. READ_EXTERNAL_STORAGE stays only for
+         Android 12 and older. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Required to show push notifications on Android 13+ (API 33+);
@@ -15,7 +12,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     
     <application
-        android:label="viyo"
+        android:label="Viyo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -51,10 +51,22 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flutter build apk --release --split-per-abi \
+          # --build-number: Google Play needs a higher version code on every
+          # upload; the run number always goes up.
+          flutter build apk --release --split-per-abi --build-number=${{ github.run_number }} \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
             --dart-define=AI_BACKEND_URL=${{ secrets.AI_BACKEND_URL }}
+          # The Play Store takes an app bundle (.aab), not an APK. It must be
+          # signed with the release key (the 4 ANDROID_* secrets); a
+          # debug-signed bundle is rejected by Play Console.
+          flutter build appbundle --release --build-number=${{ github.run_number }} \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            --dart-define=AI_BACKEND_URL=${{ secrets.AI_BACKEND_URL }}
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::No release signing key set: this build is debug-signed and Google Play will reject it."
+          fi
 
       - name: Upload APK
         # --split-per-abi above produces one APK per CPU architecture
@@ -69,3 +81,9 @@ jobs:
         with:
           name: viyo-release-apk
           path: build/app/outputs/flutter-apk/app-*-release.apk
+
+      - name: Upload Play Store bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: viyo-play-store-bundle
+          path: build/app/outputs/bundle/release/app-release.aab

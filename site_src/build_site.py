@@ -97,7 +97,124 @@ NAV = [
     ("/about", "About"),
 ]
 
-FOOTER_LINKS = NAV + [("/contact", "Contact")]
+
+POLICY_DATE = "5 November 2026"
+
+
+def privacy() -> str:
+    body = f"""
+    <section class="wrap prose">
+      <p class="eyebrow">Privacy</p>
+      <h1>Viyo Privacy Policy</h1>
+      <p class="lead">Last updated {POLICY_DATE}. This explains what Viyo collects, why, who it is shared with,
+      and how to delete it. Viyo is run by an independent developer in Rwanda; contact
+      <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a>.</p>
+
+      <h2>What we collect</h2>
+      <ul class="plain">
+        <li><strong>Account:</strong> your email address, or your Google account's email and name if you sign in with Google,
+        plus the username, display name and photo you choose. If you use Viyo without signing up we create an anonymous
+        guest account.</li>
+        <li><strong>What you post:</strong> photos, videos, captions, series and episodes, comments, likes, follows and messages.</li>
+        <li><strong>Coins and purchases:</strong> your coin balance and history, episode unlocks and gifts. Payments are
+        handled by our payment providers; we never see or store your card number.</li>
+        <li><strong>Creator payouts:</strong> if you request a payout, the payout details you enter (for example a PayPal
+        email or mobile money number) and your earnings history.</li>
+        <li><strong>AI features:</strong> what you send to them (captions, videos, scripts, scene descriptions and, for
+        Glow Up, a selfie) and what they produce.</li>
+        <li><strong>Device and usage:</strong> a push notification token, crash reports, and in-app activity such as views
+        and watch progress, used to run and improve the app. The Android app shows ads through Google AdMob, which uses
+        your device's advertising ID; you can reset or delete it in your phone's settings.</li>
+      </ul>
+
+      <h2>How we use it</h2>
+      <ul class="plain">
+        <li>To run your account, show your content, process coins, unlocks, payouts and purchases.</li>
+        <li>To provide AI features you ask for. Nothing is sent to an AI provider unless you use an AI feature.</li>
+        <li>To keep Viyo safe: moderation, reports, spam and fraud prevention.</li>
+        <li>To show ads in the free Android app (not to Premium subscribers).</li>
+      </ul>
+      <p>We do not sell your personal data, and we do not use your photos or videos to train AI models.</p>
+
+      <h2>Who we share it with</h2>
+      <p>Only the services that run Viyo, each for its own part:</p>
+      <ul class="plain">
+        <li><strong>Supabase</strong>: database, sign-in and file storage.</li>
+        <li><strong>Bunny.net</strong>: video hosting and streaming.</li>
+        <li><strong>Railway</strong>: our servers.</li>
+        <li><strong>OpenAI</strong> and <strong>Google (Gemini)</strong>: AI features you choose to use.</li>
+        <li><strong>Google Firebase</strong>: push notifications. <strong>Sentry</strong>: crash reports.
+        <strong>Google AdMob</strong>: ads in the Android app.</li>
+        <li><strong>Payment providers</strong> (such as Google Play, Lemon Squeezy, Stripe, Paystack, Flutterwave and
+        PayPal): payments and payouts.</li>
+      </ul>
+      <p>Posts you make public can be seen by anyone, including through share links. Private posts and Viyo Studio
+      projects are shown only to you.</p>
+
+      <h2>Photos of faces</h2>
+      <p>Glow Up is for adults (18+). Your selfie is analysed and then discarded unless you choose to save it; saved photos
+      are private to you and can be deleted at any time. Viyo does not identify people from photos.</p>
+
+      <h2>How long we keep it</h2>
+      <p>We keep your data while your account exists. Videos uploaded to the AI Repurposer are removed from processing
+      storage after about a day. When you delete your account, your profile, posts, videos, Studio projects and AI
+      history are deleted. Records we must keep for payments, tax or fraud prevention (for example purchase and payout
+      records) are kept only as long as the law requires.</p>
+
+      <h2>Your choices</h2>
+      <ul class="plain">
+        <li>Edit or delete your posts at any time, or make them private.</li>
+        <li>Turn off notifications in your phone's settings.</li>
+        <li>Delete your account: see <a href="/delete-account">how to delete your account</a>.</li>
+        <li>Ask us for a copy of your data, or to correct it, by email.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>Viyo is not meant for children under 13, and some features are for adults only. If you believe a child has
+      created an account, email us and we will delete it.</p>
+
+      <h2>Changes</h2>
+      <p>If we change this policy we will update the date above, and tell you in the app for important changes.</p>
+    </section>
+    {cta()}
+"""
+    schema = {"@type": "WebPage", "url": f"{SITE}/privacy", "name": "Viyo Privacy Policy"}
+    return page("/privacy", "Viyo Privacy Policy",
+                "What Viyo collects, why, who it is shared with, how long it is kept and how to delete it.",
+                body, schema=[ORG, schema], crumbs=[("/privacy", "Privacy")])
+
+
+def delete_account() -> str:
+    body = f"""
+    <section class="wrap prose">
+      <p class="eyebrow">Account</p>
+      <h1>Delete your Viyo account</h1>
+      <p class="lead">You can delete your account yourself in the app, or ask us to do it.</p>
+      <h2>In the app</h2>
+      <ol>
+        <li>Open Viyo and go to <strong>Settings</strong>.</li>
+        <li>Tap <strong>Delete account</strong> and confirm.</li>
+      </ol>
+      <h2>By email</h2>
+      <p>Email <a href="mailto:{CONTACT_EMAIL}?subject=Delete%20my%20Viyo%20account">{CONTACT_EMAIL}</a> from the
+      address on your account (or tell us your username) with the subject "Delete my Viyo account". We reply within
+      7 days.</p>
+      <h2>What is deleted</h2>
+      <p>Your profile, posts, photos and videos, Viyo Studio projects and films, AI Coach and Glow Up history, likes,
+      comments and sign-in are permanently deleted. Unused coins and Studio credits are lost.</p>
+      <h2>What we keep</h2>
+      <p>Purchase and payout records that the law requires us to keep, for as long as it requires, and nothing else.
+      Copies you downloaded or posted on other websites are yours to manage.</p>
+    </section>
+    {cta()}
+"""
+    schema = {"@type": "WebPage", "url": f"{SITE}/delete-account", "name": "Delete your Viyo account"}
+    return page("/delete-account", "Delete your Viyo account",
+                "How to delete your Viyo account and data, in the app or by email, and what is deleted.",
+                body, schema=[ORG, schema], crumbs=[("/delete-account", "Delete account")])
+
+
+FOOTER_LINKS = NAV + [("/contact", "Contact"), ("/privacy", "Privacy"), ("/delete-account", "Delete account")]
 
 
 # ---------------------------------------------------------------- page shell
@@ -686,6 +803,8 @@ PAGES = {
     "/faq": ("faq.html", faq, "0.7", "monthly"),
     "/about": ("about.html", about, "0.6", "monthly"),
     "/contact": ("contact.html", contact, "0.4", "yearly"),
+    "/privacy": ("privacy.html", privacy, "0.3", "yearly"),
+    "/delete-account": ("delete-account.html", delete_account, "0.2", "yearly"),
 }
 
 
