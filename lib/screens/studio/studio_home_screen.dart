@@ -349,6 +349,7 @@ class _NewProductionDialogState extends State<_NewProductionDialog> {
             const SizedBox(height: 14),
             const _Label('Type'),
             SegmentedButton<String>(
+              showSelectedIcon: false,
               segments: const [
                 ButtonSegment(value: 'short', label: Text('Short')),
                 ButtonSegment(value: 'episode', label: Text('Episode')),
