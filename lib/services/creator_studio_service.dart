@@ -33,12 +33,19 @@ class StudioPack {
   StudioPack(this.id, this.label, this.credits, this.priceUsd);
 }
 
+class StudioEffect {
+  final String id, label;
+  final bool loops;
+  StudioEffect(this.id, this.label, this.loops);
+}
+
 class StudioAccount {
   final StudioBalance balance;
   final List<StudioVoice> voices;
   final List<StudioPack> packs;
   final bool checkoutAvailable;
-  StudioAccount(this.balance, this.voices, this.packs, this.checkoutAvailable);
+  final List<StudioEffect> effects;
+  StudioAccount(this.balance, this.voices, this.packs, this.checkoutAvailable, [this.effects = const []]);
 }
 
 class StudioProjectSummary {
@@ -65,6 +72,10 @@ class StudioProject {
   String title, logline, kind, aspectRatio, genre, visualStyle, language, script;
   int targetSeconds;
   bool captions;
+  bool hasMusic;
+  String? musicName;
+  double musicVolume;
+  String imageQuality;
   StudioProject.fromJson(Map j)
       : id = j['id'],
         title = j['title'] ?? '',
@@ -76,7 +87,11 @@ class StudioProject {
         language = j['language'] ?? 'English',
         script = j['script'] ?? '',
         targetSeconds = (j['target_seconds'] as num?)?.toInt() ?? 90,
-        captions = j['captions'] ?? true;
+        captions = j['captions'] ?? true,
+        hasMusic = j['has_music'] == true,
+        musicName = j['music_name'],
+        musicVolume = (j['music_volume'] as num?)?.toDouble() ?? 0.25,
+        imageQuality = j['image_quality'] ?? 'standard';
   bool get vertical => aspectRatio == '9:16';
 }
 
@@ -104,6 +119,7 @@ class StudioScene {
   String heading, visual, mode;
   double durationSeconds;
   List<StudioLine> dialogue;
+  List<String> sfx;
   final String? imageUrl, videoUrl, audioUrl;
   final double? audioSeconds;
   final bool hasImage, hasVideo, hasAudio;
@@ -123,7 +139,8 @@ class StudioScene {
         audioSeconds = (j['audio_seconds'] as num?)?.toDouble(),
         hasImage = j['has_image'] == true,
         hasVideo = j['has_video'] == true,
-        hasAudio = j['has_audio'] == true;
+        hasAudio = j['has_audio'] == true,
+        sfx = ((j['sfx'] as List?) ?? []).map((e) => e.toString()).toList();
   bool get ready => hasImage || (mode == 'video' && hasVideo);
 }
 
@@ -254,6 +271,9 @@ class CreatorStudioService {
           .map((p) => StudioPack(p['id'], p['label'], (p['credits'] as num).toInt(), (p['price_usd'] as num).toDouble()))
           .toList(),
       j['checkout_available'] == true,
+      ((j['sound_effects'] as List?) ?? [])
+          .map((e) => StudioEffect(e['id'], e['label'], e['loops'] == true))
+          .toList(),
     );
   }
 
@@ -307,6 +327,32 @@ class CreatorStudioService {
   }
 
   static Future<void> cancelJob(String id) => _send('POST', '/jobs/$id/cancel');
+
+  /// The creator's own background track (MP3, M4A or WAV, up to 25 MB).
+  static Future<String> uploadMusic(String projectId, List<int> bytes, String fileName) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$_base/projects/$projectId/music'));
+    final token = SupabaseService.client.auth.currentSession?.accessToken;
+    if (token != null) req.headers['Authorization'] = 'Bearer $token';
+    req.fields['rights_confirmed'] = 'true';
+    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: fileName));
+    late http.Response res;
+    try {
+      res = await http.Response.fromStream(await req.send().timeout(const Duration(minutes: 3)));
+    } catch (_) {
+      throw StudioException("Couldn't upload the music. Check your connection and try again.", 0);
+    }
+    if (res.statusCode != 200) {
+      var message = 'Upload failed (${res.statusCode}).';
+      try {
+        final d = jsonDecode(res.body)['detail'];
+        if (d is String) message = d;
+      } catch (_) {}
+      throw StudioException(message, res.statusCode);
+    }
+    return (jsonDecode(res.body)['music_name'] as String?) ?? fileName;
+  }
+
+  static Future<void> removeMusic(String projectId) => _send('DELETE', '/projects/$projectId/music');
 
   static Future<(String, String)> renderLink(String renderId) async {
     final j = await _send('POST', '/renders/$renderId/download');

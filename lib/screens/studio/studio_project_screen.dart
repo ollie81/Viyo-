@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -21,6 +22,7 @@ class StudioProjectScreen extends StatefulWidget {
 class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTickerProviderStateMixin {
   StudioProjectDetail? _d;
   List<StudioVoice> _voices = [];
+  List<StudioEffect> _effects = [];
   String? _error;
   int _section = 0;
   Timer? _poll;
@@ -41,7 +43,12 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
     super.initState();
     _load();
     CreatorStudioService.account().then((a) {
-      if (mounted) setState(() => _voices = a.voices);
+      if (mounted) {
+        setState(() {
+          _voices = a.voices;
+          _effects = a.effects;
+        });
+      }
     }).catchError((_) {});
   }
 
@@ -214,7 +221,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
     final section = switch (_section) {
       0 => _StoryPanel(d, run: _run, busy: _busy, reload: _load, goTo: (i) => setState(() => _section = i)),
       1 => _CastPanel(d, voices: _voices, run: _run, busy: _busy, reload: _load),
-      2 => _ScenesPanel(d, run: _run, busy: _busy, reload: _load),
+      2 => _ScenesPanel(d, effects: _effects, run: _run, busy: _busy, reload: _load),
       _ => _ExportPanel(d, run: _run, busy: _busy, reload: _load),
     };
     return Align(
@@ -598,7 +605,8 @@ class _ScenesPanel extends StatelessWidget {
   final _Run run;
   final _Busy busy;
   final Future<void> Function() reload;
-  const _ScenesPanel(this.d, {required this.run, required this.busy, required this.reload});
+  final List<StudioEffect> effects;
+  const _ScenesPanel(this.d, {required this.effects, required this.run, required this.busy, required this.reload});
 
   @override
   Widget build(BuildContext context) {
@@ -655,6 +663,7 @@ class _ScenesPanel extends StatelessWidget {
             index: i,
             count: scenes.length,
             d: d,
+            effects: effects,
             run: run,
             busy: busy,
             reload: reload,
@@ -666,12 +675,14 @@ class _ScenesPanel extends StatelessWidget {
 
 class _SceneCard extends StatefulWidget {
   final StudioScene scene;
+  final List<StudioEffect> effects;
   final int index, count;
   final StudioProjectDetail d;
   final _Run run;
   final _Busy busy;
   final Future<void> Function() reload;
   const _SceneCard({super.key, required this.scene, required this.index, required this.count, required this.d,
+      this.effects = const [],
       required this.run, required this.busy, required this.reload});
   @override
   State<_SceneCard> createState() => _SceneCardState();
@@ -683,6 +694,7 @@ class _SceneCardState extends State<_SceneCard> {
   late List<(String, TextEditingController)> _lines =
       widget.scene.dialogue.map((l) => (l.character, TextEditingController(text: l.text))).toList();
   late double _duration = widget.scene.durationSeconds;
+  late List<String> _sfx = [...widget.scene.sfx];
   late String _mode = widget.scene.mode;
   bool _saving = false;
   AudioPlayer? _player;
@@ -703,7 +715,8 @@ class _SceneCardState extends State<_SceneCard> {
     final s = widget.scene;
     final lines = _lines.map((l) => '${l.$1}|${l.$2.text}').join('\n');
     final orig = s.dialogue.map((l) => '${l.character}|${l.text}').join('\n');
-    return _heading.text != s.heading || _visual.text != s.visual || lines != orig || _duration != s.durationSeconds || _mode != s.mode;
+    return _heading.text != s.heading || _visual.text != s.visual || lines != orig || _duration != s.durationSeconds || _mode != s.mode ||
+        _sfx.join(',') != s.sfx.join(',');
   }
 
   Future<bool> _save() async {
@@ -711,7 +724,7 @@ class _SceneCardState extends State<_SceneCard> {
     setState(() => _saving = true);
     try {
       await CreatorStudioService.updateScene(widget.scene.id, {
-        'heading': _heading.text, 'visual': _visual.text, 'duration_seconds': _duration, 'mode': _mode,
+        'heading': _heading.text, 'visual': _visual.text, 'duration_seconds': _duration, 'mode': _mode, 'sfx': _sfx,
         'dialogue': [for (final (ch, c) in _lines) if (c.text.trim().isNotEmpty) {'character': ch, 'text': c.text.trim()}],
       });
       await widget.reload();
@@ -864,6 +877,26 @@ class _SceneCardState extends State<_SceneCard> {
         if (_dirty) FilledButton(onPressed: _saving ? null : _save, child: const Text('Save')),
         if (voiceBusy) _busyChip('Voicing…'),
       ]),
+      if (widget.effects.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        const Text('Sound effects', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final e in widget.effects)
+            FilterChip(
+              visualDensity: VisualDensity.compact,
+              label: Text(e.label, style: const TextStyle(fontSize: 12)),
+              selected: _sfx.contains(e.id),
+              onSelected: (on) => setState(() {
+                if (on && _sfx.length < 4) {
+                  _sfx = [..._sfx, e.id];
+                } else if (!on) {
+                  _sfx = _sfx.where((x) => x != e.id).toList();
+                }
+              }),
+            ),
+        ]),
+      ],
     ]);
     return Container(
       decoration: studioPanel(border: s.ready ? null : AppColors.coin.withValues(alpha: 0.25)),
@@ -968,6 +1001,8 @@ class _ExportPanelState extends State<_ExportPanel> {
           ]),
         ]),
       ),
+      const SizedBox(height: 16),
+      _SoundQualityCard(d.project, reload: widget.reload),
       const SizedBox(height: 18),
       const Text('Versions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
       const SizedBox(height: 8),
@@ -1165,4 +1200,133 @@ class _ActivityPanel extends StatelessWidget {
         'failed' => '${j.error ?? 'Failed'} Credits returned.',
         _ => 'Cancelled · credits returned',
       };
+}
+
+
+// ================================================================ Sound & quality
+
+class _SoundQualityCard extends StatefulWidget {
+  final StudioProject p;
+  final Future<void> Function() reload;
+  const _SoundQualityCard(this.p, {required this.reload});
+  @override
+  State<_SoundQualityCard> createState() => _SoundQualityCardState();
+}
+
+class _SoundQualityCardState extends State<_SoundQualityCard> {
+  late double _volume = widget.p.musicVolume;
+  bool _uploading = false;
+
+  Future<void> _pickMusic() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Add background music'),
+        content: const Text('Only use music you made or have a licence for. Songs from artists or streaming apps '
+            'can get your film blocked on YouTube, TikTok and Viyo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('I have the rights')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final picked = await FilePicker.platform.pickFiles(type: FileType.audio, withData: true);
+    final f = picked?.files.single;
+    if (f == null || f.bytes == null) return;
+    setState(() => _uploading = true);
+    try {
+      await CreatorStudioService.uploadMusic(widget.p.id, f.bytes!, f.name);
+      await widget.reload();
+      if (mounted) showStudioInfo(context, 'Music added. It plays under the whole film and drops when people speak.');
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _save(Map<String, dynamic> fields) async {
+    try {
+      await CreatorStudioService.updateProject(widget.p.id, fields);
+      await widget.reload();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.p;
+    return Container(
+      decoration: studioPanel(),
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Sound & picture', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+        const SizedBox(height: 12),
+        Row(children: [
+          const Icon(Icons.music_note_outlined, color: AppColors.secondary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(p.hasMusic ? (p.musicName ?? 'Background music') : 'No background music',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: p.hasMusic ? AppColors.textPrimary : AppColors.textMuted)),
+          ),
+          if (_uploading)
+            const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+          else ...[
+            TextButton(onPressed: _pickMusic, child: Text(p.hasMusic ? 'Change' : 'Add music')),
+            if (p.hasMusic)
+              IconButton(
+                tooltip: 'Remove music',
+                onPressed: () async {
+                  await CreatorStudioService.removeMusic(p.id);
+                  await widget.reload();
+                },
+                icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+              ),
+          ],
+        ]),
+        if (p.hasMusic)
+          Row(children: [
+            const SizedBox(width: 30),
+            const Text('Volume', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            Expanded(
+              child: Slider(
+                value: _volume,
+                min: 0.05,
+                max: 0.8,
+                onChanged: (v) => setState(() => _volume = v),
+                onChangeEnd: (v) => _save({'music_volume': double.parse(v.toStringAsFixed(2))}),
+              ),
+            ),
+            Text('${(_volume * 100).round()}%', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+          ]),
+        const Divider(height: 24, color: StudioColors.panelBorder),
+        const Text('Picture quality', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 'standard', label: Text('Standard')),
+            ButtonSegment(value: 'high', label: Text('High (sharper)')),
+          ],
+          selected: {p.imageQuality},
+          onSelectionChanged: (v) => _save({'image_quality': v.first}),
+        ),
+        const SizedBox(height: 6),
+        const Text('High makes new images at 2K: sharper on big screens, about 50% more per image. '
+            'Images you already made keep their quality.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35)),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: p.captions,
+          onChanged: (v) => _save({'captions': v}),
+          title: const Text('Burn in captions', style: TextStyle(fontSize: 14)),
+        ),
+      ]),
+    );
+  }
 }
