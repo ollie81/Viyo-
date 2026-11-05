@@ -754,10 +754,14 @@ def main() -> None:
     for path, (fname, fn, _, _) in PAGES.items():
         with open(os.path.join(OUT, fname), "w", encoding="utf-8") as f:
             f.write(fn())
-    for name, text in [("sitemap.xml", sitemap()), ("robots.txt", robots()), ("llms.txt", llms())]:
+    # app-ads.txt: authorises Google AdMob to sell ads in the Viyo app
+    # (publisher id from the app's AdMob app id, Google's standard cert id).
+    app_ads = "google.com, pub-4006935524883605, DIRECT, f08c47fec0942fa0\n"
+    for name, text in [("sitemap.xml", sitemap()), ("robots.txt", robots()), ("llms.txt", llms()),
+                       ("app-ads.txt", app_ads)]:
         with open(os.path.join(OUT, name), "w", encoding="utf-8") as f:
             f.write(text)
-    print(f"wrote {len(PAGES)} pages + sitemap.xml, robots.txt, llms.txt to {OUT}")
+    print(f"wrote {len(PAGES)} pages + sitemap.xml, robots.txt, llms.txt, app-ads.txt to {OUT}")
 
 
 if __name__ == "__main__":
