@@ -19,6 +19,15 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
+      # Pinned: GitHub's runners now default to Java 25, which this
+      # project's Gradle (8.14) can't run on, so every APK build failed.
+      # The Android code targets Java 17 (android/app/build.gradle.kts).
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
