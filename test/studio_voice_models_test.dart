@@ -36,6 +36,29 @@ void main() {
     expect(old.voiceLocked, isFalse);
   });
 
+  test('a delivery note from the scene list survives a save', () {
+    final s = StudioScene.fromJson({
+      'id': 's1',
+      'dialogue': [
+        {'character': 'Ana', 'text': 'Who is there?', 'emotion': 'frightened', 'delivery': 'whispered, shaky'},
+      ],
+    });
+    expect(s.dialogue.single.toJson(),
+        {'character': 'Ana', 'text': 'Who is there?', 'emotion': 'frightened', 'delivery': 'whispered, shaky'});
+  });
+
+  test('casting status and age come through for the character card', () {
+    final kid = StudioCharacter.fromJson({
+      'id': 'c1', 'name': 'Lily', 'voice': '', 'voice_status': 'needs_voice', 'age_label': 'young child', 'age_years': 7,
+    });
+    expect(kid.voiceStatus, 'needs_voice');
+    expect(kid.ageLabel, 'young child');
+    expect(kid.ageYears, 7);
+    final old = StudioCharacter.fromJson({'id': 'c2', 'name': 'Old', 'voice': 'Puck'});
+    expect(old.voiceStatus, 'cast');
+    expect(StudioCharacter.fromJson({'id': 'c3', 'name': 'X', 'voice': ''}).voiceStatus, 'needs_voice');
+  });
+
   test('the server asking to confirm a voice change is recognised', () {
     final e = StudioException('Maya already speaks in 2 recorded scenes.', 409)..code = 'confirm_voice_change';
     expect(e.needsVoiceChangeConfirm, isTrue);

@@ -668,6 +668,9 @@ class _CharacterCardState extends State<_CharacterCard> {
               voice: widget.voices.where((v) => v.name == _voice).firstOrNull,
               voiceName: voiceNames.contains(_voice) ? _voice : null,
               locked: widget.c.voiceLocked,
+              status: _voice != widget.c.voice ? 'manual' : widget.c.voiceStatus,
+              ageLabel: widget.c.ageLabel,
+              ageYears: widget.c.ageYears,
               onChange: () async {
                 final picked = await pickStudioVoice(context, widget.voices, _voice, widget.c.name);
                 if (picked != null && mounted) setState(() => _voice = picked);
@@ -788,8 +791,11 @@ class _SceneCardState extends State<_SceneCard> {
   late final _heading = TextEditingController(text: widget.scene.heading);
   late final _visual = TextEditingController(text: widget.scene.visual);
   // (who, line, delivery). Delivery is optional, e.g. "whispering".
-  late List<(String, TextEditingController, String)> _lines =
-      widget.scene.dialogue.map((l) => (l.character, TextEditingController(text: l.text), l.emotion)).toList();
+  // (who, line, emotion, delivery note). The delivery note comes from Viyo's
+  // scene list and is kept as it is when the scene is saved.
+  late List<(String, TextEditingController, String, String)> _lines = widget.scene.dialogue
+      .map((l) => (l.character, TextEditingController(text: l.text), l.emotion, l.delivery))
+      .toList();
   late double _duration = widget.scene.durationSeconds;
   late List<String> _sfx = [...widget.scene.sfx];
   late String _mode = widget.scene.mode;
@@ -801,7 +807,7 @@ class _SceneCardState extends State<_SceneCard> {
   void dispose() {
     _heading.dispose();
     _visual.dispose();
-    for (final (_, c, _) in _lines) {
+    for (final (_, c, _, _) in _lines) {
       c.dispose();
     }
     _player?.dispose();
@@ -810,8 +816,8 @@ class _SceneCardState extends State<_SceneCard> {
 
   bool get _dirty {
     final s = widget.scene;
-    final lines = _lines.map((l) => '${l.$1}|${l.$2.text}|${l.$3}').join('\n');
-    final orig = s.dialogue.map((l) => '${l.character}|${l.text}|${l.emotion}').join('\n');
+    final lines = _lines.map((l) => '${l.$1}|${l.$2.text}|${l.$3}|${l.$4}').join('\n');
+    final orig = s.dialogue.map((l) => '${l.character}|${l.text}|${l.emotion}|${l.delivery}').join('\n');
     return _heading.text != s.heading || _visual.text != s.visual || lines != orig || _duration != s.durationSeconds || _mode != s.mode ||
         _sfx.join(',') != s.sfx.join(',');
   }
@@ -823,8 +829,8 @@ class _SceneCardState extends State<_SceneCard> {
       await CreatorStudioService.updateScene(widget.scene.id, {
         'heading': _heading.text, 'visual': _visual.text, 'duration_seconds': _duration, 'mode': _mode, 'sfx': _sfx,
         'dialogue': [
-          for (final (ch, c, mood) in _lines)
-            if (c.text.trim().isNotEmpty) StudioLine(ch, c.text.trim(), mood).toJson()
+          for (final (ch, c, mood, delivery) in _lines)
+            if (c.text.trim().isNotEmpty) StudioLine(ch, c.text.trim(), mood, delivery).toJson()
         ],
       });
       await widget.reload();
@@ -929,7 +935,7 @@ class _SceneCardState extends State<_SceneCard> {
                 dropdownColor: StudioColors.panel,
                 decoration: studioField('Who'),
                 items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)))],
-                onChanged: (v) => setState(() => _lines[i] = (v ?? 'NARRATOR', _lines[i].$2, _lines[i].$3)),
+                onChanged: (v) => setState(() => _lines[i] = (v ?? 'NARRATOR', _lines[i].$2, _lines[i].$3, _lines[i].$4)),
               ),
             ),
             const SizedBox(width: 8),
@@ -948,7 +954,7 @@ class _SceneCardState extends State<_SceneCard> {
       Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
-          onPressed: _lines.length >= 12 ? null : () => setState(() => _lines = [..._lines, (names.length > 1 ? names[1] : 'NARRATOR', TextEditingController(), '')]),
+          onPressed: _lines.length >= 12 ? null : () => setState(() => _lines = [..._lines, (names.length > 1 ? names[1] : 'NARRATOR', TextEditingController(), '', '')]),
           icon: const Icon(Icons.add_comment_outlined, size: 18),
           label: const Text('Add line'),
         ),
@@ -1035,7 +1041,7 @@ class _SceneCardState extends State<_SceneCard> {
     return PopupMenuButton<String>(
       tooltip: 'How it is said',
       color: StudioColors.panel,
-      onSelected: (v) => setState(() => _lines[i] = (_lines[i].$1, _lines[i].$2, v)),
+      onSelected: (v) => setState(() => _lines[i] = (_lines[i].$1, _lines[i].$2, v, _lines[i].$4)),
       itemBuilder: (_) => [
         const PopupMenuItem(value: '', child: Text('Plain (no direction)')),
         if (mood.isNotEmpty && !_moods.contains(mood)) PopupMenuItem(value: mood, child: Text(mood)),

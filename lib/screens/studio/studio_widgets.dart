@@ -458,34 +458,71 @@ class AspectFrame extends StatelessWidget {
 // ================================================================ voices
 
 /// The character's voice as a row: name, sound and whether it is in use.
+/// Viyo casts voices itself; this shows what it decided and why.
 class VoiceTile extends StatelessWidget {
   final StudioVoice? voice;
   final String? voiceName;
   final bool locked;
+  final String status;
+  final String? ageLabel;
+  final int? ageYears;
   final VoidCallback onChange;
-  const VoiceTile({super.key, required this.voice, required this.voiceName, required this.locked, required this.onChange});
+  const VoiceTile({
+    super.key,
+    required this.voice,
+    required this.voiceName,
+    required this.locked,
+    required this.onChange,
+    this.status = 'cast',
+    this.ageLabel,
+    this.ageYears,
+  });
+
+  String get _who => ageYears != null ? '$ageYears years old' : (ageLabel ?? '');
 
   @override
   Widget build(BuildContext context) {
-    return InputDecorator(
-      decoration: studioField('Voice'),
-      child: Row(children: [
-        const Icon(Icons.record_voice_over_outlined, size: 18, color: AppColors.textMuted),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            voiceName == null ? 'No voice yet' : '$voiceName${voice == null ? '' : ' · ${voice!.style} · ${voice!.gender}'}',
-            overflow: TextOverflow.ellipsis,
+    final note = switch (status) {
+      'needs_voice' => 'Viyo doesn\'t have a suitable voice for a ${ageLabel ?? 'character like this'} yet, so '
+          'their lines won\'t be voiced. Viyo won\'t use an adult voice instead.',
+      'unsupported_language' => 'The voice model doesn\'t speak this production\'s language yet.',
+      'approximate' => 'The closest available voice. Viyo has no verified voice for this age yet.',
+      _ => null,
+    };
+    final label = switch (status) {
+      'manual' => 'Chosen by you',
+      'needs_voice' || 'unsupported_language' => 'No voice yet',
+      _ => 'Cast by Viyo',
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      InputDecorator(
+        decoration: studioField(_who.isEmpty ? 'Voice' : 'Voice · $_who'),
+        child: Row(children: [
+          const Icon(Icons.record_voice_over_outlined, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                voiceName == null ? 'No voice yet' : '$voiceName${voice == null ? '' : ' · ${voice!.style} · ${voice!.gender}'}',
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+            ]),
           ),
+          if (locked)
+            const Tooltip(
+              message: 'Used in recordings. Changing it affects new and re-recorded lines.',
+              child: Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted)),
+            ),
+          TextButton(onPressed: onChange, child: const Text('Change')),
+        ]),
+      ),
+      if (note != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(note, style: const TextStyle(fontSize: 12, color: AppColors.coin, height: 1.35)),
         ),
-        if (locked)
-          const Tooltip(
-            message: 'Used in recordings. Changing it affects new and re-recorded lines.',
-            child: Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted)),
-          ),
-        TextButton(onPressed: onChange, child: const Text('Change')),
-      ]),
-    );
+    ]);
   }
 }
 

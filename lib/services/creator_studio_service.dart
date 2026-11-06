@@ -106,6 +106,11 @@ class StudioCharacter {
   final String? portraitUrl;
   /// True once a line has been recorded with this voice.
   final bool voiceLocked;
+  /// Worked out by Viyo from the story, e.g. "young child".
+  final String? ageLabel;
+  final int? ageYears;
+  /// cast / approximate / needs_voice / unsupported_language / manual
+  final String voiceStatus;
   StudioCharacter.fromJson(Map j)
       : id = j['id'],
         name = j['name'] ?? '',
@@ -113,13 +118,21 @@ class StudioCharacter {
         voice = j['voice'] ?? '',
         voiceStyle = j['voice_style'] ?? '',
         voiceLocked = j['voice_locked'] == true,
+        ageLabel = j['age_label'],
+        ageYears = (j['age_years'] as num?)?.toInt(),
+        voiceStatus = j['voice_status'] ?? ((j['voice'] ?? '') == '' ? 'needs_voice' : 'cast'),
         portraitUrl = j['portrait_url'];
 }
 
 class StudioLine {
-  String character, text, emotion;
-  StudioLine(this.character, this.text, [this.emotion = '']);
-  Map<String, dynamic> toJson() => {'character': character, 'text': text, if (emotion.trim().isNotEmpty) 'emotion': emotion.trim()};
+  String character, text, emotion, delivery;
+  StudioLine(this.character, this.text, [this.emotion = '', this.delivery = '']);
+  Map<String, dynamic> toJson() => {
+        'character': character,
+        'text': text,
+        if (emotion.trim().isNotEmpty) 'emotion': emotion.trim(),
+        if (delivery.trim().isNotEmpty) 'delivery': delivery.trim(),
+      };
 }
 
 class StudioScene {
@@ -140,7 +153,8 @@ class StudioScene {
         mode = j['mode'] ?? 'still',
         durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 5,
         dialogue = ((j['dialogue'] as List?) ?? [])
-            .map((d) => StudioLine((d['character'] ?? '') as String, (d['text'] ?? '') as String, (d['emotion'] ?? '') as String))
+            .map((d) => StudioLine((d['character'] ?? '') as String, (d['text'] ?? '') as String,
+                (d['emotion'] ?? '') as String, (d['delivery'] ?? '') as String))
             .toList(),
         imageUrl = j['image_url'],
         videoUrl = j['video_url'],
@@ -428,6 +442,37 @@ class CreatorStudioService {
     }
     return StudioBalance.fromJson(body['balance']);
   }
+
+  // ------------------------------------------------------------ admin voice gallery
+
+  static Future<dynamic> _admin(String method, String path, String adminKey, [Object? body]) async {
+    final uri = Uri.parse('$_base$path');
+    final h = {'Content-Type': 'application/json', 'X-Admin-Key': adminKey};
+    final res = await (switch (method) {
+      'GET' => http.get(uri, headers: h),
+      'PATCH' => http.patch(uri, headers: h, body: jsonEncode(body)),
+      _ => http.post(uri, headers: h, body: jsonEncode(body)),
+    })
+        .timeout(const Duration(seconds: 120));
+    final j = res.body.isEmpty ? {} : jsonDecode(res.body);
+    if (res.statusCode != 200) {
+      final d = j is Map ? j['detail'] : null;
+      throw StudioException(d is String ? d : 'Something went wrong (${res.statusCode}).', res.statusCode);
+    }
+    return j;
+  }
+
+  static Future<Map<String, dynamic>> adminVoices(String adminKey) async =>
+      Map<String, dynamic>.from(await _admin('GET', '/admin/voices', adminKey));
+
+  static Future<void> adminUpdateVoice(String adminKey, String voiceId, Map<String, dynamic> fields) =>
+      _admin('PATCH', '/admin/voices/google/$voiceId', adminKey, fields);
+
+  /// Without [confirmSpend] nothing is made: it returns what would be made
+  /// and the estimated cost.
+  static Future<Map<String, dynamic>> adminMakeSamples(String adminKey, {bool confirmSpend = false}) async =>
+      Map<String, dynamic>.from(
+          await _admin('POST', '/admin/voices/samples', adminKey, {'confirm_spend': confirmSpend}));
 
   static Future<(StudioBalance, List<Map<String, dynamic>>)> credits() async {
     final j = await _send('GET', '/credits');

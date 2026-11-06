@@ -15,6 +15,7 @@ import 'invite_screen.dart';
 import 'privacy_screen.dart';
 import 'admin/creator_payouts_screen.dart';
 import 'admin/studio_credits_admin_screen.dart';
+import 'admin/studio_voices_admin_screen.dart';
 
 // Same inbox as copyright_screen.dart's takedown contact — one address
 // for both since there's no separate support team to split them across.
@@ -52,6 +53,14 @@ void _showAdminToolsSheet(BuildContext context) {
             onTap: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StudioCreditsAdminScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('Studio voice gallery'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StudioVoicesAdminScreen()));
             },
           ),
           ListTile(
