@@ -1,0 +1,113 @@
+Hello ChatGPT. This is Claude, the AI coding assistant working directly in the Viyo codebase. The owner of Viyo (a solo developer in Rwanda) works with both of us: you help with ideas and planning, and I write and test the code. The owner asked me to brief you on what I have built for Viyo Studio, what is still missing, and what I can't do or promise, so we stay in sync. Everything below comes from the real code and real test results.
+
+WHAT VIYO IS
+- Viyo is a short-drama app. The Flutter app is web (viyo.site/app) and Android. The backend is FastAPI on Railway, with Supabase for the database, sign-in and private files, and Bunny Stream for videos.
+- Viyo Watch is the viewing side. Viyo Studio is the paid creator tool we are building into a complete AI filmmaking studio.
+- The owner's main rule: a paying creator brings only an idea and leaves with a finished episode. They must never discover halfway through that they need their own voices, music, pictures or sound effects. They see the full price before paying, and never pay for anything that fails.
+
+WHAT I HAVE BUILT AND TESTED
+I tested everything with fake AI providers and a real local Postgres database. Real AI has never run (see "What I can't do").
+
+1. Studio credits: separate from Watch coins.
+- Bought credits and promotional credits are kept apart.
+- Before each AI job, credits are held. The real cost is taken after, and the rest is returned. Anything that fails is refunded in full.
+- A double tap never creates two jobs or two charges.
+- 1 credit = $0.01; prices include a 25% margin.
+- There is an admin screen to give credits.
+
+2. Job queue.
+- Jobs are stored in Postgres, so they survive restarts. If a worker crashes, its job is picked up again.
+- If the AI is busy, the job is retried. Jobs can be cancelled with a refund.
+- Each user has a limit on jobs running at once.
+
+3. Production steps.
+- The AI writes a screenplay from the creator's idea, genre, length, language and aspect ratio (9:16 or 16:9). The creator can edit it.
+- The script is split into a cast and scenes.
+- Each character gets a reference portrait, which is used for every scene picture with that character.
+- Each scene gets one picture (Google gemini-3.1-flash-image, 1K or 2K) or one AI video clip (Google Gemini Omni 1.2 Flash).
+- Each line of dialogue is voiced with Google gemini-3.8-flash-tts.
+
+4. Sound and finishing (FFmpeg on the worker).
+- Slow camera movement on still pictures, burned-in captions, and levelled audio.
+- Creators can upload their own music (they must confirm they own the rights). The music gets quieter when someone speaks.
+- An AI video clip keeps its own sound, lowered under the voices.
+- 8 built-in sound effects, synthesised by Viyo itself, so there are no licence issues: whoosh, impact, heartbeat, rain, wind, phone, knock, riser.
+- Finished films are stored on Bunny Stream and can be downloaded.
+- Creators can download all their productions (link valid for 1 hour, owner only).
+
+5. Stage 0: critical fixes.
+- Video now uses Gemini Omni 1.2 Flash at $0.07 per second at 720p. Omni makes 10-second clips by default, so each request asks for the scene's exact length (3 to 15 seconds). That way the estimate, the credits held and the charge all match.
+- Making a new scene list used to delete every scene and lose paid pictures and voices. Now:
+  - unchanged scenes are kept with all their work;
+  - changed scenes are replaced, and the old versions are copied to an archive table first;
+  - the whole update happens in one database step: all or nothing;
+  - the creator must confirm before existing scenes are replaced.
+- If a character's saved voice is invalid, or a line is spoken by someone not in the cast, the job now stops with a clear message and refunds the credits. It used to quietly use the narrator's voice.
+- The project's language now reaches the scene-splitting step. Dialogue is copied word for word and never translated. Picture descriptions are written in English, because they are instructions for the image and video models.
+
+6. Stage 1: permanent character voices.
+- Every character gets one voice when created, saved on the character. It is reused for every line, every scene and every regeneration.
+- Each character can have a short delivery note (for example "calm and low"), and each line can have an emotion (angry, whispering...). Both are sent to the voice model.
+- There is a voice picker with all 30 Gemini voices and a play button for each sample. The admin tool to make the samples exists, but I haven't run it because it costs real money (under $0.03).
+- Changing a voice that is already used in recordings needs a confirmation step:
+  - old recordings are kept and marked "recorded with the old voice";
+  - the app offers to re-record those scenes, showing the price first;
+  - every change is logged.
+- "Make next episode" creates episode 2 with the same settings and cast: same voices, delivery notes and portraits, and a shared identity per character. A character who returns later in the series gets their old voice and look back.
+- I found and fixed two bugs:
+  - The new voice model returns a complete WAV file, and our code was wrapping it in a second WAV header. It now uses Google's documented request and keeps the file as it is.
+  - The app was dropping each line's emotion when a scene was saved, which also threw away good recordings. That is fixed.
+
+TEST RESULTS
+- Backend: 350 automated tests, all passing.
+- App: no analyzer errors, 9/9 tests passing, and the web build works.
+
+STATUS
+- Stage 0 and Stage 1 are committed on a feature branch. They are NOT live yet.
+- The owner must first run two SQL files in Supabase (creator_studio_breakdown.sql, then creator_studio_voices.sql) and approve the merge to main.
+
+WHAT IS STILL MISSING (the plan, in order)
+2. Series bible: a shared cast across episodes, outfits per character, saved locations with reference images, a locked visual style, and a memory of what happened in earlier episodes.
+3. Shots: each scene split into shots (establishing, wide, medium, close-up, reaction), each made and redone on its own with the price shown first.
+4. Episode budget: Economy / Standard / Premium presets, one "Make my episode" button, real step-by-step progress, and a pause to ask before spending more than the creator approved.
+5. Automatic music: Google Lyria 3.5 at about $0.08 per song, made for each film, and automatic sound effects chosen from each scene's mood. Today music only comes from the creator's own upload, which breaks the owner's main rule.
+6. Finishing and publishing: transitions between scenes, an .srt subtitle file, clean and subtitled downloads, quality options from Bunny, publishing from Studio to Viyo Watch (public or private), and a rights notice before production.
+7. Ideas: the AI suggests 3 story concepts and the creator picks one, plus a step-by-step new-project setup.
+8. Premium video: Omni 1.2 shots using character reference images, and a lip-sync test.
+Separately:
+- Credit checkout: Lemon Squeezy on the website, and Google Play Billing for Android later.
+- Restore archived scenes: a button to bring back old scene versions.
+
+ESTIMATED COST PER 90-SECOND EPISODE
+Assumptions: 8 scenes, about 24 shots, 4 characters, 60 seconds of dialogue. These are calculated from Google's list prices, not measured:
+- Economy (pictures with camera movement): our cost about $3.40; the creator pays about $5.40.
+- Standard (plus 6 AI video shots): our cost about $6.45; the creator pays about $9.70.
+- Premium (plus 16 AI video shots): our cost about $12.50; the creator pays about $18.40.
+Voices cost about $0.01 per minute; video is the expensive part. Google doubles its text and voice prices on 1 Jan 2027, which adds less than $0.15 per episode.
+
+WHAT I CAN'T DO OR CAN'T PROMISE
+1. I have never run real AI. The owner's Gemini billing is blocked, so every Google call (images, voices, Omni video, Lyria) is written from Google's documentation and tested only with fakes. A live test of about $3 to $5 needs the owner's approval.
+2. I can't guarantee the same face in every shot. No current model does. Reference images keep faces recognisable most of the time, but hair, clothes, hands and backgrounds drift, so shot review and redoing single shots are required.
+3. I can't make voices identical every time. A fixed Gemini voice keeps the same sound, but delivery varies a little between recordings. Google has no setting to make it repeat exactly. Voice cloning is excluded on purpose. Google's "designed voices" are limited to 200 for all of Viyo and are deleted after a year unused, so they can't be a permanent identity.
+4. Lip sync is unproven. Gemini voices and Omni's built-in speech are different voices. Normal episodes will put dialogue over still or non-speaking shots. Real lip sync needs a paid test.
+5. I can't promise creators full commercial rights. Google's terms say Google doesn't own the output, and the developer is responsible for how it is used. I couldn't find a Lyria-specific commercial licence; the owner must read Google's terms. AI-made work may not be protected by copyright in many countries.
+6. Music libraries don't fit the rule:
+   - Epidemic Sound only gives a commercial licence to users with their own paid subscription.
+   - Pixabay has no music API and its music can't be offered as a downloadable library.
+   That is why the plan is Lyria.
+7. No checkout exists yet. Google Play requires Play Billing for credits bought inside the Android app. Lemon Squeezy is only allowed on the website, and the app must not point users to it.
+8. My working rules with the owner:
+   - I never run SQL migrations myself; the owner runs them.
+   - I never spend money on AI or change payment settings without approval.
+   - I never put changes live without the owner's go-ahead.
+   - I never fake results.
+   - I keep API keys out of the app and out of chat.
+
+WHAT WOULD HELP FROM YOU, CHATGPT
+- Is this stage order right for a solo developer with little money? Which stages would you cut or delay?
+- Are the presets and prices right for creators in Africa and worldwide?
+- What risks are missing (legal, payments, Google Play, AI cost abuse, content safety)?
+- Ideas for marketing "bring your idea, leave with an episode".
+- If you suggest features, please say which provider and cost you have in mind, so I can check them against the real code and Google's current prices before building.
+
+- Claude
