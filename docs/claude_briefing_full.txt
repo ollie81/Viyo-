@@ -1,0 +1,237 @@
+VIYO STUDIO: FULL BRIEFING FROM CLAUDE TO CHATGPT
+(Claude is the AI coding assistant working in the Viyo codebase. Facts from the code and test runs, 6 Nov 2026.)
+
+STATUS AT A GLANCE
+- Everything below works in automated tests with fake AI providers and a real local Postgres database.
+- No real AI has run yet: the owner's Gemini billing is blocked.
+- Stage 0 and Stage 1 are on a feature branch. They go live once the owner runs two SQL files and approves.
+
+========================================================================
+1. WHAT IS ALREADY IMPLEMENTED AND TESTED
+========================================================================
+Backend: FastAPI on Railway. App: Flutter, web and Android. Database: Supabase. Video storage: Bunny Stream.
+
+Credits and money
+- Studio credits are separate from Viyo Watch coins.
+- 1 credit = $0.01 of net revenue.
+- Price of any job: credits = cost / (1 - 0.25 margin) / $0.01, rounded up, minimum 1.
+- Bought and promotional credits are kept as separate lots. Promotional credits are spent first and can expire.
+- Every job: hold the estimated credits, then capture the real cost (never more than the hold), then return the rest.
+- On failure: release everything. The creator pays nothing. Viyo absorbs any provider cost already spent.
+- Text jobs hold 1.6x the estimate, because output length varies; the unused part comes back.
+- A double tap uses the same idempotency key, so one job and one charge.
+- Admin can grant credits (with a reference) by user id or @username.
+- Credit packs are defined, but there is NO checkout yet.
+
+Job system
+- Jobs live in Postgres. Workers claim jobs, send heartbeats, and complete or fail them.
+- A job from a crashed worker is picked up again after 180 s.
+- "Provider busy" errors (429/503) are retried. Other failures refund.
+- Cancel before a job starts gives a full refund.
+- Two lanes: generation and render.
+- Each user can have at most 30 open jobs, and there is a rate limit per user.
+
+Production pipeline (one job type per step; each shows its price first)
+- Script: a screenplay from title, idea, genre, format, length, language and 9:16 or 16:9. The creator can edit it.
+- Breakdown: splits the script into a cast (visual descriptions) and scenes (heading, one visual prompt, dialogue, duration, emotion per line).
+- Portrait: a reference image per character (gemini-3.1-flash-image).
+- Scene image: up to 4 cast portraits are sent as references. 1K, or 2K on "High quality".
+- Scene video: one Omni 1.2 Flash clip starting from the scene image, with its length matching the scene.
+- Voice: one TTS call per line in the character's saved voice, then the lines are joined.
+- Render (FFmpeg):
+  - slow push-in on stills, burned-in captions;
+  - voice levelled to -16 LUFS; the clip's own sound kept, lower under voices;
+  - up to 4 synthesised sound effects per scene;
+  - optional creator music, quieter under speech (tested at about 8 dB);
+  - H.264 at CRF 19, AAC 192k;
+  - the result goes to Bunny Stream.
+- Download: Bunny MP4 or a signed link. "My Productions" downloads were tested live: owner only, link valid for 1 hour.
+
+Stage 0 (critical fixes): done
+- Video moved to gemini-omni-1.2-flash ($12 per million output tokens = about $0.07/s at 720p). Each request asks for the clip length explicitly.
+- Re-running the breakdown never deletes paid work:
+  - Same place and same lines: the scene is kept as it is.
+  - Same place, new lines: the picture is reused, but there is a new voice recording.
+  - Any scene that is replaced is first copied to an archive table.
+  - All of this happens in one SQL transaction. A test proves that nothing changes if any part fails.
+  - The creator must confirm first, and no credits are held before that.
+- An invalid voice, or a speaker not in the cast, stops the job and refunds it. This is checked before credits are held and again in the worker. It is never quietly read by the narrator.
+- The project language reaches the breakdown. Dialogue is copied word for word; picture prompts are written in English.
+
+Stage 1 (permanent character voices): done
+- Character record: voice_provider, voice (the provider's voice id), voice_style (an 80-character delivery note), voice_language, voice_locked_at, voice_changed_at, identity_id.
+- The voice is assigned once, at creation, and is never picked again on breakdown, regeneration or a new episode.
+- Each scene records which voice each character used (audio_voices).
+- Changing a recorded voice needs confirmation:
+  - the old audio is kept and flagged;
+  - the change is logged in studio_voice_changes;
+  - the affected scenes are offered for re-recording, with the price shown.
+- "Next episode" copies the cast with voice, note, portrait and identity.
+- At breakdown, a character returning later in the series gets their old voice and look back.
+- A voice list with samples. The admin tool makes samples only with an explicit "spend" flag; it hasn't been run.
+- TTS now uses Google's documented Interactions API for 3.8. The old code added a second WAV header; that bug is fixed.
+- The app now keeps per-line emotions when a scene is saved; this was another fixed bug.
+
+Test results (latest runs)
+- Backend: 350 passed, 0 failed (full suite). Includes 21 Stage 0 tests and 16 Stage 1 voice tests.
+- App: no analyzer errors, 9/9 tests passed, the web release build works.
+- Not tested: real provider calls, and a manual click-through of the new screens.
+
+========================================================================
+2. WHAT STILL NEEDS DEVELOPMENT (recommended order)
+========================================================================
+Before selling anything
+A. Gemini billing fixed by the owner, then one live test (about $3-5, owner approves): image, voice, Omni clip, render.
+B. Credit checkout: Lemon Squeezy on the website. Android needs Google Play Billing for credits bought in the app. The app must not steer users to web payment.
+C. A Terms / rights notice shown before production.
+
+Product stages
+2. Series bible:
+   - series-level characters with outfits ("looks") and 3-angle reference sheets;
+   - saved locations with reference images;
+   - a locked style line;
+   - a memory of earlier episodes (events, relationships, open storylines).
+3. Shots: a scene becomes 3-6 shots (establishing, wide, medium, close-up, reaction, insert), each made, reviewed and redone separately.
+4. Episode budget and presets:
+   - one approved total per episode;
+   - jobs draw from it, and pause to ask before going more than 10% over;
+   - a "Make my episode" button with real stage progress;
+   - Economy / Standard / Premium presets.
+5. Automatic music (Lyria 3.5) and automatic sound effects chosen from scene mood, with crossfades, preview, swap, volume and off.
+6. Finishing and publishing:
+   - transitions, an .srt export, clean and captioned versions, quality choices from Bunny;
+   - publish to Viyo Watch (public or private);
+   - restore archived scenes.
+7. Idea generator: 3 concepts, the creator picks one. Plus a new-project wizard that works on mobile.
+8. Premium video: Omni reference-to-video shots and a lip-sync test.
+
+========================================================================
+3. AI PROVIDERS AND MODELS THAT CAN DELIVER (checked on Google's pricing and docs pages, 5-6 Nov 2026)
+========================================================================
+- Text, screenplay and shot list: gemini-3.8-flash. $0.75 in / $3.75 out per million tokens, doubling on 1 Jan 2027. Already wired.
+- Images: gemini-3.1-flash-image. $0.067 at 1K, $0.101 at 2K. Accepts reference images (we send up to 4). Already wired.
+- Voices: gemini-3.8-flash-tts.
+  - $9 per million audio tokens at 25 tokens/s = about $0.0135 per minute ($0.027 from 2027).
+  - 30 prebuilt voices, 130+ languages including Kinyarwanda, Swahili and French; the language is detected automatically.
+  - Style per turn, and inline tags like <sigh>.
+  - Already wired; not yet tested live.
+- Video: gemini-omni-1.2-flash.
+  - $0.07/s at 720p ($0.023 at 360p, $0.104 at 1080p upscaled).
+  - 3-15 s clips, default 10 s.
+  - Up to 6 reference images (3 per character, 2 characters).
+  - Native audio, dialogue and lip-sync are claimed by Google but untested.
+  - omni-1.1 requests are routed to 1.2 from 3 Dec 2026. Veo 3.1 previews were shut down 22 Oct 2026.
+  - Wired as image-to-video; reference-to-video is not wired yet.
+- Music: lyria-3.5, $0.08 per song. Not wired yet.
+- Safety: the OpenAI moderation endpoint (free) checks scripts.
+- Not used:
+  - Google designed voices: only 200 per project, deleted after 1 year unused.
+  - Voice cloning: excluded on purpose.
+  - Epidemic Sound: commercial licence only for users with their own subscription.
+  - Pixabay music: no API; it can't be offered as a downloadable library.
+
+========================================================================
+4. CHARACTER AND VOICE CONSISTENCY
+========================================================================
+Voices: strong
+- The same prebuilt voice id gives the same sound for that character in every scene, regeneration and episode. This is enforced in code and tested.
+- Delivery (emotion, pacing) still varies a little per recording. Google offers no seed or exact-repeat setting.
+- Google advises a short, unchanging style note to reduce drift; we follow that.
+- Wording to use: "same voice", NOT "identical performance".
+
+Faces and look: medium
+- Each character has one portrait, sent as a reference to every image with them in it.
+- Faces stay recognisable most of the time. Hair, clothing, hands and backgrounds can drift between images. No current model guarantees identical faces.
+- Stage 2 (outfits, 3-angle sheets, location references, locked style) and Stage 3 (single-shot regeneration) are the practical fix.
+
+Across episodes
+- Characters are copied with an identity link.
+- A returning character gets the same voice, note, description and portrait.
+- The portrait file is shared, not duplicated.
+
+Lip sync: unproven
+- TTS voices and Omni's built-in speech are different voices.
+- Default approach: dialogue over stills, reaction shots, over-the-shoulder or wide shots.
+- Premium talking shots need a live test, giving the TTS line to Omni as an audio reference.
+
+========================================================================
+5. MUSIC, SOUND EFFECTS AND LICENSING
+========================================================================
+- Today:
+  - creators can upload music after confirming rights; it is re-encoded and kept private;
+  - 8 synthesised sound effects exist, made by our own code, so there is zero licence risk;
+  - the creator picks effects by hand.
+- Gap: no built-in music. This breaks the owner's "never bring your own assets" rule.
+- Recommendation: Lyria 3.5 makes 1-2 tracks per film from scene moods.
+  - It costs about $0.08 per track and carries an invisible SynthID watermark.
+  - Under Google's Gemini API terms, Google claims no ownership of output and the developer is responsible for its use.
+  - I could not find a Lyria-specific commercial licence page; the owner must read the current terms before launch.
+- Sound effects: expand with a curated CC0 pack, storing source and licence per file.
+- Creator rights notice (proposed): "You can download and share your film anywhere. Parts are made by AI (Google). AI-made work may not be protected by copyright. Don't use real people, brands or other people's music."
+- Still needed: a takedown / copyright contact and a report flow (check what Watch already has first).
+
+========================================================================
+6. PRODUCTION COSTS AND REFUNDS
+========================================================================
+Example: a 90 s vertical episode with 8 scenes, about 24 shots, 4 characters, 3 locations and 60 s of dialogue. Costs are calculated from list prices, not measured.
+
+Item                          Economy   Standard   Premium
+Script + concepts + shots      $0.08     $0.08      $0.08
+Character sheets + locations   $1.00     $1.00      $1.00
+24 shot images                 $1.61     $1.61      $2.42 (2K)
+AI video, 720p                 -         6x6s $2.52 16x6s $6.72
+Voices (60 s)                  $0.01     $0.01      $0.01
+Music (2 Lyria tracks)         $0.16     $0.16      $0.16
+Render, storage, delivery      ~$0.02    ~$0.02     ~$0.03
+20% regeneration allowance     $0.55     $1.05      $2.10
+Provider cost                  ~$3.40    ~$6.45     ~$12.50
+Credits at 25% margin          ~455      ~860       ~1,670
+Creator pays (with 6.5%+$0.50 card fee)  ~$5.40  ~$9.70  ~$18.40
+
+- Suggested margins:
+  - 25% on images, music and render;
+  - 35% on video, because it is regenerated more;
+  - a small minimum per episode, so cheap steps aren't run at a loss on retries.
+- Suggested packages: 1 episode, 5 episodes (about 10% off), a 10-episode series (about 15% off), and extra regeneration credits. No unlimited video.
+- Refunds today:
+  - failure gives a full refund;
+  - "provider busy" is retried and charged once;
+  - cancel before start gives a full refund;
+  - content blocked by the AI is not charged;
+  - the charge is never more than the hold.
+- Missing: a per-episode approved budget with a pause on overspend (Stage 4), and chargeback handling (not built yet).
+
+========================================================================
+7. WHAT CAN REALISTICALLY BE PROMISED TO PAYING CREATORS
+========================================================================
+Safe to promise (once the live test passes)
+- Bring an idea: Viyo writes the script, creates the cast, voices every line, makes the pictures, adds music and sound, and delivers a finished, downloadable video.
+- No need to upload voices, music, pictures or sound effects.
+- Each character keeps the same voice across scenes and episodes.
+- You see the price before anything is made, and you never pay for anything that fails.
+- Redo a single scene without redoing the episode.
+- Your film is yours to download and share outside Viyo; publishing on Viyo is optional.
+
+Do NOT promise
+- Identical faces in every shot ("consistent characters" is fine; "identical" is not).
+- Identical voice performance every time.
+- Lip-synced talking characters (until tested).
+- Full copyright ownership of AI-generated material.
+- Any fixed video quality level before the live test.
+- Unlimited generation.
+
+========================================================================
+8. MY RECOMMENDED NEXT STEPS
+========================================================================
+1. Owner: run creator_studio_breakdown.sql, then creator_studio_voices.sql. I then merge Stage 0 + 1 to main.
+2. Owner: fix Gemini billing. Then the approved live test (about $3-5) plus voice samples (under $0.03), to measure real quality and real costs.
+3. Build credit checkout (Lemon Squeezy, web) and the rights notice, so the first paying creators are possible.
+4. Stage 5 (automatic Lyria music) before Stages 2-3. It closes the biggest "bring your own asset" gap and is cheap.
+5. Then Stage 4 (episode budget, presets, "Make my episode"). This is the core paid experience.
+6. Then Stage 2 (series bible) and Stage 3 (shots), for quality.
+7. Delay: lip sync, 1080p/4K video, designed voices, multi-language dubbing.
+
+Please, when you suggest anything:
+- name the provider, model and price, so I can check it against the code and current pricing before building;
+- tell me if something above looks wrong or risky.
+- Claude
