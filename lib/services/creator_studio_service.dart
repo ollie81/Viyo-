@@ -23,7 +23,9 @@ class StudioBalance {
 
 class StudioVoice {
   final String name, gender, style;
-  StudioVoice(this.name, this.gender, this.style);
+  /// A short sample to listen to, when Viyo has made one for this voice.
+  final String? sampleUrl;
+  StudioVoice(this.name, this.gender, this.style, {this.sampleUrl});
 }
 
 class StudioPack {
@@ -91,26 +93,33 @@ class StudioProject {
         hasMusic = j['has_music'] == true,
         musicName = j['music_name'],
         musicVolume = (j['music_volume'] as num?)?.toDouble() ?? 0.25,
-        imageQuality = j['image_quality'] ?? 'standard';
+        imageQuality = j['image_quality'] ?? 'standard',
+        seriesId = j['series_id'];
+  /// Set once a next episode has been made from this project (or this is one).
+  final String? seriesId;
   bool get vertical => aspectRatio == '9:16';
 }
 
 class StudioCharacter {
   final String id;
-  String name, description, voice;
+  String name, description, voice, voiceStyle;
   final String? portraitUrl;
+  /// True once a line has been recorded with this voice.
+  final bool voiceLocked;
   StudioCharacter.fromJson(Map j)
       : id = j['id'],
         name = j['name'] ?? '',
         description = j['description'] ?? '',
         voice = j['voice'] ?? '',
+        voiceStyle = j['voice_style'] ?? '',
+        voiceLocked = j['voice_locked'] == true,
         portraitUrl = j['portrait_url'];
 }
 
 class StudioLine {
-  String character, text;
-  StudioLine(this.character, this.text);
-  Map<String, dynamic> toJson() => {'character': character, 'text': text};
+  String character, text, emotion;
+  StudioLine(this.character, this.text, [this.emotion = '']);
+  Map<String, dynamic> toJson() => {'character': character, 'text': text, if (emotion.trim().isNotEmpty) 'emotion': emotion.trim()};
 }
 
 class StudioScene {
@@ -131,7 +140,7 @@ class StudioScene {
         mode = j['mode'] ?? 'still',
         durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 5,
         dialogue = ((j['dialogue'] as List?) ?? [])
-            .map((d) => StudioLine((d['character'] ?? '') as String, (d['text'] ?? '') as String))
+            .map((d) => StudioLine((d['character'] ?? '') as String, (d['text'] ?? '') as String, (d['emotion'] ?? '') as String))
             .toList(),
         imageUrl = j['image_url'],
         videoUrl = j['video_url'],
@@ -140,7 +149,10 @@ class StudioScene {
         hasImage = j['has_image'] == true,
         hasVideo = j['has_video'] == true,
         hasAudio = j['has_audio'] == true,
-        sfx = ((j['sfx'] as List?) ?? []).map((e) => e.toString()).toList();
+        sfx = ((j['sfx'] as List?) ?? []).map((e) => e.toString()).toList(),
+        voiceOutdated = ((j['voice_outdated'] as List?) ?? []).map((e) => e.toString()).toList();
+  /// Characters whose voice was changed after this scene was recorded.
+  final List<String> voiceOutdated;
   bool get ready => hasImage || (mode == 'video' && hasVideo);
 }
 
@@ -219,6 +231,8 @@ class StudioException implements Exception {
   bool get notEnoughCredits => status == 402;
   /// The server wants the creator to confirm replacing existing scenes.
   bool get needsReplaceConfirm => status == 409 && code == 'confirm_replace';
+  /// The character already speaks in recorded scenes: the change must be confirmed.
+  bool get needsVoiceChangeConfirm => status == 409 && code == 'confirm_voice_change';
   String? code;
   @override
   String toString() => message;
@@ -303,7 +317,26 @@ class CreatorStudioService {
   static Future<void> addCharacter(String projectId, String name, String description) =>
       _send('POST', '/projects/$projectId/characters', {'name': name, 'description': description});
 
-  static Future<void> updateCharacter(String id, Map<String, dynamic> fields) => _send('PATCH', '/characters/$id', fields);
+  /// Returns the scene ids that were recorded with the old voice when the
+  /// voice changed (empty otherwise). Throws a 409 StudioException with code
+  /// `confirm_voice_change` when recorded lines exist and it isn't confirmed.
+  static Future<List<String>> updateCharacter(String id, Map<String, dynamic> fields) async {
+    final j = await _send('PATCH', '/characters/$id', fields);
+    return ((j?['rerecord_scene_ids'] as List?) ?? []).map((e) => e.toString()).toList();
+  }
+
+  static Future<List<StudioVoice>> voices() async {
+    final j = await _send('GET', '/voices');
+    return ((j['voices'] as List?) ?? [])
+        .map((v) => StudioVoice(v['name'], v['gender'], v['style'], sampleUrl: v['sample_url']))
+        .toList();
+  }
+
+  /// A new episode with the same settings and cast (same voices and faces).
+  static Future<String> nextEpisode(String projectId) async {
+    final j = await _send('POST', '/projects/$projectId/next-episode');
+    return j['id'] as String;
+  }
 
   static Future<void> deleteCharacter(String id) => _send('DELETE', '/characters/$id');
 

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/creator_studio_service.dart';
@@ -450,6 +451,163 @@ class AspectFrame extends StatelessWidget {
           if (overlay != null) overlay!,
         ]),
       ),
+    );
+  }
+}
+
+// ================================================================ voices
+
+/// The character's voice as a row: name, sound and whether it is in use.
+class VoiceTile extends StatelessWidget {
+  final StudioVoice? voice;
+  final String? voiceName;
+  final bool locked;
+  final VoidCallback onChange;
+  const VoiceTile({super.key, required this.voice, required this.voiceName, required this.locked, required this.onChange});
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: studioField('Voice'),
+      child: Row(children: [
+        const Icon(Icons.record_voice_over_outlined, size: 18, color: AppColors.textMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            voiceName == null ? 'No voice yet' : '$voiceName${voice == null ? '' : ' · ${voice!.style} · ${voice!.gender}'}',
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (locked)
+          const Tooltip(
+            message: 'Used in recordings. Changing it affects new and re-recorded lines.',
+            child: Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted)),
+          ),
+        TextButton(onPressed: onChange, child: const Text('Change')),
+      ]),
+    );
+  }
+}
+
+/// Lets the creator listen to voices and pick one. Returns the voice name,
+/// or null if nothing was chosen.
+Future<String?> pickStudioVoice(BuildContext context, List<StudioVoice> voices, String current, String characterName) =>
+    showDialog<String>(
+      context: context,
+      builder: (ctx) => _VoicePicker(voices: voices, current: current, characterName: characterName),
+    );
+
+class _VoicePicker extends StatefulWidget {
+  final List<StudioVoice> voices;
+  final String current, characterName;
+  const _VoicePicker({required this.voices, required this.current, required this.characterName});
+  @override
+  State<_VoicePicker> createState() => _VoicePickerState();
+}
+
+class _VoicePickerState extends State<_VoicePicker> {
+  late String _chosen = widget.current;
+  String _filter = 'all';
+  final AudioPlayer _player = AudioPlayer();
+  String? _playing;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playing = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggle(StudioVoice v) async {
+    if (_playing == v.name) {
+      await _player.stop();
+      setState(() => _playing = null);
+      return;
+    }
+    setState(() => _playing = v.name);
+    try {
+      await _player.stop();
+      await _player.play(UrlSource(v.sampleUrl!));
+    } catch (_) {
+      if (mounted) setState(() => _playing = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.voices.where((v) => _filter == 'all' || v.gender == _filter).toList();
+    final anySamples = widget.voices.any((v) => v.sampleUrl != null);
+    return AlertDialog(
+      backgroundColor: StudioColors.panel,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: StudioColors.panelBorder)),
+      title: Text('Voice for ${widget.characterName}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      content: SizedBox(
+        width: 460,
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SegmentedButton<String>(
+            showSelectedIcon: false,
+            style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact),
+            segments: const [
+              ButtonSegment(value: 'all', label: Text('All')),
+              ButtonSegment(value: 'female', label: Text('Female')),
+              ButtonSegment(value: 'male', label: Text('Male')),
+            ],
+            selected: {_filter},
+            onSelectionChanged: (s) => setState(() => _filter = s.first),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            anySamples
+                ? 'Tap play to listen. The character keeps this voice in every scene and episode.'
+                : 'Samples are coming soon. The character keeps this voice in every scene and episode.',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: ListView.builder(
+              itemCount: list.length,
+              itemBuilder: (_, i) {
+                final v = list[i];
+                final selected = v.name == _chosen;
+                return ListTile(
+                  dense: true,
+                  selected: selected,
+                  selectedTileColor: AppColors.primary.withValues(alpha: 0.10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  onTap: () => setState(() => _chosen = v.name),
+                  leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                      size: 20, color: selected ? AppColors.primary : AppColors.textMuted),
+                  title: Text(v.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text('${v.style} · ${v.gender}', style: const TextStyle(fontSize: 12)),
+                  trailing: v.sampleUrl == null
+                      ? null
+                      : IconButton(
+                          tooltip: _playing == v.name ? 'Stop' : 'Listen',
+                          onPressed: () => _toggle(v),
+                          icon: Icon(_playing == v.name ? Icons.stop_circle_outlined : Icons.play_circle_outline),
+                        ),
+                );
+              },
+            ),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _chosen.isEmpty ? null : () => Navigator.pop(context, _chosen),
+          child: Text(_chosen == widget.current ? 'Keep $_chosen' : 'Use $_chosen'),
+        ),
+      ],
     );
   }
 }

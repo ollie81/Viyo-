@@ -45,10 +45,13 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
     CreatorStudioService.account().then((a) {
       if (mounted) {
         setState(() {
-          _voices = a.voices;
+          if (_voices.isEmpty) _voices = a.voices;
           _effects = a.effects;
         });
       }
+    }).catchError((_) {});
+    CreatorStudioService.voices().then((v) {
+      if (mounted && v.isNotEmpty) setState(() => _voices = v);
     }).catchError((_) {});
   }
 
@@ -118,6 +121,38 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
   bool _busy(String kind, {String? sceneId, String? characterId}) => (_d?.jobs ?? []).any((j) =>
       j.active && j.kind == kind && (sceneId == null || j.sceneId == sceneId) && (characterId == null || j.characterId == characterId));
 
+  Future<void> _nextEpisode() async {
+    final d = _d;
+    if (d == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Make the next episode?'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Text(
+            'A new production with the same settings and the same ${d.characters.length} characters. '
+            'Each character keeps their voice, delivery note and portrait. This doesn\'t use any credits.',
+            style: const TextStyle(height: 1.4),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Make next episode')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final id = await CreatorStudioService.nextEpisode(d.project.id);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => StudioProjectScreen(projectId: id)));
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
   Future<void> _archive() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -166,10 +201,11 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
               ),
             ),
           PopupMenuButton<String>(
-            onSelected: (v) => v == 'archive' ? _archive() : _load(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'refresh', child: Text('Refresh')),
-              PopupMenuItem(value: 'archive', child: Text('Archive production')),
+            onSelected: (v) => switch (v) { 'archive' => _archive(), 'next' => _nextEpisode(), _ => _load() },
+            itemBuilder: (_) => [
+              if (d != null) const PopupMenuItem(value: 'next', child: Text('Make next episode')),
+              const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+              const PopupMenuItem(value: 'archive', child: Text('Archive production')),
             ],
           ),
         ],
@@ -493,23 +529,75 @@ class _CharacterCardState extends State<_CharacterCard> {
   late final _name = TextEditingController(text: widget.c.name);
   late final _desc = TextEditingController(text: widget.c.description);
   late String _voice = widget.c.voice;
+  late final _style = TextEditingController(text: widget.c.voiceStyle);
   bool _saving = false;
 
-  bool get _dirty => _name.text != widget.c.name || _desc.text != widget.c.description || _voice != widget.c.voice;
+  bool get _voiceDirty => _voice != widget.c.voice || _style.text.trim() != widget.c.voiceStyle;
+  bool get _dirty => _name.text != widget.c.name || _desc.text != widget.c.description || _voiceDirty;
 
   @override
   void dispose() {
     _name.dispose();
     _desc.dispose();
+    _style.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    final fields = <String, dynamic>{
+      'name': _name.text.trim(),
+      'description': _desc.text.trim(),
+      if (_voice.isNotEmpty) 'voice': _voice,
+      'voice_style': _style.text.trim(),
+    };
     try {
-      await CreatorStudioService.updateCharacter(widget.c.id,
-          {'name': _name.text.trim(), 'description': _desc.text.trim(), if (_voice.isNotEmpty) 'voice': _voice});
+      List<String> rerecord;
+      try {
+        rerecord = await CreatorStudioService.updateCharacter(widget.c.id, fields);
+      } on StudioException catch (e) {
+        if (!e.needsVoiceChangeConfirm || !mounted) rethrow;
+        final yes = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: StudioColors.panel,
+            title: Text('Change ${widget.c.name}\'s voice?'),
+            content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420), child: Text(e.message, style: const TextStyle(height: 1.4))),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep the current voice')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Change voice')),
+            ],
+          ),
+        );
+        if (yes != true) {
+          if (mounted) {
+            setState(() {
+              _voice = widget.c.voice;
+              _style.text = widget.c.voiceStyle;
+            });
+          }
+          return;
+        }
+        rerecord = await CreatorStudioService.updateCharacter(widget.c.id, {...fields, 'confirm_voice_change': true});
+      }
       await widget.reload();
+      if (rerecord.isNotEmpty && mounted) {
+        final now = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: StudioColors.panel,
+            title: const Text('Re-record with the new voice?'),
+            content: Text('${rerecord.length} scene${rerecord.length == 1 ? '' : 's'} still use the old voice. '
+                'You\'ll see the price before anything is made.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Later')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('See price')),
+            ],
+          ),
+        );
+        if (now == true) widget.run('voice', targets: rerecord);
+      }
     } on StudioException catch (e) {
       if (mounted) showStudioError(context, e.message);
     } finally {
@@ -576,16 +664,21 @@ class _CharacterCardState extends State<_CharacterCard> {
             TextField(controller: _desc, onChanged: (_) => setState(() {}), minLines: 2, maxLines: 5,
                 decoration: studioField('Looks', hint: 'Age, build, hair, face, clothes')),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: voiceNames.contains(_voice) ? _voice : null,
-              isExpanded: true,
-              dropdownColor: StudioColors.panel,
-              decoration: studioField('Voice'),
-              items: [
-                for (final v in widget.voices)
-                  DropdownMenuItem(value: v.name, child: Text('${v.name} · ${v.style} · ${v.gender}', overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (v) => setState(() => _voice = v ?? _voice),
+            VoiceTile(
+              voice: widget.voices.where((v) => v.name == _voice).firstOrNull,
+              voiceName: voiceNames.contains(_voice) ? _voice : null,
+              locked: widget.c.voiceLocked,
+              onChange: () async {
+                final picked = await pickStudioVoice(context, widget.voices, _voice, widget.c.name);
+                if (picked != null && mounted) setState(() => _voice = picked);
+              },
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _style,
+              maxLength: 80,
+              onChanged: (_) => setState(() {}),
+              decoration: studioField('Delivery note (optional)', hint: 'e.g. calm and low').copyWith(counterText: ''),
             ),
             if (_dirty) ...[
               const SizedBox(height: 8),
@@ -694,8 +787,9 @@ class _SceneCard extends StatefulWidget {
 class _SceneCardState extends State<_SceneCard> {
   late final _heading = TextEditingController(text: widget.scene.heading);
   late final _visual = TextEditingController(text: widget.scene.visual);
-  late List<(String, TextEditingController)> _lines =
-      widget.scene.dialogue.map((l) => (l.character, TextEditingController(text: l.text))).toList();
+  // (who, line, delivery). Delivery is optional, e.g. "whispering".
+  late List<(String, TextEditingController, String)> _lines =
+      widget.scene.dialogue.map((l) => (l.character, TextEditingController(text: l.text), l.emotion)).toList();
   late double _duration = widget.scene.durationSeconds;
   late List<String> _sfx = [...widget.scene.sfx];
   late String _mode = widget.scene.mode;
@@ -707,7 +801,7 @@ class _SceneCardState extends State<_SceneCard> {
   void dispose() {
     _heading.dispose();
     _visual.dispose();
-    for (final (_, c) in _lines) {
+    for (final (_, c, _) in _lines) {
       c.dispose();
     }
     _player?.dispose();
@@ -716,8 +810,8 @@ class _SceneCardState extends State<_SceneCard> {
 
   bool get _dirty {
     final s = widget.scene;
-    final lines = _lines.map((l) => '${l.$1}|${l.$2.text}').join('\n');
-    final orig = s.dialogue.map((l) => '${l.character}|${l.text}').join('\n');
+    final lines = _lines.map((l) => '${l.$1}|${l.$2.text}|${l.$3}').join('\n');
+    final orig = s.dialogue.map((l) => '${l.character}|${l.text}|${l.emotion}').join('\n');
     return _heading.text != s.heading || _visual.text != s.visual || lines != orig || _duration != s.durationSeconds || _mode != s.mode ||
         _sfx.join(',') != s.sfx.join(',');
   }
@@ -728,7 +822,10 @@ class _SceneCardState extends State<_SceneCard> {
     try {
       await CreatorStudioService.updateScene(widget.scene.id, {
         'heading': _heading.text, 'visual': _visual.text, 'duration_seconds': _duration, 'mode': _mode, 'sfx': _sfx,
-        'dialogue': [for (final (ch, c) in _lines) if (c.text.trim().isNotEmpty) {'character': ch, 'text': c.text.trim()}],
+        'dialogue': [
+          for (final (ch, c, mood) in _lines)
+            if (c.text.trim().isNotEmpty) StudioLine(ch, c.text.trim(), mood).toJson()
+        ],
       });
       await widget.reload();
       return true;
@@ -804,7 +901,8 @@ class _SceneCardState extends State<_SceneCard> {
     );
     final actions = Wrap(spacing: 6, runSpacing: 6, children: [
       _act(Icons.image_outlined, s.hasImage ? 'New image' : 'Make image', imgBusy ? null : () => _runFor('image')),
-      _act(Icons.record_voice_over_outlined, s.hasAudio ? 'Re-voice' : 'Voice', voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
+      _act(Icons.record_voice_over_outlined, s.voiceOutdated.isNotEmpty ? 'Re-record' : (s.hasAudio ? 'Re-voice' : 'Voice'),
+          voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
       if (_mode == 'video') _act(Icons.videocam_outlined, s.hasVideo ? 'New AI video' : 'Make AI video', vidBusy ? null : () => _runFor('video')),
       if (s.audioUrl != null) _act(_playing ? Icons.stop : Icons.play_arrow, _playing ? 'Stop' : 'Play voice', _toggleAudio),
     ]);
@@ -831,11 +929,12 @@ class _SceneCardState extends State<_SceneCard> {
                 dropdownColor: StudioColors.panel,
                 decoration: studioField('Who'),
                 items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)))],
-                onChanged: (v) => setState(() => _lines[i] = (v ?? 'NARRATOR', _lines[i].$2)),
+                onChanged: (v) => setState(() => _lines[i] = (v ?? 'NARRATOR', _lines[i].$2, _lines[i].$3)),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(child: TextField(controller: _lines[i].$2, onChanged: (_) => setState(() {}), decoration: studioField('Line'))),
+            _moodButton(i),
             IconButton(
               tooltip: 'Remove line',
               onPressed: () => setState(() {
@@ -849,7 +948,7 @@ class _SceneCardState extends State<_SceneCard> {
       Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
-          onPressed: _lines.length >= 12 ? null : () => setState(() => _lines = [..._lines, (names.length > 1 ? names[1] : 'NARRATOR', TextEditingController())]),
+          onPressed: _lines.length >= 12 ? null : () => setState(() => _lines = [..._lines, (names.length > 1 ? names[1] : 'NARRATOR', TextEditingController(), '')]),
           icon: const Icon(Icons.add_comment_outlined, size: 18),
           label: const Text('Add line'),
         ),
@@ -875,6 +974,22 @@ class _SceneCardState extends State<_SceneCard> {
         if (s.audioSeconds != null) Text('Voice ${s.audioSeconds!.toStringAsFixed(1)} s', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ]),
       const SizedBox(height: 8),
+      if (s.voiceOutdated.isNotEmpty) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(color: AppColors.coin.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.coin.withValues(alpha: 0.35))),
+          child: Row(children: [
+            const Icon(Icons.record_voice_over_outlined, size: 16, color: AppColors.coin),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('Recorded with ${s.voiceOutdated.join(' and ')}\'s old voice. Re-record to use the new one.',
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.coin, height: 1.3)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 8),
+      ],
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         actions,
         if (_dirty) FilledButton(onPressed: _saving ? null : _save, child: const Text('Save')),
@@ -910,6 +1025,33 @@ class _SceneCardState extends State<_SceneCard> {
         }
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [media, const SizedBox(width: 14), Expanded(child: editor)]);
       }),
+    );
+  }
+
+  static const _moods = ['calm', 'happy', 'sad', 'angry', 'scared', 'whispering', 'shouting', 'crying', 'sarcastic', 'tender'];
+
+  Widget _moodButton(int i) {
+    final mood = _lines[i].$3;
+    return PopupMenuButton<String>(
+      tooltip: 'How it is said',
+      color: StudioColors.panel,
+      onSelected: (v) => setState(() => _lines[i] = (_lines[i].$1, _lines[i].$2, v)),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: '', child: Text('Plain (no direction)')),
+        if (mood.isNotEmpty && !_moods.contains(mood)) PopupMenuItem(value: mood, child: Text(mood)),
+        for (final m in _moods) PopupMenuItem(value: m, child: Text(m)),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: mood.isEmpty
+            ? const Icon(Icons.theater_comedy_outlined, size: 20, color: AppColors.textMuted)
+            : Container(
+                constraints: const BoxConstraints(maxWidth: 96),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: AppColors.secondary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                child: Text(mood, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+              ),
+      ),
     );
   }
 
