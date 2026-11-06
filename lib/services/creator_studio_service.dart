@@ -47,7 +47,10 @@ class StudioAccount {
   final List<StudioPack> packs;
   final bool checkoutAvailable;
   final List<StudioEffect> effects;
-  StudioAccount(this.balance, this.voices, this.packs, this.checkoutAvailable, [this.effects = const []]);
+  /// Saved voice + matching lips (sync.so), once Viyo switches it on.
+  final bool lipsyncAvailable;
+  StudioAccount(this.balance, this.voices, this.packs, this.checkoutAvailable,
+      [this.effects = const [], this.lipsyncAvailable = false]);
 }
 
 class StudioProjectSummary {
@@ -168,7 +171,9 @@ class StudioScene {
         hasAudio = j['has_audio'] == true,
         sfx = ((j['sfx'] as List?) ?? []).map((e) => e.toString()).toList(),
         voiceOutdated = ((j['voice_outdated'] as List?) ?? []).map((e) => e.toString()).toList(),
-        speech = j['speech'] ?? 'saved_voice';
+        speech = j['speech'] ?? 'saved_voice',
+        hasLipsync = j['has_lipsync'] == true;
+  final bool hasLipsync;
   /// Who speaks the lines: 'video_model' (in the clip) or 'saved_voice'.
   final String speech;
   bool get spokenInVideo => speech == 'video_model';
@@ -314,6 +319,7 @@ class CreatorStudioService {
       ((j['sound_effects'] as List?) ?? [])
           .map((e) => StudioEffect(e['id'], e['label'], e['loops'] == true))
           .toList(),
+      j['lipsync_available'] == true,
     );
   }
 

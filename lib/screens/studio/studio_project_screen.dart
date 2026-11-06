@@ -23,6 +23,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
   StudioProjectDetail? _d;
   List<StudioVoice> _voices = [];
   List<StudioEffect> _effects = [];
+  bool _lipsync = false;
   String? _error;
   int _section = 0;
   Timer? _poll;
@@ -47,6 +48,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
         setState(() {
           if (_voices.isEmpty) _voices = a.voices;
           _effects = a.effects;
+          _lipsync = a.lipsyncAvailable;
         });
       }
     }).catchError((_) {});
@@ -257,7 +259,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
     final section = switch (_section) {
       0 => _StoryPanel(d, run: _run, busy: _busy, reload: _load, goTo: (i) => setState(() => _section = i)),
       1 => _CastPanel(d, voices: _voices, run: _run, busy: _busy, reload: _load),
-      2 => _ScenesPanel(d, effects: _effects, run: _run, busy: _busy, reload: _load),
+      2 => _ScenesPanel(d, effects: _effects, lipsync: _lipsync, run: _run, busy: _busy, reload: _load),
       _ => _ExportPanel(d, run: _run, busy: _busy, reload: _load),
     };
     return Align(
@@ -705,7 +707,8 @@ class _ScenesPanel extends StatelessWidget {
   final _Busy busy;
   final Future<void> Function() reload;
   final List<StudioEffect> effects;
-  const _ScenesPanel(this.d, {required this.effects, required this.run, required this.busy, required this.reload});
+  final bool lipsync;
+  const _ScenesPanel(this.d, {required this.effects, this.lipsync = false, required this.run, required this.busy, required this.reload});
 
   @override
   Widget build(BuildContext context) {
@@ -763,6 +766,7 @@ class _ScenesPanel extends StatelessWidget {
             count: scenes.length,
             d: d,
             effects: effects,
+            lipsync: lipsync,
             run: run,
             busy: busy,
             reload: reload,
@@ -775,13 +779,14 @@ class _ScenesPanel extends StatelessWidget {
 class _SceneCard extends StatefulWidget {
   final StudioScene scene;
   final List<StudioEffect> effects;
+  final bool lipsync;
   final int index, count;
   final StudioProjectDetail d;
   final _Run run;
   final _Busy busy;
   final Future<void> Function() reload;
   const _SceneCard({super.key, required this.scene, required this.index, required this.count, required this.d,
-      this.effects = const [],
+      this.effects = const [], this.lipsync = false,
       required this.run, required this.busy, required this.reload});
   @override
   State<_SceneCard> createState() => _SceneCardState();
@@ -910,6 +915,9 @@ class _SceneCardState extends State<_SceneCard> {
       if (!(_mode == 'video' && s.spokenInVideo))
         _act(Icons.record_voice_over_outlined, s.voiceOutdated.isNotEmpty ? 'Re-record' : (s.hasAudio ? 'Re-voice' : 'Voice'),
             voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
+      if (s.speech == 'lipsync' && s.hasAudio)
+        _act(Icons.record_voice_over, s.hasLipsync ? 'Redo lip sync' : 'Lip sync',
+            widget.busy('lipsync', sceneId: s.id) ? null : () => _runFor('lipsync')),
       if (_mode == 'video')
         _act(Icons.videocam_outlined,
             s.spokenInVideo && _lines.any((l) => l.$2.text.trim().isNotEmpty)
@@ -986,15 +994,17 @@ class _SceneCardState extends State<_SceneCard> {
         if (s.audioSeconds != null) Text('Voice ${s.audioSeconds!.toStringAsFixed(1)} s', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ]),
       const SizedBox(height: 8),
-      if (_mode == 'video' && _lines.any((l) => l.$2.text.trim().isNotEmpty)) ...[
+      if ((_mode == 'video' || widget.lipsync || s.speech == 'lipsync') && _lines.any((l) => l.$2.text.trim().isNotEmpty)) ...[
         Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
           const Text('Who speaks', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
           SegmentedButton<String>(
             showSelectedIcon: false,
             style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact),
-            segments: const [
-              ButtonSegment(value: 'video_model', label: Text('Characters talk in the video')),
-              ButtonSegment(value: 'saved_voice', label: Text('Saved voices')),
+            segments: [
+              if (_mode == 'video') const ButtonSegment(value: 'video_model', label: Text('Characters talk in the video')),
+              const ButtonSegment(value: 'saved_voice', label: Text('Saved voices')),
+              if (widget.lipsync || s.speech == 'lipsync')
+                const ButtonSegment(value: 'lipsync', label: Text('Saved voices + lip sync')),
             ],
             selected: {s.speech},
             onSelectionChanged: (v) => _setSpeech(v.first),
@@ -1002,10 +1012,13 @@ class _SceneCardState extends State<_SceneCard> {
         ]),
         const SizedBox(height: 4),
         Text(
-          s.spokenInVideo
-              ? 'Lips move with the words. The video model makes the voice from each character\'s voice description, '
-                  'so it can sound a little different between scenes.'
-              : 'Each character\'s permanent voice is used. Lips don\'t move with the words.',
+          switch (s.speech) {
+            'video_model' => 'Lips move with the words. The video model makes the voice from each character\'s voice '
+                'description, so it can sound a little different between scenes.',
+            'lipsync' => 'Each character\'s permanent voice, and their lips are made to match it. Record the voices, '
+                'make the video, then press Lip sync.${s.hasLipsync ? ' Lip sync done.' : ''}',
+            _ => 'Each character\'s permanent voice is used. Lips don\'t move with the words.',
+          },
           style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.35),
         ),
         const SizedBox(height: 8),

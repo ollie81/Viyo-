@@ -85,6 +85,7 @@ class CreditPill extends StatelessWidget {
 const _kindTitles = {
   'script': 'Write the script',
   'breakdown': 'Break into cast & scenes',
+  'lipsync': 'Lip sync',
   'portrait': 'Character portraits',
   'image': 'Scene images',
   'voice': 'Voices',
