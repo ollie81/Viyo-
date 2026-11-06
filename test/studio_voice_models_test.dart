@@ -59,6 +59,14 @@ void main() {
     expect(StudioCharacter.fromJson({'id': 'c3', 'name': 'X', 'voice': ''}).voiceStatus, 'needs_voice');
   });
 
+  test('talking-video scenes and productions are recognised', () {
+    final s = StudioScene.fromJson({'id': 's', 'mode': 'video', 'speech': 'video_model', 'dialogue': []});
+    expect(s.spokenInVideo, isTrue);
+    expect(StudioScene.fromJson({'id': 's'}).spokenInVideo, isFalse);
+    expect(StudioProject.fromJson({'id': 'p', 'production_style': 'video'}).productionStyle, 'video');
+    expect(StudioProject.fromJson({'id': 'p'}).productionStyle, 'pictures');
+  });
+
   test('the server asking to confirm a voice change is recognised', () {
     final e = StudioException('Maya already speaks in 2 recorded scenes.', 409)..code = 'confirm_voice_change';
     expect(e.needsVoiceChangeConfirm, isTrue);

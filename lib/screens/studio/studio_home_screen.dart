@@ -282,6 +282,7 @@ class _NewProductionDialogState extends State<_NewProductionDialog> {
   final _language = TextEditingController(text: 'English');
   String _kind = 'episode';
   String _aspect = '9:16';
+  String _productionStyle = 'video';
   String _genre = 'Drama';
   double _seconds = 90;
   bool _captions = true;
@@ -309,6 +310,7 @@ class _NewProductionDialogState extends State<_NewProductionDialog> {
         'title': _title.text.trim(), 'logline': _idea.text.trim(), 'kind': _kind, 'aspect_ratio': _aspect,
         'genre': _genre, 'visual_style': _style.text.trim(), 'language': _language.text.trim().isEmpty ? 'English' : _language.text.trim(),
         'target_seconds': _seconds.round(), 'captions': _captions, 'accept_terms': true,
+        'production_style': _productionStyle,
       });
       if (mounted) Navigator.pop(context, id);
     } on StudioException catch (e) {
@@ -345,6 +347,29 @@ class _NewProductionDialogState extends State<_NewProductionDialog> {
               Expanded(child: _FormatCard(selected: _aspect == '9:16', vertical: true, title: 'Vertical 9:16', subtitle: 'Phones, TikTok, Reels, Viyo dramas', onTap: () => setState(() => _aspect = '9:16'))),
               const SizedBox(width: 10),
               Expanded(child: _FormatCard(selected: _aspect == '16:9', vertical: false, title: 'Landscape 16:9', subtitle: 'YouTube, TV, films', onTap: () => setState(() => _aspect = '16:9'))),
+            ]),
+            const SizedBox(height: 14),
+            const _Label('How it\'s made'),
+            Row(children: [
+              Expanded(
+                child: _StyleCard(
+                  selected: _productionStyle == 'video',
+                  icon: Icons.movie_creation_outlined,
+                  title: 'Talking video',
+                  subtitle: 'Every scene moves and the characters speak. Recommended.',
+                  onTap: () => setState(() => _productionStyle = 'video'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StyleCard(
+                  selected: _productionStyle == 'pictures',
+                  icon: Icons.photo_library_outlined,
+                  title: 'Pictures with voices',
+                  subtitle: 'Still scenes with camera movement. Costs less.',
+                  onTap: () => setState(() => _productionStyle = 'pictures'),
+                ),
+              ),
             ]),
             const SizedBox(height: 14),
             const _Label('Type'),
@@ -465,6 +490,38 @@ class _FormatCard extends StatelessWidget {
               Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
             ]),
           ),
+        ]),
+      ),
+    );
+  }
+}
+
+
+class _StyleCard extends StatelessWidget {
+  final bool selected;
+  final IconData icon;
+  final String title, subtitle;
+  final VoidCallback onTap;
+  const _StyleCard({required this.selected, required this.icon, required this.title, required this.subtitle, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: selected ? AppColors.primary.withValues(alpha: 0.10) : Colors.transparent,
+          border: Border.all(color: selected ? AppColors.primary : StudioColors.panelBorder, width: selected ? 1.6 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 22, color: selected ? AppColors.primary : AppColors.textMuted),
+          const SizedBox(height: 6),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3)),
         ]),
       ),
     );

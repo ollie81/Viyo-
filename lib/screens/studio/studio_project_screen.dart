@@ -711,7 +711,7 @@ class _ScenesPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final scenes = d.scenes;
     final noImage = scenes.where((s) => !s.hasImage && (s.visual.trim().isNotEmpty || s.heading.trim().isNotEmpty)).map((s) => s.id).toList();
-    final noVoice = scenes.where((s) => !s.hasAudio && s.dialogue.any((l) => l.text.trim().isNotEmpty)).map((s) => s.id).toList();
+    final noVoice = scenes.where((s) => !s.hasAudio && !(s.mode == 'video' && s.spokenInVideo) && s.dialogue.any((l) => l.text.trim().isNotEmpty)).map((s) => s.id).toList();
     final ready = scenes.where((s) => s.ready).length;
     final noPortraits = d.characters.isNotEmpty && d.characters.every((c) => c.portraitUrl == null);
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 60), children: [
@@ -907,9 +907,15 @@ class _SceneCardState extends State<_SceneCard> {
     );
     final actions = Wrap(spacing: 6, runSpacing: 6, children: [
       _act(Icons.image_outlined, s.hasImage ? 'New image' : 'Make image', imgBusy ? null : () => _runFor('image')),
-      _act(Icons.record_voice_over_outlined, s.voiceOutdated.isNotEmpty ? 'Re-record' : (s.hasAudio ? 'Re-voice' : 'Voice'),
-          voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
-      if (_mode == 'video') _act(Icons.videocam_outlined, s.hasVideo ? 'New AI video' : 'Make AI video', vidBusy ? null : () => _runFor('video')),
+      if (!(_mode == 'video' && s.spokenInVideo))
+        _act(Icons.record_voice_over_outlined, s.voiceOutdated.isNotEmpty ? 'Re-record' : (s.hasAudio ? 'Re-voice' : 'Voice'),
+            voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
+      if (_mode == 'video')
+        _act(Icons.videocam_outlined,
+            s.spokenInVideo && _lines.any((l) => l.$2.text.trim().isNotEmpty)
+                ? (s.hasVideo ? 'New talking video' : 'Make talking video')
+                : (s.hasVideo ? 'New AI video' : 'Make AI video'),
+            vidBusy ? null : () => _runFor('video')),
       if (s.audioUrl != null) _act(_playing ? Icons.stop : Icons.play_arrow, _playing ? 'Stop' : 'Play voice', _toggleAudio),
     ]);
     final editor = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -980,6 +986,30 @@ class _SceneCardState extends State<_SceneCard> {
         if (s.audioSeconds != null) Text('Voice ${s.audioSeconds!.toStringAsFixed(1)} s', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ]),
       const SizedBox(height: 8),
+      if (_mode == 'video' && _lines.any((l) => l.$2.text.trim().isNotEmpty)) ...[
+        Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          const Text('Who speaks', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+          SegmentedButton<String>(
+            showSelectedIcon: false,
+            style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact),
+            segments: const [
+              ButtonSegment(value: 'video_model', label: Text('Characters talk in the video')),
+              ButtonSegment(value: 'saved_voice', label: Text('Saved voices')),
+            ],
+            selected: {s.speech},
+            onSelectionChanged: (v) => _setSpeech(v.first),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          s.spokenInVideo
+              ? 'Lips move with the words. The video model makes the voice from each character\'s voice description, '
+                  'so it can sound a little different between scenes.'
+              : 'Each character\'s permanent voice is used. Lips don\'t move with the words.',
+          style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.35),
+        ),
+        const SizedBox(height: 8),
+      ],
       if (s.voiceOutdated.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1032,6 +1062,16 @@ class _SceneCardState extends State<_SceneCard> {
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [media, const SizedBox(width: 14), Expanded(child: editor)]);
       }),
     );
+  }
+
+  Future<void> _setSpeech(String value) async {
+    if (!await _save()) return;
+    try {
+      await CreatorStudioService.updateScene(widget.scene.id, {'speech': value});
+      await widget.reload();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
   }
 
   static const _moods = ['calm', 'happy', 'sad', 'angry', 'scared', 'whispering', 'shouting', 'crying', 'sarcastic', 'tender'];

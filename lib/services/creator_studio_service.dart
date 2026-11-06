@@ -94,7 +94,10 @@ class StudioProject {
         musicName = j['music_name'],
         musicVolume = (j['music_volume'] as num?)?.toDouble() ?? 0.25,
         imageQuality = j['image_quality'] ?? 'standard',
+        productionStyle = j['production_style'] ?? 'pictures',
         seriesId = j['series_id'];
+  /// 'video' (characters talk in moving clips) or 'pictures'.
+  final String productionStyle;
   /// Set once a next episode has been made from this project (or this is one).
   final String? seriesId;
   bool get vertical => aspectRatio == '9:16';
@@ -164,7 +167,11 @@ class StudioScene {
         hasVideo = j['has_video'] == true,
         hasAudio = j['has_audio'] == true,
         sfx = ((j['sfx'] as List?) ?? []).map((e) => e.toString()).toList(),
-        voiceOutdated = ((j['voice_outdated'] as List?) ?? []).map((e) => e.toString()).toList();
+        voiceOutdated = ((j['voice_outdated'] as List?) ?? []).map((e) => e.toString()).toList(),
+        speech = j['speech'] ?? 'saved_voice';
+  /// Who speaks the lines: 'video_model' (in the clip) or 'saved_voice'.
+  final String speech;
+  bool get spokenInVideo => speech == 'video_model';
   /// Characters whose voice was changed after this scene was recorded.
   final List<String> voiceOutdated;
   bool get ready => hasImage || (mode == 'video' && hasVideo);
