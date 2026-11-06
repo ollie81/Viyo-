@@ -1,0 +1,69 @@
+I'm building Viyo, a short-drama app from Rwanda: Flutter app plus a FastAPI backend on Railway, Supabase, and Bunny Stream for video. I'm a solo developer. My coding assistant (Claude) is turning Viyo Studio into a full AI filmmaking studio, where a creator brings an idea and leaves with a finished episode. Please review the plan below, challenge anything weak, and tell me what you'd do differently.
+
+THE GOAL
+A paying creator should never get halfway through an episode and find they must bring their own voices, music, pictures or sound effects. Viyo should provide script -> characters -> voices -> scenes -> pictures and video -> music and sound -> editing -> final video -> download or publish. Creators see the full price before paying. They never pay for anything that fails; failures are refunded automatically.
+
+ALREADY BUILT (tested with fake AI and a test database)
+
+Credits:
+- Credits are held before each AI job, the real cost is taken after, and failures are refunded. No double charges.
+
+Job queue:
+- Jobs survive restarts, can be retried and cancelled, and each user has limits.
+
+Production steps:
+- Script writing, splitting the script into scenes, a character portrait used as a reference for every scene picture, one picture or AI video per scene, and voices per line.
+
+Sound and finishing:
+- Creators can upload their own music, which gets quieter when people speak.
+- 8 built-in sound effects (synthesised by Viyo, so there are no licence issues).
+- FFmpeg finishing with captions and levelled sound, for vertical and landscape.
+- The final video is stored on Bunny and can be downloaded.
+
+Stage 0, safety fixes:
+- Video model: moved to Google's Gemini Omni 1.2 Flash at $0.07 per second. Each clip asks for its exact length, so the price shown matches the charge.
+- Paid work protected: making a new scene list no longer deletes paid pictures or voices. Unchanged scenes are kept and old versions are saved in an archive.
+- No silent voice swaps: a bad voice now stops the job and refunds the credits, instead of quietly using the narrator.
+- Language: the chosen language reaches the scene split, and dialogue isn't translated into English.
+
+Stage 1, permanent character voices:
+- One Gemini voice per character, saved on the character and reused for every line, scene and regeneration.
+- An optional delivery note per character and an emotion per line (angry, whispering...).
+- A voice picker with samples.
+- Changing a voice warns first, keeps old recordings flagged, and offers to re-record them with the price shown.
+- "Make next episode" copies the cast with the same voices and portraits.
+
+Tests:
+- All 350 backend tests pass; the app has no analyzer errors and its tests pass.
+
+NEXT STAGES
+2. A series "bible": shared characters, outfits and saved locations with reference pictures.
+3. Splitting each scene into shots (wide, close-up, reaction), each redone on its own with the price shown first.
+4. One budget per episode: presets (Economy / Standard / Premium), a "Make my episode" button, real progress, and a pause before spending more than approved.
+5. Automatic music and sound effects chosen from each scene's mood.
+6. Transitions, clean and subtitled downloads, quality options, and publishing to Viyo Watch.
+7. An idea generator that offers 3 story concepts to pick from.
+8. Premium AI video with lip-sync, only after a paid test.
+
+ESTIMATED COST PER 90-SECOND EPISODE (from list prices, not measured yet)
+- Economy (images with camera movement): our cost about $3.40; creator pays about $5.40.
+- Standard (images plus 6 AI video shots): our cost about $6.45; creator pays about $9.70.
+- Premium (images plus 16 AI video shots): our cost about $12.50; creator pays about $18.40.
+Voices cost about one cent per minute; video is the expensive part.
+
+WHAT CLAUDE SAYS IT CAN'T DO OR CAN'T PROMISE
+1. Nothing real has been tested. Gemini billing is blocked on my side, so no real AI has run yet. Everything is set up from Google's documentation and tested with fakes only.
+2. No perfect face consistency. No AI model guarantees the same face in every shot. References help, but hair, clothes and backgrounds can drift, so shot review and redoing single shots are needed.
+3. Voices aren't identical every time. A fixed voice keeps the same sound, but delivery varies a little. There's no way to make it identical without voice cloning, which we're not doing.
+4. Lip sync is uncertain. Gemini's voices and Omni video's built-in speech are different voices. Normal episodes will put dialogue over stills or non-speaking shots. True lip sync needs a paid test first.
+5. Rights are limited. Claude couldn't confirm a Lyria commercial licence; I must read Google's terms myself. AI-made work may not be protected by copyright, so Viyo can't promise creators full ownership.
+6. Music libraries don't fit. Epidemic Sound only licenses users with their own subscription. Pixabay has no music API and can't be offered as a downloadable library. The plan is Google's Lyria music model (about $0.08 a song).
+7. Selling credits on Android. No payment checkout exists yet. Google Play rules require Play Billing for credits bought inside the Android app; Lemon Squeezy can only be used on the website.
+8. Claude won't spend money or run database changes without me. It doesn't run SQL migrations, spend money on AI, or put changes live without my approval. Stage 0 and Stage 1 are waiting for me to run the SQL and approve the merge.
+
+WHAT I'D LIKE FROM YOU
+- Is this stage order right for a solo developer with little money?
+- Which stages would you cut or delay?
+- Are the prices and presets sensible for creators in Africa and worldwide?
+- What risks am I missing (legal, payments, Google Play, AI costs, abuse)?
+- How would you market "bring your idea, leave with an episode"?
