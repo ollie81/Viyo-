@@ -19,6 +19,7 @@ import '../../widgets/retryable_network_image.dart';
 import '../../widgets/series_poster_card.dart';
 import '../../widgets/watchlist_button.dart';
 import '../dramas/series_analytics_screen.dart';
+import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
@@ -310,7 +311,21 @@ class _SeriesHeader extends StatelessWidget {
               children: [
                 Text(series.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
-                Text('by @${series.authorUsername ?? 'creator'}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                // The drama belongs to the account that posted it: tap
+                // through to that creator's profile and other dramas.
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: series.userId.isEmpty
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => ProfileScreen(userId: series.userId)),
+                          ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text('by @${series.authorUsername ?? 'creator'}',
+                        style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 if (series.description.trim().isNotEmpty)
                   Text(series.description, style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppColors.textSecondary)),
