@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
@@ -35,6 +38,9 @@ class _StudioVoicesAdminScreenState extends State<StudioVoicesAdminScreen> {
   bool _loading = false;
   String? _error;
   String? _playing;
+  String? _liveId;
+  Map<String, dynamic>? _live;
+  Timer? _livePoll;
 
   @override
   void initState() {
@@ -48,7 +54,93 @@ class _StudioVoicesAdminScreenState extends State<StudioVoicesAdminScreen> {
   void dispose() {
     _key.dispose();
     _player.dispose();
+    _livePoll?.cancel();
     super.dispose();
+  }
+
+  Future<void> _startLive() async {
+    if (_key.text.trim().isEmpty) {
+      setState(() => _error = 'Enter the admin key.');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Run the live test?'),
+        content: const Text('Makes one tiny production with the real AI services: script, characters, voices, '
+            'Omni video and sync.so lip sync. Expected about \$2.35, never more than \$5, on Viyo\'s Google and '
+            'sync.so accounts. No creator data is touched.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Run it')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final id = await CreatorStudioService.adminStartLiveCheck(_key.text.trim());
+      setState(() {
+        _liveId = id;
+        _live = null;
+      });
+      _pollLive();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
+  void _pollLive() {
+    _livePoll?.cancel();
+    _livePoll = Timer.periodic(const Duration(seconds: 5), (t) async {
+      final id = _liveId;
+      if (id == null) return t.cancel();
+      try {
+        final r = await CreatorStudioService.liveCheckReport(id);
+        if (!mounted) return t.cancel();
+        setState(() => _live = r);
+        if (r['status'] != 'running') t.cancel();
+      } catch (_) {}
+    });
+  }
+
+  String _mark(Object? status) => switch (status) { 'ok' => 'OK', 'failed' => 'FAILED', 'skipped' => 'skipped', _ => '...' };
+
+  Widget _liveCard() {
+    final link = CreatorStudioService.liveCheckLink(_liveId!);
+    final steps = ((_live?['steps'] as List?) ?? []).cast<Map>();
+    final spent = ((_live?['spent_usd'] ?? 0) as num).toStringAsFixed(2);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: studioPanel(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Live test: ${_live?['status'] ?? 'starting'} · spent \$$spent',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        for (final s in steps)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text(
+              '${_mark(s['status'])}  ${s['step']}'
+              '${s['cost_usd'] != null ? ' · \$${(s['cost_usd'] as num).toStringAsFixed(3)}' : ''}'
+              '${s['error'] != null ? ' · ${s['error']}' : ''}',
+              style: TextStyle(fontSize: 12.5, color: s['status'] == 'failed' ? AppColors.danger : AppColors.textSecondary),
+            ),
+          ),
+        const SizedBox(height: 8),
+        const Text('Results link (send it to Claude):', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        SelectableText(link, style: const TextStyle(fontSize: 12)),
+        TextButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: link));
+            if (mounted) showStudioError(context, 'Link copied.');
+          },
+          icon: const Icon(Icons.copy, size: 16),
+          label: const Text('Copy link'),
+        ),
+      ]),
+    );
   }
 
   Future<void> _load() async {
@@ -179,6 +271,16 @@ class _StudioVoicesAdminScreenState extends State<StudioVoicesAdminScreen> {
                 padding: const EdgeInsets.only(top: 10),
                 child: Text(_error!, style: const TextStyle(color: AppColors.danger)),
               ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _liveId != null && _live?['status'] == 'running' ? null : _startLive,
+                icon: const Icon(Icons.science_outlined, size: 18),
+                label: const Text('Run live test (max \$5)'),
+              ),
+            ),
+            if (_liveId != null) _liveCard(),
             if (_voices.isNotEmpty) ...[
               const SizedBox(height: 14),
               Text(

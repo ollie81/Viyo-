@@ -487,6 +487,17 @@ class CreatorStudioService {
       Map<String, dynamic>.from(
           await _admin('POST', '/admin/voices/samples', adminKey, {'confirm_spend': confirmSpend}));
 
+  /// Starts the real provider test on the server (hard cap, admin only).
+  static Future<String> adminStartLiveCheck(String adminKey) async {
+    final j = await _admin('POST', '/admin/live-check', adminKey, {'confirm_spend': true, 'cap_usd': 5.0});
+    return j['id'] as String;
+  }
+
+  static String liveCheckLink(String id) => '$_base/live-check/$id';
+
+  static Future<Map<String, dynamic>> liveCheckReport(String id) async =>
+      Map<String, dynamic>.from(await _send('GET', '/live-check/$id'));
+
   static Future<(StudioBalance, List<Map<String, dynamic>>)> credits() async {
     final j = await _send('GET', '/credits');
     return (StudioBalance.fromJson(j['balance']),
