@@ -3,7 +3,7 @@ import '../theme/app_theme.dart';
 
 /// What the creator picked from the "+" menu. Callers decide what each
 /// choice actually navigates to — this sheet only presents the choice.
-enum CreateMenuChoice { aiClips, photoVideo, aiDrama, challenge }
+enum CreateMenuChoice { studio, aiClips, photoVideo, aiDrama, challenge }
 
 /// The "+" tab used to jump straight to CreatePostScreen. Now it opens
 /// this menu first — a normal upload and an AI Short Drama upload are
@@ -39,6 +39,17 @@ Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
               child: Text('Create', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 14),
+            // Viyo Studio: an idea in, a finished drama out. First and
+            // highlighted, because it's the feature most people come for.
+            _CreateMenuTile(
+              icon: Icons.movie_filter_outlined,
+              iconColor: AppColors.secondary,
+              title: 'Make a Drama with AI',
+              subtitle: 'Bring an idea. Viyo writes, casts, voices and films it',
+              highlighted: true,
+              onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.studio),
+            ),
+            const SizedBox(height: 10),
             _CreateMenuTile(
               icon: Icons.content_cut,
               iconColor: AppColors.primary,
@@ -55,15 +66,11 @@ Future<CreateMenuChoice?> showCreateMenuSheet(BuildContext context) {
               onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.photoVideo),
             ),
             const SizedBox(height: 10),
-            // Visually highlighted — a sparkle icon and a glowing
-            // secondary-color border, since AI Short Dramas are the
-            // feature this menu exists to spotlight.
             _CreateMenuTile(
               icon: Icons.auto_awesome,
               iconColor: AppColors.secondary,
               title: 'Upload Drama, Movie or Film',
               subtitle: 'Drama, series, movie or film. Earn coins',
-              highlighted: true,
               onTap: () => Navigator.of(ctx).pop(CreateMenuChoice.aiDrama),
             ),
             const SizedBox(height: 10),

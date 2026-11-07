@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import '../studio/studio_home_screen.dart';
 import '../../services/post_service.dart';
 import '../../services/share_links.dart';
 import '../../widgets/create_menu_sheet.dart';
@@ -92,6 +93,11 @@ class _HomeShellState extends State<HomeShell> {
     if (!mounted || choice == null) return;
 
     switch (choice) {
+      case CreateMenuChoice.studio:
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const StudioHomeScreen()),
+        );
+        break;
       case CreateMenuChoice.aiClips:
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const AiRepurposeScreen()),
