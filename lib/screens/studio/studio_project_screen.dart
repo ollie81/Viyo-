@@ -1576,6 +1576,8 @@ class _StoryPlanCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            row('Opening hook', _s(plan['opening_hook'])),
+            row('Ending hook', _s(plan['ending_hook'])),
             row('What makes it different', _s(plan['premise_twist'])),
             row('Conflict', _s(plan['central_conflict'])),
             row('What\'s at stake', _s(plan['stakes'])),
