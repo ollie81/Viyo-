@@ -98,7 +98,13 @@ class StudioProject {
         musicVolume = (j['music_volume'] as num?)?.toDouble() ?? 0.25,
         imageQuality = j['image_quality'] ?? 'standard',
         productionStyle = j['production_style'] ?? 'pictures',
-        seriesId = j['series_id'];
+        seriesId = j['series_id'],
+        storyBible = j['story_bible'] is Map && (j['story_bible'] as Map).isNotEmpty
+            ? Map<String, dynamic>.from(j['story_bible'])
+            : null;
+  /// What Viyo's writers' room planned: premise, characters, beats, ending,
+  /// and what the script doctor fixed. Null until a script is written.
+  final Map<String, dynamic>? storyBible;
   /// 'video' (characters talk in moving clips) or 'pictures'.
   final String productionStyle;
   /// Set once a next episode has been made from this project (or this is one).

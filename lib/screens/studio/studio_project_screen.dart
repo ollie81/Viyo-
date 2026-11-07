@@ -392,6 +392,10 @@ class _StoryPanelState extends State<_StoryPanel> {
         decoration: studioPanel(),
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (widget.d.project.storyBible != null) ...[
+            _StoryPlanCard(widget.d.project.storyBible!),
+            const SizedBox(height: 14),
+          ],
           const Text('Script', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           const SizedBox(height: 4),
           const Text('Write or paste your own, or let AI draft it. Edit anything before breaking it into scenes.',
@@ -1531,6 +1535,71 @@ class _SoundQualityCardState extends State<_SoundQualityCard> {
           title: const Text('Burn in captions', style: TextStyle(fontSize: 14)),
         ),
       ]),
+    );
+  }
+}
+
+
+/// What the writers' room planned before writing, so the creator can see
+/// how their idea was developed.
+class _StoryPlanCard extends StatelessWidget {
+  final Map<String, dynamic> plan;
+  const _StoryPlanCard(this.plan);
+
+  String _s(Object? v) => (v ?? '').toString().trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final chars = ((plan['characters'] as List?) ?? []).whereType<Map>().toList();
+    final fixes = ((plan['fixes'] as List?) ?? []).map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
+    final threads = ((plan['open_threads'] as List?) ?? []).map((e) => e.toString()).toList();
+    Widget row(String label, String value) => value.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(value, style: const TextStyle(fontSize: 13, height: 1.4)),
+            ]),
+          );
+    return Container(
+      decoration: studioPanel(),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          leading: const Icon(Icons.auto_stories_outlined, color: AppColors.secondary),
+          title: const Text('Story plan', style: TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(_s(plan['logline']), maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            row('What makes it different', _s(plan['premise_twist'])),
+            row('Conflict', _s(plan['central_conflict'])),
+            row('What\'s at stake', _s(plan['stakes'])),
+            if (chars.isNotEmpty) ...[
+              const Text('Characters', style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              for (final c in chars)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    '${_s(c['name'])} (${_s(c['age'])}): wants ${_s(c['want'])}'
+                    '${_s(c['flaw']).isEmpty ? '' : ' · flaw: ${_s(c['flaw'])}'}'
+                    '${_s(c['secret']).isEmpty ? '' : ' · secret: ${_s(c['secret'])}'}',
+                    style: const TextStyle(fontSize: 12.5, height: 1.35),
+                  ),
+                ),
+              const SizedBox(height: 4),
+            ],
+            row('Ending', _s(plan['ending'])),
+            if (fixes.isNotEmpty) row('What the script doctor improved', fixes.map((f) => '• $f').join('\n')),
+            if (threads.isNotEmpty) row('Open storylines for the next episode', threads.map((f) => '• $f').join('\n')),
+          ],
+        ),
+      ),
     );
   }
 }
