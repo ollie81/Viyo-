@@ -345,6 +345,25 @@ class CreatorStudioService {
 
   static Future<void> updateProject(String id, Map<String, dynamic> fields) => _send('PATCH', '/projects/$id', fields);
 
+  /// Persistent story-assistant workspace for this creator-owned project.
+  /// These routes are added by the companion viyo_ai assistant API PR.
+  static Future<Map<String, dynamic>> assistantState(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/assistant'));
+
+  static Future<Map<String, dynamic>> assistantGenerate(
+    String projectId, {
+    required String requestId,
+    required int confirmCredits,
+  }) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/generate', {
+        'request_id': requestId,
+        'confirm_credits': confirmCredits,
+      }));
+
+  static Future<void> assistantApprove(String projectId) async {
+    await _send('POST', '/projects/$projectId/assistant/approve', {'confirm_story': true});
+  }
+
   static Future<void> archiveProject(String id) => _send('POST', '/projects/$id/archive');
 
   static Future<void> addCharacter(String projectId, String name, String description) =>
