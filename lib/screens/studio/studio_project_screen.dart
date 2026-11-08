@@ -490,6 +490,7 @@ class _StoryPanelState extends State<_StoryPanel> {
     final assistantJobActive = scriptJob?['status'] == 'queued' || scriptJob?['status'] == 'running';
     final hasStory = p.script.trim().isNotEmpty && p.storyBible != null;
     final approved = assistantStatus == 'approved';
+    final approvalRequired = p.storyBible != null && !approved;
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
       _sectionHeader('Story', '${p.vertical ? 'Vertical 9:16' : 'Landscape 16:9'} · ${p.genre.isEmpty ? 'Drama' : p.genre} · about ${p.targetSeconds} s · ${p.language}',
           actions: [
@@ -573,7 +574,7 @@ class _StoryPanelState extends State<_StoryPanel> {
           Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
             FilledButton.icon(
               style: _primaryBtn,
-              onPressed: splitting || _script.text.trim().isEmpty ? null : () async {
+              onPressed: splitting || _script.text.trim().isEmpty || approvalRequired ? null : () async {
                 if (await _save()) {
                   final ok = await widget.run('breakdown',
                       warning: sceneCount > 0
@@ -587,6 +588,9 @@ class _StoryPanelState extends State<_StoryPanel> {
               label: const Text('Break into cast & scenes'),
             ),
             if (splitting) _busyChip('Building scenes…'),
+            if (approvalRequired)
+              const Text('Approve the story above before turning this AI story into scenes.',
+                  style: TextStyle(color: AppColors.coin, fontSize: 12)),
             if (sceneCount > 0)
               TextButton(onPressed: () => widget.goTo(2), child: Text('Go to $sceneCount scenes →')),
           ]),
