@@ -422,9 +422,9 @@ class _StoryPanelState extends State<_StoryPanel> {
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Viyo will develop your idea into a story plan and screenplay. You can review and edit them before creating scenes.'),
             const SizedBox(height: 14),
-            _costRow('Full price', creditsLabel(estimate.totalCredits), bold: true),
-            _costRow('Available balance', creditsLabel(estimate.balance.available)),
-            _costRow('After this', creditsLabel(estimate.balance.available - estimate.totalCredits)),
+            _assistantCostRow('Full price', creditsLabel(estimate.totalCredits), bold: true),
+            _assistantCostRow('Available balance', creditsLabel(estimate.balance.available)),
+            _assistantCostRow('After this', creditsLabel(estimate.balance.available - estimate.totalCredits)),
             const SizedBox(height: 8),
             const Text('Credits are only charged for successful work. Failed jobs are refunded.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4)),
@@ -468,7 +468,7 @@ class _StoryPanelState extends State<_StoryPanel> {
     if (yes != true || !mounted) return;
     setState(() => _approving = true);
     try {
-      await _save();
+      if (!await _save()) return;
       await CreatorStudioService.assistantApprove(widget.d.project.id);
       await _loadAssistant();
       await widget.reload();
@@ -594,6 +594,18 @@ class _StoryPanelState extends State<_StoryPanel> {
       ),
     ]);
   }
+
+  Widget _assistantCostRow(String label, String value, {bool bold = false}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Expanded(child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13))),
+          Text(value, style: TextStyle(
+            fontSize: bold ? 15 : 13,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            color: bold ? AppColors.coin : AppColors.textPrimary,
+          )),
+        ]),
+      );
 
   Widget _assistantBadge(String label, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
