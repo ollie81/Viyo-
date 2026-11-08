@@ -314,6 +314,17 @@ class _StoryPanelState extends State<_StoryPanel> {
   late final _script = TextEditingController(text: widget.d.project.script);
   late final _style = TextEditingController(text: widget.d.project.visualStyle);
   bool _saving = false;
+  bool _assistantLoading = true;
+  bool _assistantWorking = false;
+  bool _approving = false;
+  Map<String, dynamic>? _assistant;
+  String? _assistantError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAssistant();
+  }
 
   @override
   void didUpdateWidget(covariant _StoryPanel old) {
@@ -321,6 +332,9 @@ class _StoryPanelState extends State<_StoryPanel> {
     // A finished AI script replaces the editor text unless the creator is mid-edit.
     if (old.d.project.script != widget.d.project.script && _script.text == old.d.project.script) {
       _script.text = widget.d.project.script;
+      _loadAssistant();
+    } else if (old.d.project.storyBible != widget.d.project.storyBible) {
+      _loadAssistant();
     }
   }
 
@@ -334,6 +348,23 @@ class _StoryPanelState extends State<_StoryPanel> {
 
   bool get _dirty =>
       _idea.text != widget.d.project.logline || _script.text != widget.d.project.script || _style.text != widget.d.project.visualStyle;
+
+  Future<void> _loadAssistant() async {
+    setState(() {
+      _assistantLoading = true;
+      _assistantError = null;
+    });
+    try {
+      final state = await CreatorStudioService.assistantState(widget.d.project.id);
+      if (!mounted) return;
+      setState(() => _assistant = state);
+    } on StudioException catch (e) {
+      if (!mounted) return;
+      setState(() => _assistantError = e.message);
+    } finally {
+      if (mounted) setState(() => _assistantLoading = false);
+    }
+  }
 
   Future<bool> _save() async {
     if (!_dirty) return true;
@@ -351,11 +382,115 @@ class _StoryPanelState extends State<_StoryPanel> {
     }
   }
 
+  Future<void> _developStory() async {
+    if (_idea.text.trim().isEmpty) {
+      showStudioError(context, 'Write a short idea first so Viyo knows what story to develop.');
+      return;
+    }
+    if (!await _save() || !mounted) return;
+    setState(() => _assistantWorking = true);
+    try {
+      final estimate = await CreatorStudioService.estimate(widget.d.project.id, 'script');
+      if (estimate.readyCount == 0) {
+        showStudioError(context, estimate.blockedReasons.isNotEmpty ? estimate.blockedReasons.first : 'This story cannot be generated yet.');
+        return;
+      }
+      if (estimate.totalCredits > estimate.balance.available) {
+        final shortBy = estimate.totalCredits - estimate.balance.available;
+        final getCredits = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: StudioColors.panel,
+            title: const Text('More Studio credits needed'),
+            content: Text('This story costs ${creditsLabel(estimate.totalCredits)}. '
+                'Your available balance is ${creditsLabel(estimate.balance.available)}. '
+                'You need ${creditsLabel(shortBy)} more.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('View credits')),
+            ],
+          ),
+        );
+        if (getCredits == true && mounted) await showCreditsSheet(context);
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: const Text('Develop this story?'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Viyo will develop your idea into a story plan and screenplay. You can review and edit them before creating scenes.'),
+            const SizedBox(height: 14),
+            _assistantCostRow('Full price', creditsLabel(estimate.totalCredits), bold: true),
+            _assistantCostRow('Available balance', creditsLabel(estimate.balance.available)),
+            _assistantCostRow('After this', creditsLabel(estimate.balance.available - estimate.totalCredits)),
+            const SizedBox(height: 8),
+            const Text('Credits are only charged for successful work. Failed jobs are refunded.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Start · ${creditsLabel(estimate.totalCredits)}')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      await CreatorStudioService.assistantGenerate(
+        widget.d.project.id,
+        requestId: CreatorStudioService.newRequestId(),
+        confirmCredits: estimate.totalCredits,
+      );
+      if (!mounted) return;
+      showStudioInfo(context, 'Viyo is developing your story. You can keep working while it runs.');
+      await _loadAssistant();
+      await widget.reload();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _assistantWorking = false);
+    }
+  }
+
+  Future<void> _approveStory() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Approve this story?'),
+        content: const Text('This confirms you are happy with the story plan and screenplay. You can then continue to character casting and scene production.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Review more')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Approve story')),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    setState(() => _approving = true);
+    try {
+      if (!await _save()) return;
+      await CreatorStudioService.assistantApprove(widget.d.project.id);
+      await _loadAssistant();
+      await widget.reload();
+      if (mounted) showStudioInfo(context, 'Story approved. You can continue to casting and scenes.');
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _approving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.d.project;
     final writing = widget.busy('script'), splitting = widget.busy('breakdown');
     final sceneCount = widget.d.scenes.length;
+    final assistantStatus = _assistant?['story_status'] as String? ?? 'not_started';
+    final scriptJob = _assistant?['script_job'] as Map?;
+    final assistantJobActive = scriptJob?['status'] == 'queued' || scriptJob?['status'] == 'running';
+    final hasStory = p.script.trim().isNotEmpty && p.storyBible != null;
+    final approved = assistantStatus == 'approved';
+    final approvalRequired = p.storyBible != null && !approved;
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
       _sectionHeader('Story', '${p.vertical ? 'Vertical 9:16' : 'Landscape 16:9'} · ${p.genre.isEmpty ? 'Drama' : p.genre} · about ${p.targetSeconds} s · ${p.language}',
           actions: [
@@ -363,27 +498,53 @@ class _StoryPanelState extends State<_StoryPanel> {
               OutlinedButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save_outlined, size: 18), label: const Text('Save')),
           ]),
       Container(
-        decoration: studioPanel(),
+        decoration: studioPanel(border: AppColors.primary.withValues(alpha: 0.35)),
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TextField(controller: _idea, onChanged: (_) => setState(() {}), maxLines: 3, maxLength: 2000,
-              decoration: studioField('Idea', hint: 'Who is it about, what do they want, what goes wrong?')),
-          const SizedBox(height: 6),
-          TextField(controller: _style, onChanged: (_) => setState(() {}), decoration: studioField('Visual style')),
-          const SizedBox(height: 12),
           Row(children: [
+            const Icon(Icons.auto_awesome, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Viyo Story Assistant', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+            if (_assistantLoading)
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            else if (approved)
+              _assistantBadge('Approved', AppColors.success)
+            else if (hasStory)
+              _assistantBadge('Draft ready', AppColors.coin),
+          ]),
+          const SizedBox(height: 8),
+          const Text('Start with an idea. Viyo develops the story world and screenplay for you. Review everything before moving into character casting and scenes.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.45)),
+          const SizedBox(height: 14),
+          TextField(controller: _idea, onChanged: (_) => setState(() {}), maxLines: 3, maxLength: 2000,
+              decoration: studioField('Your idea', hint: 'Who is it about, what do they want, and what goes wrong?')),
+          const SizedBox(height: 6),
+          TextField(controller: _style, onChanged: (_) => setState(() {}), decoration: studioField('Visual style', hint: 'Cinematic, realistic, warm lighting…')),
+          if (_assistantError != null) ...[
+            const SizedBox(height: 10),
+            Text(_assistantError!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+            Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: _loadAssistant, child: const Text('Retry assistant connection'))),
+          ],
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             FilledButton.icon(
               style: _primaryBtn,
-              onPressed: writing ? null : () async {
-                if (await _save()) {
-                  widget.run('script', warning: p.script.trim().isNotEmpty ? 'This replaces the script below.' : null);
-                }
-              },
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: Text(p.script.trim().isEmpty ? 'Write script with AI' : 'Rewrite script with AI'),
+              onPressed: _assistantLoading || _assistantWorking || writing || approved || _assistantError != null ? null : _developStory,
+              icon: _assistantWorking || assistantJobActive
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_awesome, size: 18),
+              label: Text(assistantJobActive ? 'Developing story…' : hasStory ? 'Develop again' : 'Develop my story'),
             ),
-            const SizedBox(width: 10),
-            if (writing) _busyChip('Writing…'),
+            if (writing || assistantJobActive) _busyChip('Writing…'),
+            if (hasStory && !approved)
+              OutlinedButton.icon(
+                onPressed: _approving || _assistantWorking ? null : _approveStory,
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: Text(_approving ? 'Approving…' : 'Approve story'),
+              ),
+            if (approved)
+              const Text('Your story is approved. Next: build the cast and scenes.',
+                  style: TextStyle(color: AppColors.success, fontSize: 12)),
           ]),
         ]),
       ),
@@ -396,9 +557,9 @@ class _StoryPanelState extends State<_StoryPanel> {
             _StoryPlanCard(widget.d.project.storyBible!),
             const SizedBox(height: 14),
           ],
-          const Text('Script', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const Text('Screenplay', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           const SizedBox(height: 4),
-          const Text('Write or paste your own, or let AI draft it. Edit anything before breaking it into scenes.',
+          const Text('Review and edit the screenplay before breaking it into scenes.',
               style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
           const SizedBox(height: 10),
           TextField(
@@ -413,7 +574,7 @@ class _StoryPanelState extends State<_StoryPanel> {
           Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
             FilledButton.icon(
               style: _primaryBtn,
-              onPressed: splitting || _script.text.trim().isEmpty ? null : () async {
+              onPressed: splitting || _script.text.trim().isEmpty || approvalRequired ? null : () async {
                 if (await _save()) {
                   final ok = await widget.run('breakdown',
                       warning: sceneCount > 0
@@ -427,6 +588,9 @@ class _StoryPanelState extends State<_StoryPanel> {
               label: const Text('Break into cast & scenes'),
             ),
             if (splitting) _busyChip('Building scenes…'),
+            if (approvalRequired)
+              const Text('Approve the story above before turning this AI story into scenes.',
+                  style: TextStyle(color: AppColors.coin, fontSize: 12)),
             if (sceneCount > 0)
               TextButton(onPressed: () => widget.goTo(2), child: Text('Go to $sceneCount scenes →')),
           ]),
@@ -434,6 +598,24 @@ class _StoryPanelState extends State<_StoryPanel> {
       ),
     ]);
   }
+
+  Widget _assistantCostRow(String label, String value, {bool bold = false}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Expanded(child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13))),
+          Text(value, style: TextStyle(
+            fontSize: bold ? 15 : 13,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            color: bold ? AppColors.coin : AppColors.textPrimary,
+          )),
+        ]),
+      );
+
+  Widget _assistantBadge(String label, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(20)),
+        child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+      );
 }
 
 // ================================================================ Cast
