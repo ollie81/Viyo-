@@ -1613,6 +1613,80 @@ class _ExportPanelState extends State<_ExportPanel> {
   }
 
   final Map<String, double?> _progress = {};
+  bool _publishing = false;
+
+  /// Posts this version to Viyo after the creator picks the price.
+  Future<void> _publish(StudioProjectDetail d, StudioRender r) async {
+    final caption = TextEditingController();
+    final price = TextEditingController(text: '30');
+    var free = true;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: const Text('Publish to Viyo'),
+          content: SizedBox(
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  'Goes live now on your profile, your drama\'s page in Dramas, and the feed. '
+                  '${d.project.coverUrl != null ? 'Your main cover is the poster.' : 'Tip: make a cover first so viewers see a poster.'}',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5, height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                const Text('Price for viewers', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: true, label: Text('Free')),
+                    ButtonSegment(value: false, label: Text('Coins per episode')),
+                  ],
+                  selected: {free},
+                  onSelectionChanged: (v) => setDialog(() => free = v.first),
+                ),
+                if (!free) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: price,
+                    keyboardType: TextInputType.number,
+                    decoration: studioField('Coins per episode', hint: 'e.g. 30'),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('As on every Viyo drama, the first episodes are free so viewers get hooked.',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+                ],
+                const SizedBox(height: 12),
+                TextField(controller: caption, maxLength: 500, maxLines: 2,
+                    decoration: studioField('Caption (optional)').copyWith(counterText: '')),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Publish now')),
+          ],
+        ),
+      ),
+    );
+    final coins = free ? 0 : (int.tryParse(price.text.trim()) ?? 30).clamp(1, 500);
+    final text = caption.text.trim();
+    caption.dispose();
+    price.dispose();
+    if (go != true) return;
+    setState(() => _publishing = true);
+    try {
+      final out = await CreatorStudioService.publishRender(r.id, coinPrice: coins, caption: text);
+      await widget.reload();
+      if (mounted) showStudioInfo(context, 'Published as episode ${out['episode_number']}. It\'s live on Viyo.');
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
+  }
 
   Future<void> _download(StudioRender r) async {
     setState(() => _progress[r.id] = null);
@@ -1690,7 +1764,8 @@ class _ExportPanelState extends State<_ExportPanel> {
           margin: const EdgeInsets.only(bottom: 10),
           decoration: studioPanel(),
           padding: const EdgeInsets.all(12),
-          child: Row(children: [
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+           Row(children: [
             Container(
               width: 44, height: 44,
               decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
@@ -1709,11 +1784,28 @@ class _ExportPanelState extends State<_ExportPanel> {
               ]),
             ),
             IconButton(tooltip: 'Preview', onPressed: () => _preview(r), icon: const Icon(Icons.play_circle_outline)),
+           ]),
+           const SizedBox(height: 8),
+           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             FilledButton.tonalIcon(
               onPressed: _progress.containsKey(r.id) ? null : () => _download(r),
               icon: const Icon(Icons.download, size: 18),
               label: const Text('Download'),
             ),
+            if (r.published)
+              const Chip(
+                visualDensity: VisualDensity.compact,
+                avatar: Icon(Icons.check_circle, size: 16, color: AppColors.success),
+                label: Text('Published on Viyo', style: TextStyle(fontSize: 12)),
+              )
+            else
+              FilledButton.icon(
+                style: _primaryBtn,
+                onPressed: _publishing ? null : () => _publish(d, r),
+                icon: const Icon(Icons.public, size: 18),
+                label: Text(_publishing ? 'Publishing…' : 'Publish to Viyo'),
+              ),
+           ]),
           ]),
         ),
       const SizedBox(height: 14),
