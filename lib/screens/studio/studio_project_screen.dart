@@ -32,6 +32,12 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
       if (!_tabs.indexIsChanging) setState(() => _section = _tabs.index);
     });
 
+  /// Moves to a section and keeps the phone tab bar in step with it.
+  void _goTo(int i) {
+    setState(() => _section = i);
+    if (_tabs.index != i) _tabs.animateTo(i);
+  }
+
   static const _sections = [
     (Icons.edit_note, 'Story'),
     (Icons.groups_outlined, 'Cast'),
@@ -229,7 +235,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
                   labelType: NavigationRailLabelType.all,
                   indicatorColor: AppColors.primary.withValues(alpha: 0.15),
                   selectedIconTheme: const IconThemeData(color: AppColors.primary),
-                  onDestinationSelected: (i) => setState(() => _section = i),
+                  onDestinationSelected: _goTo,
                   destinations: [
                     for (final (icon, label) in _sections) NavigationRailDestination(icon: Icon(icon), label: Text(label)),
                   ],
@@ -257,7 +263,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
 
   Widget _content(StudioProjectDetail d, bool mid) {
     final section = switch (_section) {
-      0 => _StoryPanel(d, run: _run, busy: _busy, reload: _load, goTo: (i) => setState(() => _section = i)),
+      0 => _StoryPanel(d, run: _run, busy: _busy, reload: _load, goTo: _goTo),
       1 => _CastPanel(d, voices: _voices, run: _run, busy: _busy, reload: _load),
       2 => _ScenesPanel(d, effects: _effects, lipsync: _lipsync, run: _run, busy: _busy, reload: _load),
       _ => _ExportPanel(d, run: _run, busy: _busy, reload: _load),
@@ -576,12 +582,11 @@ class _StoryPanelState extends State<_StoryPanel> {
               style: _primaryBtn,
               onPressed: splitting || _script.text.trim().isEmpty || approvalRequired ? null : () async {
                 if (await _save()) {
-                  final ok = await widget.run('breakdown',
+                  await widget.run('breakdown',
                       warning: sceneCount > 0
                           ? 'You have $sceneCount scenes. Scenes that haven\'t changed keep their pictures and voice. '
                               'Changed scenes are replaced, and the old versions are saved, not deleted.'
                           : null);
-                  if (ok) widget.goTo(2);
                 }
               },
               icon: const Icon(Icons.view_carousel_outlined, size: 18),
