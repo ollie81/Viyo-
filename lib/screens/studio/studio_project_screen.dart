@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../services/creator_studio_service.dart';
 import '../../services/file_saver_io.dart' if (dart.library.html) '../../services/file_saver_web.dart' as saver;
 import '../../theme/app_theme.dart';
+import 'studio_identity_section.dart';
 import 'studio_widgets.dart';
 
 /// One production's workspace: Story -> Cast -> Scenes -> Export, with a
@@ -116,12 +117,16 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
     _load();
   }
 
-  Future<bool> _run(String kind, {List<String> targets = const [], String? warning}) => confirmAndRun(
+  Future<bool> _run(String kind,
+          {List<String> targets = const [], String? warning, Map<String, dynamic> extra = const {}, String? title}) =>
+      confirmAndRun(
         context,
         projectId: widget.projectId,
         kind: kind,
         targets: targets,
         extraWarning: warning,
+        extra: extra,
+        title: title,
         onStarted: _started,
         onNeedCredits: _needCredits,
       );
@@ -275,7 +280,8 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
   }
 }
 
-typedef _Run = Future<bool> Function(String kind, {List<String> targets, String? warning});
+typedef _Run = Future<bool> Function(String kind,
+    {List<String> targets, String? warning, Map<String, dynamic> extra, String? title});
 typedef _Busy = bool Function(String kind, {String? sceneId, String? characterId});
 
 Widget _sectionHeader(String title, String subtitle, {List<Widget> actions = const []}) => Padding(
@@ -668,7 +674,7 @@ class _CastPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final missing = d.characters.where((c) => c.portraitUrl == null && c.description.trim().isNotEmpty).map((c) => c.id).toList();
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
-      _sectionHeader('Cast', 'A reference portrait keeps each face the same in every scene.', actions: [
+      _sectionHeader('Cast', 'Create each character once and approve their look. Viyo keeps them the same person in every scene.', actions: [
         OutlinedButton.icon(onPressed: () => _add(context), icon: const Icon(Icons.person_add_alt, size: 18), label: const Text('Add character')),
         if (missing.isNotEmpty)
           FilledButton.icon(
@@ -822,7 +828,8 @@ class _CharacterCardState extends State<_CharacterCard> {
     return Container(
       decoration: studioPanel(),
       padding: const EdgeInsets.all(12),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Column(children: [
           AspectFrame(
             vertical: true,
@@ -885,6 +892,8 @@ class _CharacterCardState extends State<_CharacterCard> {
             ],
           ]),
         ),
+       ]),
+       CharacterIdentitySection(c: widget.c, busy: widget.busy, run: widget.run, reload: widget.reload),
       ]),
     );
   }
@@ -1214,6 +1223,7 @@ class _SceneCardState extends State<_SceneCard> {
         ),
         const SizedBox(height: 8),
       ],
+      _lookRow(s),
       if (s.voiceOutdated.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1266,6 +1276,68 @@ class _SceneCardState extends State<_SceneCard> {
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [media, const SizedBox(width: 14), Expanded(child: editor)]);
       }),
     );
+  }
+
+  static const _cameras = {
+    'auto': 'Camera: automatic', 'close_up': 'Close-up', 'front': 'Facing camera', 'side': 'Side view',
+    'back': 'From behind', 'full_body': 'Full body', 'wide': 'Wide shot',
+  };
+
+  /// Characters named in this scene (the same rule the backend uses).
+  List<StudioCharacter> _inScene(StudioScene s) {
+    final text = [s.visual, s.heading, ...s.dialogue.map((l) => l.character)].join(' ').toLowerCase();
+    return widget.d.characters
+        .where((c) => c.name.isNotEmpty && RegExp('\\b${RegExp.escape(c.name.toLowerCase())}\\b').hasMatch(text))
+        .toList();
+  }
+
+  /// Camera framing and, for characters with more than one outfit, what they wear.
+  Widget _lookRow(StudioScene s) {
+    final dressed = _inScene(s).where((c) => c.outfits.length > 1).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        PopupMenuButton<String>(
+          tooltip: 'Camera framing',
+          color: StudioColors.panel,
+          onSelected: (v) => _setLook({'camera': v}),
+          itemBuilder: (_) => [for (final e in _cameras.entries) PopupMenuItem(value: e.key, child: Text(e.value))],
+          child: Chip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.videocam_outlined, size: 16),
+            label: Text(s.camera == 'auto' ? 'Camera: ${_cameras[s.cameraUsed] ?? 'automatic'}' : _cameras[s.camera]!,
+                style: const TextStyle(fontSize: 12)),
+          ),
+        ),
+        for (final c in dressed)
+          PopupMenuButton<String>(
+            tooltip: 'What ${c.name} wears',
+            color: StudioColors.panel,
+            onSelected: (v) => _setLook({'outfits': {...s.outfits, c.id: v}..removeWhere((_, x) => x.isEmpty)}),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: '', child: Text('Same as the scene before')),
+              for (final o in c.outfits) PopupMenuItem(value: o.id, child: Text(o.name)),
+            ],
+            child: Chip(
+              visualDensity: VisualDensity.compact,
+              avatar: const Icon(Icons.checkroom_outlined, size: 16),
+              label: Text(
+                  '${c.name}: ${c.outfits.where((o) => o.id == s.outfits[c.id]).map((o) => o.name).firstOrNull ?? 'same as before'}',
+                  style: const TextStyle(fontSize: 12)),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Future<void> _setLook(Map<String, dynamic> fields) async {
+    if (!await _save()) return;
+    try {
+      await CreatorStudioService.updateScene(widget.scene.id, fields);
+      await widget.reload();
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
   }
 
   Future<void> _setSpeech(String value) async {

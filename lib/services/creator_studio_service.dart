@@ -112,6 +112,35 @@ class StudioProject {
   bool get vertical => aspectRatio == '9:16';
 }
 
+/// One picture on a character's reference sheet.
+class StudioView {
+  final String view, label;
+  /// missing / draft / approved / outdated (made from an older front view)
+  final String status;
+  final String? url;
+  StudioView.fromJson(Map j)
+      : view = j['view'],
+        label = j['label'] ?? j['view'],
+        status = j['status'] ?? 'missing',
+        url = j['url'];
+  bool get exists => status != 'missing';
+}
+
+/// What a character wears in part of the story.
+class StudioOutfit {
+  final String id, characterId, name, description;
+  final bool isDefault, hasImage;
+  final String? imageUrl;
+  StudioOutfit.fromJson(Map j)
+      : id = j['id'],
+        characterId = j['character_id'] ?? '',
+        name = j['name'] ?? '',
+        description = j['description'] ?? '',
+        isDefault = j['is_default'] == true,
+        hasImage = j['has_image'] == true,
+        imageUrl = j['image_url'];
+}
+
 class StudioCharacter {
   final String id;
   String name, description, voice, voiceStyle;
@@ -133,7 +162,24 @@ class StudioCharacter {
         ageLabel = j['age_label'],
         ageYears = (j['age_years'] as num?)?.toInt(),
         voiceStatus = j['voice_status'] ?? ((j['voice'] ?? '') == '' ? 'needs_voice' : 'cast'),
-        portraitUrl = j['portrait_url'];
+        portraitUrl = j['portrait_url'],
+        identity = Map<String, dynamic>.from((j['identity'] as Map?) ?? const {}),
+        identityLocked = j['identity_locked'] == true,
+        identityVersion = (j['identity_version'] as num?)?.toInt() ?? 0,
+        referenceViews = ((j['reference_views'] as List?) ?? []).map((e) => StudioView.fromJson(e as Map)).toList(),
+        lockProblem = j['lock_problem'],
+        outfits = ((j['outfits'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList();
+
+  /// The permanent look: {"basic": {...}, "face": {...}, "body": {...}, "default_outfit": "..."}.
+  final Map<String, dynamic> identity;
+  final bool identityLocked;
+  final int identityVersion;
+  final List<StudioView> referenceViews;
+  /// Why the identity can't be approved and locked yet (null = it can).
+  final String? lockProblem;
+  final List<StudioOutfit> outfits;
+  bool get hasSheet => referenceViews.any((v) => v.view == 'front_full' && v.exists);
+  List<String> get missingViews => [for (final v in referenceViews) if (!v.exists) v.view];
 }
 
 class StudioLine {
@@ -178,7 +224,14 @@ class StudioScene {
         sfx = ((j['sfx'] as List?) ?? []).map((e) => e.toString()).toList(),
         voiceOutdated = ((j['voice_outdated'] as List?) ?? []).map((e) => e.toString()).toList(),
         speech = j['speech'] ?? 'saved_voice',
-        hasLipsync = j['has_lipsync'] == true;
+        hasLipsync = j['has_lipsync'] == true,
+        outfits = Map<String, String>.from((j['outfits'] as Map?) ?? const {}),
+        camera = j['camera'] ?? 'auto',
+        cameraUsed = j['camera_used'] ?? 'front';
+  /// {character id: outfit id}; a character not listed keeps the outfit from the scene before.
+  final Map<String, String> outfits;
+  /// auto / close_up / front / side / back / full_body / wide, and what 'auto' worked out.
+  final String camera, cameraUsed;
   final bool hasLipsync;
   /// Who speaks the lines: 'video_model' (in the clip) or 'saved_voice'.
   final String speech;
@@ -402,15 +455,36 @@ class CreatorStudioService {
   static Future<void> reorderScenes(String projectId, List<String> ids) =>
       _send('POST', '/projects/$projectId/scenes/order', {'scene_ids': ids});
 
-  static Future<StudioEstimate> estimate(String projectId, String kind, [List<String> targets = const []]) async =>
-      StudioEstimate.fromJson(await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets}));
+  /// `extra`: portrait jobs only, {'views': [...]} or {'outfit_id': ...}.
+  static Future<StudioEstimate> estimate(String projectId, String kind, [List<String> targets = const [],
+      Map<String, dynamic> extra = const {}]) async =>
+      StudioEstimate.fromJson(await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets, ...extra}));
 
   static Future<StudioBalance> startJobs(String projectId, String kind, List<String> targets, String requestId,
-      {bool confirmReplace = false}) async {
+      {bool confirmReplace = false, Map<String, dynamic> extra = const {}}) async {
     final j = await _send('POST', '/projects/$projectId/jobs',
-        {'kind': kind, 'target_ids': targets, 'request_id': requestId, if (confirmReplace) 'confirm_replace': true});
+        {'kind': kind, 'target_ids': targets, 'request_id': requestId, if (confirmReplace) 'confirm_replace': true, ...extra});
     return StudioBalance.fromJson(j['balance']);
   }
+
+  // ------------------------------------------------ character identity
+
+  static Future<void> updateIdentity(String characterId, Map<String, dynamic> identity) =>
+      _send('PATCH', '/characters/$characterId/identity', {'identity': identity});
+
+  static Future<void> approveView(String characterId, String view) =>
+      _send('POST', '/characters/$characterId/views/$view/approve');
+
+  static Future<void> lockIdentity(String characterId) => _send('POST', '/characters/$characterId/identity/lock');
+
+  static Future<void> unlockIdentity(String characterId) => _send('POST', '/characters/$characterId/identity/unlock');
+
+  static Future<void> addOutfit(String characterId, String name, String description) =>
+      _send('POST', '/characters/$characterId/outfits', {'name': name, 'description': description});
+
+  static Future<void> updateOutfit(String outfitId, Map<String, dynamic> fields) => _send('PATCH', '/outfits/$outfitId', fields);
+
+  static Future<void> deleteOutfit(String outfitId) => _send('DELETE', '/outfits/$outfitId');
 
   static Future<(List<StudioJob>, StudioBalance)> jobs(String projectId) async {
     final j = await _send('GET', '/projects/$projectId/jobs');

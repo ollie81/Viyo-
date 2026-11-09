@@ -103,12 +103,14 @@ Future<bool> confirmAndRun(
   required String kind,
   List<String> targets = const [],
   String? extraWarning,
+  Map<String, dynamic> extra = const {},
+  String? title,
   required void Function(StudioBalance) onStarted,
   required VoidCallback onNeedCredits,
 }) async {
   StudioEstimate est;
   try {
-    est = await CreatorStudioService.estimate(projectId, kind, targets);
+    est = await CreatorStudioService.estimate(projectId, kind, targets, extra);
   } on StudioException catch (e) {
     if (context.mounted) showStudioError(context, e.message);
     return false;
@@ -124,7 +126,7 @@ Future<bool> confirmAndRun(
     builder: (ctx) => AlertDialog(
       backgroundColor: StudioColors.panel,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: StudioColors.panelBorder)),
-      title: Text(kindTitle(kind), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      title: Text(title ?? kindTitle(kind), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -178,7 +180,7 @@ Future<bool> confirmAndRun(
   for (var attempt = 0; attempt < 2; attempt++) {
     try {
       final bal = await CreatorStudioService.startJobs(projectId, kind, targets, CreatorStudioService.newRequestId(),
-          confirmReplace: confirmReplace);
+          confirmReplace: confirmReplace, extra: extra);
       onStarted(bal);
       return true;
     } on StudioException catch (e) {
