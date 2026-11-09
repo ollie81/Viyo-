@@ -99,6 +99,7 @@ class StudioProject {
         imageQuality = j['image_quality'] ?? 'standard',
         productionStyle = j['production_style'] ?? 'pictures',
         seriesId = j['series_id'],
+        coverUrl = j['cover_url'],
         storyBible = j['story_bible'] is Map && (j['story_bible'] as Map).isNotEmpty
             ? Map<String, dynamic>.from(j['story_bible'])
             : null;
@@ -109,6 +110,8 @@ class StudioProject {
   final String productionStyle;
   /// Set once a next episode has been made from this project (or this is one).
   final String? seriesId;
+  /// The AI-made poster (title in the art, small Viyo mark in the corner).
+  final String? coverUrl;
   bool get vertical => aspectRatio == '9:16';
 }
 

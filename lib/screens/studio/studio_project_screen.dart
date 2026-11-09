@@ -1483,6 +1483,66 @@ class _ExportPanel extends StatefulWidget {
 }
 
 class _ExportPanelState extends State<_ExportPanel> {
+  /// The poster people see before they tap: AI art of the main characters
+  /// with the title, and the small Viyo mark added in a corner.
+  Widget _coverPanel(StudioProjectDetail d) {
+    final making = widget.busy('cover');
+    final url = d.project.coverUrl;
+    return Container(
+      decoration: studioPanel(),
+      padding: const EdgeInsets.all(16),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        GestureDetector(
+          onTap: url == null
+              ? null
+              : () => showDialog(
+                    context: context,
+                    builder: (ctx) => Dialog(
+                      backgroundColor: Colors.transparent,
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(ctx),
+                        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(url, fit: BoxFit.contain)),
+                      ),
+                    ),
+                  ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 96,
+              height: 128,
+              color: const Color(0xFF17173A),
+              child: Stack(fit: StackFit.expand, children: [
+                if (url != null)
+                  Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_outlined))
+                else
+                  const Icon(Icons.auto_awesome, color: AppColors.textMuted),
+                if (making) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5))),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Cover', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            const SizedBox(height: 4),
+            const Text(
+              'A poster made from your story: your characters, the title in the art, and a small Viyo mark in the corner.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              style: _primaryBtn,
+              onPressed: making ? null : () => widget.run('cover'),
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: Text(making ? 'Making cover…' : url == null ? 'Make cover' : 'Redo cover'),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   final Map<String, double?> _progress = {};
 
   Future<void> _download(StudioRender r) async {
@@ -1527,6 +1587,8 @@ class _ExportPanelState extends State<_ExportPanel> {
     final canRender = scenes.isNotEmpty && ready == scenes.length;
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
       _sectionHeader('Export', '${d.project.vertical ? '1080×1920 vertical' : '1920×1080 landscape'} MP4 · captions ${d.project.captions ? 'on' : 'off'}'),
+      _coverPanel(d),
+      const SizedBox(height: 14),
       Container(
         decoration: studioPanel(),
         padding: const EdgeInsets.all(16),
