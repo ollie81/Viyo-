@@ -100,6 +100,7 @@ class StudioProject {
         productionStyle = j['production_style'] ?? 'pictures',
         seriesId = j['series_id'],
         coverUrl = j['cover_url'],
+        covers = ((j['covers'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
         storyBible = j['story_bible'] is Map && (j['story_bible'] as Map).isNotEmpty
             ? Map<String, dynamic>.from(j['story_bible'])
             : null;
@@ -112,6 +113,8 @@ class StudioProject {
   final String? seriesId;
   /// The AI-made poster (title in the art, small Viyo mark in the corner).
   final String? coverUrl;
+  /// Every cover made for this production: {id, url, is_main}, newest first.
+  final List<Map<String, dynamic>> covers;
   bool get vertical => aspectRatio == '9:16';
 }
 
@@ -534,6 +537,9 @@ class CreatorStudioService {
   static Future<void> updateOutfit(String outfitId, Map<String, dynamic> fields) => _send('PATCH', '/outfits/$outfitId', fields);
 
   static Future<void> deleteOutfit(String outfitId) => _send('DELETE', '/outfits/$outfitId');
+
+  static Future<void> chooseCover(String projectId, String coverId) =>
+      _send('POST', '/projects/$projectId/cover', {'cover_id': coverId});
 
   static Future<(List<StudioJob>, StudioBalance)> jobs(String projectId) async {
     final j = await _send('GET', '/projects/$projectId/jobs');
