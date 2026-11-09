@@ -100,6 +100,7 @@ class StudioProject {
         productionStyle = j['production_style'] ?? 'pictures',
         seriesId = j['series_id'],
         coverUrl = j['cover_url'],
+        covers = ((j['covers'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
         storyBible = j['story_bible'] is Map && (j['story_bible'] as Map).isNotEmpty
             ? Map<String, dynamic>.from(j['story_bible'])
             : null;
@@ -112,6 +113,8 @@ class StudioProject {
   final String? seriesId;
   /// The AI-made poster (title in the art, small Viyo mark in the corner).
   final String? coverUrl;
+  /// Every cover made for this production: {id, url, is_main}, newest first.
+  final List<Map<String, dynamic>> covers;
   bool get vertical => aspectRatio == '9:16';
 }
 
@@ -314,7 +317,11 @@ class StudioRender {
         height = (j['height'] as num?)?.toInt(),
         bytes = (j['bytes'] as num?)?.toInt(),
         durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 0,
-        createdAt = DateTime.tryParse(j['created_at'] ?? '');
+        createdAt = DateTime.tryParse(j['created_at'] ?? ''),
+        postId = j['post_id'];
+  /// The Viyo post this version became, once published.
+  final String? postId;
+  bool get published => postId != null;
 }
 
 class StudioProjectDetail {
@@ -534,6 +541,15 @@ class CreatorStudioService {
   static Future<void> updateOutfit(String outfitId, Map<String, dynamic> fields) => _send('PATCH', '/outfits/$outfitId', fields);
 
   static Future<void> deleteOutfit(String outfitId) => _send('DELETE', '/outfits/$outfitId');
+
+  /// Posts a finished film to Viyo: an episode of the creator's drama, live now.
+  /// coinPrice 0 = free to watch.
+  static Future<Map<String, dynamic>> publishRender(String renderId, {required int coinPrice, String caption = ''}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/renders/$renderId/publish',
+          {'coin_price': coinPrice, 'caption': caption, 'confirm': true}));
+
+  static Future<void> chooseCover(String projectId, String coverId) =>
+      _send('POST', '/projects/$projectId/cover', {'cover_id': coverId});
 
   static Future<(List<StudioJob>, StudioBalance)> jobs(String projectId) async {
     final j = await _send('GET', '/projects/$projectId/jobs');

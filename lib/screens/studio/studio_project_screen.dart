@@ -1483,67 +1483,210 @@ class _ExportPanel extends StatefulWidget {
 }
 
 class _ExportPanelState extends State<_ExportPanel> {
-  /// The poster people see before they tap: AI art of the main characters
-  /// with the title, and the small Viyo mark added in a corner.
+  /// The poster people see before they tap. The AI designs it from the story
+  /// (any characters, or none) with the title in the art and a small Viyo mark.
+  /// Every cover is kept; the creator picks the main one.
+  Future<void> _makeCover(StudioProjectDetail d) async {
+    final idea = TextEditingController();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: Text(d.project.covers.isEmpty ? 'Make a cover' : 'Make another cover'),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('The AI reads your story and designs the poster: the right characters, or a place or object '
+                'if that tells the story better, with the title in the art.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12.5, height: 1.4)),
+            const SizedBox(height: 12),
+            TextField(controller: idea, maxLength: 300, maxLines: 2,
+                decoration: studioField('Your idea (optional)', hint: 'e.g. show the two sisters back to back in the rain')
+                    .copyWith(counterText: '')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Next')),
+        ],
+      ),
+    );
+    final note = idea.text.trim();
+    idea.dispose();
+    if (go != true) return;
+    widget.run('cover', extra: {if (note.isNotEmpty) 'cover_note': note});
+  }
+
+  Future<void> _openCover(StudioProjectDetail d, Map<String, dynamic> c) async {
+    final main = c['is_main'] == true;
+    final pick = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        contentPadding: const EdgeInsets.all(12),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420, maxHeight: 600),
+          child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network('${c['url']}', fit: BoxFit.contain)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Close')),
+          if (!main) FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Use as main cover')),
+        ],
+      ),
+    );
+    if (pick != true) return;
+    try {
+      await CreatorStudioService.chooseCover(d.project.id, '${c['id']}');
+      await widget.reload();
+      if (mounted) showStudioInfo(context, 'Main cover changed.');
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
   Widget _coverPanel(StudioProjectDetail d) {
     final making = widget.busy('cover');
-    final url = d.project.coverUrl;
+    final covers = d.project.covers;
     return Container(
       decoration: studioPanel(),
       padding: const EdgeInsets.all(16),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        GestureDetector(
-          onTap: url == null
-              ? null
-              : () => showDialog(
-                    context: context,
-                    builder: (ctx) => Dialog(
-                      backgroundColor: Colors.transparent,
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(ctx),
-                        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(url, fit: BoxFit.contain)),
-                      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(child: Text('Covers', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+          FilledButton.icon(
+            style: _primaryBtn,
+            onPressed: making ? null : () => _makeCover(d),
+            icon: const Icon(Icons.auto_awesome, size: 18),
+            label: Text(making ? 'Making…' : covers.isEmpty ? 'Make cover' : 'Make another'),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        const Text('The poster for your movie or drama, designed by AI from your story, with the title and a small '
+            'Viyo mark. The main cover is what viewers see.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35)),
+        if (covers.isNotEmpty || making) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 170,
+            child: ListView(scrollDirection: Axis.horizontal, children: [
+              if (making)
+                Container(
+                  width: 112,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(color: const Color(0xFF17173A), borderRadius: BorderRadius.circular(10)),
+                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+                ),
+              for (final c in covers)
+                GestureDetector(
+                  onTap: () => _openCover(d, c),
+                  child: Container(
+                    width: 112,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: c['is_main'] == true ? AppColors.primary : Colors.transparent, width: 2),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Stack(fit: StackFit.expand, children: [
+                        Image.network('${c['url']}', fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(Icons.image_outlined, color: AppColors.textMuted)),
+                        if (c['is_main'] == true)
+                          Positioned(
+                            left: 6,
+                            bottom: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(8)),
+                              child: const Text('Main', style: TextStyle(color: Colors.black, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                            ),
+                          ),
+                      ]),
                     ),
                   ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              width: 96,
-              height: 128,
-              color: const Color(0xFF17173A),
-              child: Stack(fit: StackFit.expand, children: [
-                if (url != null)
-                  Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_outlined))
-                else
-                  const Icon(Icons.auto_awesome, color: AppColors.textMuted),
-                if (making) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5))),
-              ]),
-            ),
+                ),
+            ]),
           ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Cover', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            const SizedBox(height: 4),
-            const Text(
-              'A poster made from your story: your characters, the title in the art, and a small Viyo mark in the corner.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35),
-            ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              style: _primaryBtn,
-              onPressed: making ? null : () => widget.run('cover'),
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: Text(making ? 'Making cover…' : url == null ? 'Make cover' : 'Redo cover'),
-            ),
-          ]),
-        ),
+        ],
       ]),
     );
   }
 
   final Map<String, double?> _progress = {};
+  bool _publishing = false;
+
+  /// Posts this version to Viyo after the creator picks the price.
+  Future<void> _publish(StudioProjectDetail d, StudioRender r) async {
+    final caption = TextEditingController();
+    final price = TextEditingController(text: '30');
+    var free = true;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: const Text('Publish to Viyo'),
+          content: SizedBox(
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  'Goes live now on your profile, your drama\'s page in Dramas, and the feed. '
+                  '${d.project.coverUrl != null ? 'Your main cover is the poster.' : 'Tip: make a cover first so viewers see a poster.'}',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5, height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                const Text('Price for viewers', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: true, label: Text('Free')),
+                    ButtonSegment(value: false, label: Text('Coins per episode')),
+                  ],
+                  selected: {free},
+                  onSelectionChanged: (v) => setDialog(() => free = v.first),
+                ),
+                if (!free) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: price,
+                    keyboardType: TextInputType.number,
+                    decoration: studioField('Coins per episode', hint: 'e.g. 30'),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('As on every Viyo drama, the first episodes are free so viewers get hooked.',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+                ],
+                const SizedBox(height: 12),
+                TextField(controller: caption, maxLength: 500, maxLines: 2,
+                    decoration: studioField('Caption (optional)').copyWith(counterText: '')),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Publish now')),
+          ],
+        ),
+      ),
+    );
+    final coins = free ? 0 : (int.tryParse(price.text.trim()) ?? 30).clamp(1, 500);
+    final text = caption.text.trim();
+    caption.dispose();
+    price.dispose();
+    if (go != true) return;
+    setState(() => _publishing = true);
+    try {
+      final out = await CreatorStudioService.publishRender(r.id, coinPrice: coins, caption: text);
+      await widget.reload();
+      if (mounted) showStudioInfo(context, 'Published as episode ${out['episode_number']}. It\'s live on Viyo.');
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
+  }
 
   Future<void> _download(StudioRender r) async {
     setState(() => _progress[r.id] = null);
@@ -1621,7 +1764,8 @@ class _ExportPanelState extends State<_ExportPanel> {
           margin: const EdgeInsets.only(bottom: 10),
           decoration: studioPanel(),
           padding: const EdgeInsets.all(12),
-          child: Row(children: [
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+           Row(children: [
             Container(
               width: 44, height: 44,
               decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
@@ -1640,11 +1784,28 @@ class _ExportPanelState extends State<_ExportPanel> {
               ]),
             ),
             IconButton(tooltip: 'Preview', onPressed: () => _preview(r), icon: const Icon(Icons.play_circle_outline)),
+           ]),
+           const SizedBox(height: 8),
+           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             FilledButton.tonalIcon(
               onPressed: _progress.containsKey(r.id) ? null : () => _download(r),
               icon: const Icon(Icons.download, size: 18),
               label: const Text('Download'),
             ),
+            if (r.published)
+              const Chip(
+                visualDensity: VisualDensity.compact,
+                avatar: Icon(Icons.check_circle, size: 16, color: AppColors.success),
+                label: Text('Published on Viyo', style: TextStyle(fontSize: 12)),
+              )
+            else
+              FilledButton.icon(
+                style: _primaryBtn,
+                onPressed: _publishing ? null : () => _publish(d, r),
+                icon: const Icon(Icons.public, size: 18),
+                label: Text(_publishing ? 'Publishing…' : 'Publish to Viyo'),
+              ),
+           ]),
           ]),
         ),
       const SizedBox(height: 14),
