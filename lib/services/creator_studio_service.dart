@@ -187,6 +187,7 @@ class StudioCharacter {
         identityVersion = (j['identity_version'] as num?)?.toInt() ?? 0,
         referenceViews = ((j['reference_views'] as List?) ?? []).map((e) => StudioView.fromJson(e as Map)).toList(),
         lockProblem = j['lock_problem'],
+        guessedFields = ((j['guessed_fields'] as List?) ?? []).map((e) => e.toString()).toList(),
         outfits = ((j['outfits'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
         outfitSuggestions = ((j['outfit_suggestions'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
         outfitLibrary = ((j['outfit_library'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList();
@@ -198,6 +199,8 @@ class StudioCharacter {
   final List<StudioView> referenceViews;
   /// Why the identity can't be approved and locked yet (null = it can).
   final String? lockProblem;
+  /// Details the AI chose itself ("face.eyes"), not yet checked by the creator.
+  final List<String> guessedFields;
   final List<StudioOutfit> outfits;
   /// Suggested by the AI from the screenplay; nothing is used until accepted.
   final List<StudioOutfit> outfitSuggestions;
@@ -254,7 +257,13 @@ class StudioScene {
         outfitOverrides = ((j['outfit_overrides'] as Map?) ?? const {})
             .map((k, v) => MapEntry(k.toString(), Map<String, String>.from(v as Map))),
         camera = j['camera'] ?? 'auto',
-        cameraUsed = j['camera_used'] ?? 'front';
+        cameraUsed = j['camera_used'] ?? 'front',
+        consistency = ((j['consistency'] as List?) ?? []).map((e) => e.toString()).toList(),
+        madeWithReferences = ((j['made_with_references'] as List?) ?? []).map((e) => e.toString()).toList();
+  /// Characters whose identity or outfit changed after this scene was made.
+  final List<String> consistency;
+  /// The reference pictures the scene's picture or video was actually made with.
+  final List<String> madeWithReferences;
   /// {character id: outfit id}; a character not listed keeps the outfit from the scene before.
   final Map<String, String> outfits;
   /// This scene only: {character id: {part: text}} on top of the chosen outfit.

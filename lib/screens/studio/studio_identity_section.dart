@@ -113,7 +113,9 @@ class _CharacterIdentitySectionState extends State<CharacterIdentitySection> {
       true;
 
   Future<void> _lock() async {
+    final n = c.guessedFields.length;
     final yes = await _confirm('Approve and lock ${c.name}?',
+        '${n > 0 ? '$n detail${n == 1 ? ' is' : 's are'} still an AI guess you haven\'t checked. ' : ''}'
         'Every finished view is approved and ${c.name} looks exactly like this in every scene. You can unlock later to make changes.');
     if (yes) await _act(() => CreatorStudioService.lockIdentity(c.id), done: '${c.name}\'s identity is locked.');
   }
@@ -281,6 +283,15 @@ class _CharacterIdentitySectionState extends State<CharacterIdentitySection> {
         ],
       ]);
 
+  String _fieldLabel(String key) {
+    for (final (sec, fields) in _fields) {
+      for (final (k, label) in fields) {
+        if ('$sec.$k' == key) return label.toLowerCase();
+      }
+    }
+    return key == 'default_outfit' ? 'usual clothes' : key;
+  }
+
   Widget _statusChip(String status) {
     final (label, color) = switch (status) {
       'approved' => ('Approved', AppColors.success),
@@ -402,6 +413,33 @@ class _CharacterIdentitySectionState extends State<CharacterIdentitySection> {
           const SizedBox(height: 4),
           Text(c.lockProblem!, style: const TextStyle(color: AppColors.coin, fontSize: 12)),
         ],
+        if (!locked && c.guessedFields.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 8, 6, 4),
+            decoration: BoxDecoration(
+              color: AppColors.coin.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.coin.withValues(alpha: 0.3)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                '${c.guessedFields.length} detail${c.guessedFields.length == 1 ? ' was' : 's were'} not in the story, so the AI '
+                'guessed ${c.guessedFields.length == 1 ? 'it' : 'them'} (e.g. ${_fieldLabel(c.guessedFields.first)}). Check and correct them.',
+                style: const TextStyle(fontSize: 12, height: 1.35),
+              ),
+              Wrap(spacing: 4, children: [
+                TextButton(onPressed: busy ? null : _editIdentity, child: const Text('Check details')),
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => _act(() => CreatorStudioService.updateIdentity(c.id, {'_confirm': 'all'}), done: 'Details confirmed.'),
+                  child: const Text('They\'re right'),
+                ),
+              ]),
+            ]),
+          ),
+        ],
       ],
       const SizedBox(height: 12),
       _outfits(busy),
@@ -436,6 +474,8 @@ const _fields = <(String, List<(String, String)>)>[
 const _sectionTitle = {'basic': 'Basic identity', 'face': 'Face', 'body': 'Body'};
 
 class _IdentityEditorState extends State<_IdentityEditor> {
+  late final Set<String> _guessed = {...widget.c.guessedFields};
+  final Set<String> _confirmed = {};
   late final Map<String, TextEditingController> _ctl = {
     for (final (sec, fields) in _fields)
       for (final (k, _) in fields)
@@ -460,6 +500,7 @@ class _IdentityEditorState extends State<_IdentityEditor> {
       };
     }
     out['default_outfit'] = _ctl['default_outfit']!.text.trim();
+    if (_confirmed.isNotEmpty) out['_confirm'] = _confirmed.toList();
     return out;
   }
 
@@ -502,7 +543,23 @@ class _IdentityEditorState extends State<_IdentityEditor> {
                       readOnly: locked,
                       keyboardType: k == 'height_cm' ? TextInputType.number : TextInputType.text,
                       maxLength: 200,
-                      decoration: studioField(label).copyWith(counterText: ''),
+                      decoration: studioField(label).copyWith(
+                        counterText: '',
+                        helperText: _guessed.contains('$sec.$k') && !_confirmed.contains('$sec.$k')
+                            ? 'AI guess: not in the story. Correct it, or tick it if it\'s right.'
+                            : null,
+                        helperStyle: const TextStyle(color: AppColors.coin, fontSize: 11),
+                        suffixIcon: _guessed.contains('$sec.$k') && !locked
+                            ? IconButton(
+                                tooltip: 'This is right',
+                                icon: Icon(_confirmed.contains('$sec.$k') ? Icons.check_circle : Icons.check_circle_outline,
+                                    color: _confirmed.contains('$sec.$k') ? AppColors.success : AppColors.coin, size: 20),
+                                onPressed: () => setState(() => _confirmed.contains('$sec.$k')
+                                    ? _confirmed.remove('$sec.$k')
+                                    : _confirmed.add('$sec.$k')),
+                              )
+                            : null,
+                      ),
                     ),
                     const SizedBox(height: 8),
                   ],

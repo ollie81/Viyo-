@@ -1230,6 +1230,34 @@ class _SceneCardState extends State<_SceneCard> {
         const SizedBox(height: 8),
       ],
       _lookRow(s),
+      if (s.consistency.isNotEmpty) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(color: AppColors.coin.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.coin.withValues(alpha: 0.35))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.face_retouching_natural, size: 16, color: AppColors.coin),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(s.consistency.join('\n'), style: const TextStyle(fontSize: 12.5, color: AppColors.coin, height: 1.3)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 8),
+      ],
+      if (s.madeWithReferences.isNotEmpty && s.consistency.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Tooltip(
+            message: s.madeWithReferences.join('\n'),
+            child: Row(children: [
+              const Icon(Icons.verified_user_outlined, size: 14, color: AppColors.success),
+              const SizedBox(width: 6),
+              Text('Made with ${s.madeWithReferences.length} reference picture${s.madeWithReferences.length == 1 ? '' : 's'}',
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+            ]),
+          ),
+        ),
       if (s.voiceOutdated.isNotEmpty) ...[
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
