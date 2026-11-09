@@ -91,6 +91,7 @@ const _kindTitles = {
   'voice': 'Voices',
   'video': 'AI video',
   'render': 'Render the film',
+  'outfits': 'Suggest outfits',
 };
 
 String kindTitle(String kind) => _kindTitles[kind] ?? kind;

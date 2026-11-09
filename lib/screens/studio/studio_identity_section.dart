@@ -129,35 +129,157 @@ class _CharacterIdentitySectionState extends State<CharacterIdentitySection> {
   }
 
   Future<void> _outfitDialog({StudioOutfit? o}) async {
-    final name = TextEditingController(text: o?.name ?? ''), desc = TextEditingController(text: o?.description ?? '');
-    final ok = await showDialog<bool>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: StudioColors.panel,
-        title: Text(o == null ? 'New outfit for ${c.name}' : 'Edit outfit'),
-        content: SizedBox(
-          width: 420,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: name, maxLength: 60, decoration: studioField('Name', hint: 'e.g. Wedding dress').copyWith(counterText: '')),
-            const SizedBox(height: 10),
-            TextField(controller: desc, maxLines: 3, maxLength: 800,
-                decoration: studioField('What they wear', hint: 'Clothes, colours, shoes, jewellery').copyWith(counterText: '')),
-            const SizedBox(height: 6),
-            const Text('Only the clothes change. Face, hair and body stay exactly the same.',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(o == null ? 'Add' : 'Save')),
-        ],
-      ),
+      builder: (ctx) => _OutfitDialog(characterName: c.name, outfit: o),
     );
-    if (ok != true || name.text.trim().isEmpty) return;
+    if (result == null) return;
+    final parts = Map<String, String>.from(result['parts'] as Map);
     await _act(() => o == null
-        ? CreatorStudioService.addOutfit(c.id, name.text.trim(), desc.text.trim())
-        : CreatorStudioService.updateOutfit(o.id, {'name': name.text.trim(), 'description': desc.text.trim()}));
+        ? CreatorStudioService.addOutfit(c.id, result['name'], result['description'],
+            parts: parts, temporary: result['is_temporary'] == true)
+        : CreatorStudioService.updateOutfit(o.id, {
+            'name': result['name'], 'description': result['description'], 'parts': parts,
+            'is_temporary': result['is_temporary'] == true,
+          }));
   }
+
+  void _outfitPicture(StudioOutfit o, {bool redo = false}) {
+    if (!c.hasSheet) {
+      showStudioError(context, 'Create ${c.name}\'s reference sheet first: outfit pictures are made from the front view.');
+      return;
+    }
+    widget.run('portrait', targets: [c.id], extra: {'outfit_id': o.id}, title: '${redo ? 'Redo outfit' : 'Outfit'} picture: ${o.name}');
+  }
+
+  Widget _tag(String text, Color color) => Container(
+        margin: const EdgeInsets.only(left: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8)),
+        child: Text(text, style: TextStyle(color: color, fontSize: 10.5, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _outfitRow(StudioOutfit o, bool busy) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          AspectFrame(vertical: true, width: 34, imageUrl: o.imageUrl, placeholder: Icons.checkroom_outlined),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                Text(o.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                if (o.isDefault) _tag('Main', AppColors.primary),
+                if (o.isTemporary) _tag('Temporary', AppColors.coin),
+                if (o.imageOutdated) _tag('Picture out of date', AppColors.danger),
+              ]),
+              if (o.summary.isNotEmpty)
+                Text(o.summary, maxLines: 3, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.3)),
+            ]),
+          ),
+          if (!o.hasImage || o.imageOutdated)
+            TextButton(
+              onPressed: busy ? null : () => _outfitPicture(o, redo: o.hasImage),
+              child: Text(o.hasImage ? 'Update picture' : 'Make picture'),
+            ),
+          PopupMenuButton<String>(
+            color: StudioColors.panel,
+            onSelected: (v) async {
+              if (v == 'edit') {
+                await _outfitDialog(o: o);
+              } else if (v == 'redo') {
+                _outfitPicture(o, redo: true);
+              } else if (v == 'delete') {
+                if (await _confirm('Remove ${o.name}?', 'Scenes that used it keep the outfit from the scene before.')) {
+                  await _act(() => CreatorStudioService.deleteOutfit(o.id));
+                }
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'edit', child: Text('Edit')),
+              if (o.hasImage) const PopupMenuItem(value: 'redo', child: Text('Redo picture')),
+              if (!o.isDefault) const PopupMenuItem(value: 'delete', child: Text('Remove')),
+            ],
+          ),
+        ]),
+      );
+
+  /// Saved outfits, AI suggestions waiting for a decision, and outfits from
+  /// earlier episodes ready to reuse.
+  Widget _outfits(bool busy) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(child: Text('Outfits', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+          TextButton.icon(
+            onPressed: busy ? null : () => _outfitDialog(),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Add outfit'),
+          ),
+        ]),
+        const Text('Clothes can change in any scene. Face, hair and body always stay the same.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+        const SizedBox(height: 8),
+        for (final o in c.outfits) _outfitRow(o, busy),
+        if (c.outfitSuggestions.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          const Row(children: [
+            Icon(Icons.auto_awesome, size: 15, color: AppColors.coin),
+            SizedBox(width: 6),
+            Text('Suggested from the screenplay', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: AppColors.coin)),
+          ]),
+          const SizedBox(height: 6),
+          for (final o in c.outfitSuggestions)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.coin.withValues(alpha: 0.35)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(o.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                if (o.reason.isNotEmpty) Text(o.reason, style: const TextStyle(fontSize: 12, height: 1.3)),
+                if (o.summary.isNotEmpty)
+                  Text(o.summary, style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.3)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 8, runSpacing: 4, children: [
+                  if (o.suggestedScenes.isNotEmpty)
+                    FilledButton(
+                      onPressed: busy ? null : () => _act(() => CreatorStudioService.acceptOutfit(o.id), done: 'Outfit saved and used.'),
+                      child: Text('Use in ${o.suggestedScenes.length} scene${o.suggestedScenes.length == 1 ? '' : 's'}'),
+                    ),
+                  OutlinedButton(
+                    onPressed: busy
+                        ? null
+                        : () => _act(() => CreatorStudioService.acceptOutfit(o.id, useInSuggestedScenes: false), done: 'Outfit saved.'),
+                    child: const Text('Save only'),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : () => _act(() => CreatorStudioService.deleteOutfit(o.id)),
+                    child: const Text('Dismiss'),
+                  ),
+                ]),
+              ]),
+            ),
+        ],
+        if (c.outfitLibrary.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          const Text('From earlier episodes', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+          const SizedBox(height: 6),
+          for (final o in c.outfitLibrary)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                AspectFrame(vertical: true, width: 28, imageUrl: o.imageUrl, placeholder: Icons.checkroom_outlined),
+                const SizedBox(width: 10),
+                Expanded(child: Text(o.name, style: const TextStyle(fontSize: 13))),
+                TextButton(
+                  onPressed: busy ? null : () => _act(() => CreatorStudioService.importOutfit(c.id, o.id), done: '${o.name} added.'),
+                  child: const Text('Use'),
+                ),
+              ]),
+            ),
+        ],
+      ]);
 
   Widget _statusChip(String status) {
     final (label, color) = switch (status) {
@@ -280,58 +402,9 @@ class _CharacterIdentitySectionState extends State<CharacterIdentitySection> {
           const SizedBox(height: 4),
           Text(c.lockProblem!, style: const TextStyle(color: AppColors.coin, fontSize: 12)),
         ],
-        const SizedBox(height: 12),
-        Row(children: [
-          const Expanded(child: Text('Outfits', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-          TextButton.icon(
-            onPressed: busy ? null : () => _outfitDialog(),
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Add outfit'),
-          ),
-        ]),
-        for (final o in c.outfits)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(children: [
-              AspectFrame(vertical: true, width: 34, imageUrl: o.imageUrl, placeholder: Icons.checkroom_outlined),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(o.isDefault ? '${o.name} (main)' : o.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                  if (o.description.isNotEmpty)
-                    Text(o.description, maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
-                ]),
-              ),
-              if (!o.hasImage)
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => widget.run('portrait', targets: [c.id], extra: {'outfit_id': o.id}, title: 'Outfit picture: ${o.name}'),
-                  child: const Text('Make picture'),
-                ),
-              PopupMenuButton<String>(
-                color: StudioColors.panel,
-                onSelected: (v) async {
-                  if (v == 'edit') {
-                    await _outfitDialog(o: o);
-                  } else if (v == 'redo') {
-                    widget.run('portrait', targets: [c.id], extra: {'outfit_id': o.id}, title: 'Redo outfit picture: ${o.name}');
-                  } else if (v == 'delete') {
-                    if (await _confirm('Remove ${o.name}?', 'Scenes that used it keep the outfit from the scene before.')) {
-                      await _act(() => CreatorStudioService.deleteOutfit(o.id));
-                    }
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  if (o.hasImage) const PopupMenuItem(value: 'redo', child: Text('Redo picture')),
-                  if (!o.isDefault) const PopupMenuItem(value: 'delete', child: Text('Remove')),
-                ],
-              ),
-            ]),
-          ),
       ],
+      const SizedBox(height: 12),
+      _outfits(busy),
     ]);
   }
 }
@@ -454,6 +527,93 @@ class _IdentityEditorState extends State<_IdentityEditor> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+
+/// Name, the four outfit parts (each changes on its own), notes, and whether
+/// it is a temporary change.
+class _OutfitDialog extends StatefulWidget {
+  final String characterName;
+  final StudioOutfit? outfit;
+  const _OutfitDialog({required this.characterName, this.outfit});
+  @override
+  State<_OutfitDialog> createState() => _OutfitDialogState();
+}
+
+class _OutfitDialogState extends State<_OutfitDialog> {
+  late final _name = TextEditingController(text: widget.outfit?.name ?? '');
+  late final _notes = TextEditingController(text: widget.outfit?.description ?? '');
+  late final Map<String, TextEditingController> _parts = {
+    for (final k in StudioOutfit.parts) k: TextEditingController(text: widget.outfit?.partValues[k] ?? ''),
+  };
+  late bool _temporary = widget.outfit?.isTemporary ?? false;
+
+  static const _hints = {
+    'clothing': 'e.g. navy hospital scrubs, white coat',
+    'shoes': 'e.g. white clogs',
+    'accessories': 'e.g. ID badge, silver watch',
+    'makeup': 'e.g. none, tired eyes',
+  };
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _notes.dispose();
+    for (final c in _parts.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: StudioColors.panel,
+      title: Text(widget.outfit == null ? 'New outfit for ${widget.characterName}' : 'Edit outfit'),
+      content: SizedBox(
+        width: 440,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: _name, maxLength: 60,
+                decoration: studioField('Name', hint: 'Casual, Work, Wedding, Hospital, Nightwear…').copyWith(counterText: '')),
+            const SizedBox(height: 10),
+            for (final k in StudioOutfit.parts) ...[
+              TextField(controller: _parts[k], maxLength: 300,
+                  decoration: studioField(StudioOutfit.partLabels[k]!, hint: _hints[k]).copyWith(counterText: '')),
+              const SizedBox(height: 8),
+            ],
+            TextField(controller: _notes, maxLines: 2, maxLength: 800,
+                decoration: studioField('Other notes (optional)', hint: 'Condition, colours, style').copyWith(counterText: '')),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _temporary,
+              onChanged: (v) => setState(() => _temporary = v),
+              title: const Text('Temporary change', style: TextStyle(fontSize: 13.5)),
+              subtitle: const Text('For a short part of the story (e.g. soaked by rain). Not offered in later episodes.',
+                  style: TextStyle(fontSize: 11.5)),
+            ),
+            const Text('Only what they wear changes. Face, hair, body and height stay exactly the same.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            if (_name.text.trim().isEmpty) return;
+            Navigator.pop(context, {
+              'name': _name.text.trim(),
+              'description': _notes.text.trim(),
+              'parts': {for (final e in _parts.entries) e.key: e.value.text.trim()},
+              'is_temporary': _temporary,
+            });
+          },
+          child: Text(widget.outfit == null ? 'Add' : 'Save'),
+        ),
+      ],
     );
   }
 }

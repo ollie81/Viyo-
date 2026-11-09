@@ -126,19 +126,38 @@ class StudioView {
   bool get exists => status != 'missing';
 }
 
-/// What a character wears in part of the story.
+/// What a character wears in part of the story. Clothing, shoes, accessories
+/// and makeup change on their own; the face and body never do.
 class StudioOutfit {
-  final String id, characterId, name, description;
-  final bool isDefault, hasImage;
+  static const parts = ['clothing', 'shoes', 'accessories', 'makeup'];
+  static const partLabels = {'clothing': 'Clothing', 'shoes': 'Shoes', 'accessories': 'Accessories', 'makeup': 'Makeup'};
+
+  final String id, characterId, name, description, status, reason;
+  final Map<String, String> partValues;
+  final bool isDefault, isTemporary, hasImage, imageOutdated;
+  final List<String> suggestedScenes;
   final String? imageUrl;
   StudioOutfit.fromJson(Map j)
       : id = j['id'],
         characterId = j['character_id'] ?? '',
         name = j['name'] ?? '',
         description = j['description'] ?? '',
+        status = j['status'] ?? 'saved',
+        reason = j['reason'] ?? '',
+        partValues = Map<String, String>.from((j['parts'] as Map?) ?? const {}),
         isDefault = j['is_default'] == true,
+        isTemporary = j['is_temporary'] == true,
         hasImage = j['has_image'] == true,
+        imageOutdated = j['image_outdated'] == true,
+        suggestedScenes = ((j['suggested_scenes'] as List?) ?? []).map((e) => e.toString()).toList(),
         imageUrl = j['image_url'];
+
+  /// "Clothing: …; Shoes: …" for a one-line summary.
+  String get summary {
+    final bits = [for (final k in parts) if ((partValues[k] ?? '').isNotEmpty) '${partLabels[k]}: ${partValues[k]}'];
+    if (description.isNotEmpty) bits.insert(0, description);
+    return bits.join(' · ');
+  }
 }
 
 class StudioCharacter {
@@ -168,7 +187,9 @@ class StudioCharacter {
         identityVersion = (j['identity_version'] as num?)?.toInt() ?? 0,
         referenceViews = ((j['reference_views'] as List?) ?? []).map((e) => StudioView.fromJson(e as Map)).toList(),
         lockProblem = j['lock_problem'],
-        outfits = ((j['outfits'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList();
+        outfits = ((j['outfits'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
+        outfitSuggestions = ((j['outfit_suggestions'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
+        outfitLibrary = ((j['outfit_library'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList();
 
   /// The permanent look: {"basic": {...}, "face": {...}, "body": {...}, "default_outfit": "..."}.
   final Map<String, dynamic> identity;
@@ -178,6 +199,10 @@ class StudioCharacter {
   /// Why the identity can't be approved and locked yet (null = it can).
   final String? lockProblem;
   final List<StudioOutfit> outfits;
+  /// Suggested by the AI from the screenplay; nothing is used until accepted.
+  final List<StudioOutfit> outfitSuggestions;
+  /// Saved outfits from the series' other episodes, ready to reuse.
+  final List<StudioOutfit> outfitLibrary;
   bool get hasSheet => referenceViews.any((v) => v.view == 'front_full' && v.exists);
   List<String> get missingViews => [for (final v in referenceViews) if (!v.exists) v.view];
 }
@@ -226,10 +251,14 @@ class StudioScene {
         speech = j['speech'] ?? 'saved_voice',
         hasLipsync = j['has_lipsync'] == true,
         outfits = Map<String, String>.from((j['outfits'] as Map?) ?? const {}),
+        outfitOverrides = ((j['outfit_overrides'] as Map?) ?? const {})
+            .map((k, v) => MapEntry(k.toString(), Map<String, String>.from(v as Map))),
         camera = j['camera'] ?? 'auto',
         cameraUsed = j['camera_used'] ?? 'front';
   /// {character id: outfit id}; a character not listed keeps the outfit from the scene before.
   final Map<String, String> outfits;
+  /// This scene only: {character id: {part: text}} on top of the chosen outfit.
+  final Map<String, Map<String, String>> outfitOverrides;
   /// auto / close_up / front / side / back / full_body / wide, and what 'auto' worked out.
   final String camera, cameraUsed;
   final bool hasLipsync;
@@ -479,8 +508,16 @@ class CreatorStudioService {
 
   static Future<void> unlockIdentity(String characterId) => _send('POST', '/characters/$characterId/identity/unlock');
 
-  static Future<void> addOutfit(String characterId, String name, String description) =>
-      _send('POST', '/characters/$characterId/outfits', {'name': name, 'description': description});
+  static Future<void> addOutfit(String characterId, String name, String description,
+          {Map<String, String> parts = const {}, bool temporary = false}) =>
+      _send('POST', '/characters/$characterId/outfits',
+          {'name': name, 'description': description, 'parts': parts, 'is_temporary': temporary});
+
+  static Future<void> acceptOutfit(String outfitId, {bool useInSuggestedScenes = true}) =>
+      _send('POST', '/outfits/$outfitId/accept', {'use_in_suggested_scenes': useInSuggestedScenes});
+
+  static Future<void> importOutfit(String characterId, String outfitId) =>
+      _send('POST', '/characters/$characterId/outfits/import', {'outfit_id': outfitId});
 
   static Future<void> updateOutfit(String outfitId, Map<String, dynamic> fields) => _send('PATCH', '/outfits/$outfitId', fields);
 

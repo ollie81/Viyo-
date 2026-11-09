@@ -676,6 +676,12 @@ class _CastPanel extends StatelessWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
       _sectionHeader('Cast', 'Create each character once and approve their look. Viyo keeps them the same person in every scene.', actions: [
         OutlinedButton.icon(onPressed: () => _add(context), icon: const Icon(Icons.person_add_alt, size: 18), label: const Text('Add character')),
+        if (d.characters.isNotEmpty && d.project.script.trim().isNotEmpty)
+          OutlinedButton.icon(
+            onPressed: busy('outfits') ? null : () => run('outfits'),
+            icon: const Icon(Icons.checkroom_outlined, size: 18),
+            label: Text(busy('outfits') ? 'Suggesting outfits…' : 'Suggest outfits'),
+          ),
         if (missing.isNotEmpty)
           FilledButton.icon(
             style: _primaryBtn,
@@ -1293,7 +1299,7 @@ class _SceneCardState extends State<_SceneCard> {
 
   /// Camera framing and, for characters with more than one outfit, what they wear.
   Widget _lookRow(StudioScene s) {
-    final dressed = _inScene(s).where((c) => c.outfits.length > 1).toList();
+    final dressed = _inScene(s).where((c) => c.outfits.isNotEmpty).toList();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -1313,21 +1319,66 @@ class _SceneCardState extends State<_SceneCard> {
           PopupMenuButton<String>(
             tooltip: 'What ${c.name} wears',
             color: StudioColors.panel,
-            onSelected: (v) => _setLook({'outfits': {...s.outfits, c.id: v}..removeWhere((_, x) => x.isEmpty)}),
+            onSelected: (v) => v == '__scene_only__'
+                ? _sceneOnly(s, c)
+                : _setLook({'outfits': {...s.outfits, c.id: v}..removeWhere((_, x) => x.isEmpty)}),
             itemBuilder: (_) => [
               const PopupMenuItem(value: '', child: Text('Same as the scene before')),
               for (final o in c.outfits) PopupMenuItem(value: o.id, child: Text(o.name)),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: '__scene_only__', child: Text('Change for this scene only…')),
             ],
             child: Chip(
               visualDensity: VisualDensity.compact,
               avatar: const Icon(Icons.checkroom_outlined, size: 16),
               label: Text(
-                  '${c.name}: ${c.outfits.where((o) => o.id == s.outfits[c.id]).map((o) => o.name).firstOrNull ?? 'same as before'}',
+                  '${c.name}: ${c.outfits.where((o) => o.id == s.outfits[c.id]).map((o) => o.name).firstOrNull ?? 'same as before'}'
+                  '${(s.outfitOverrides[c.id] ?? const {}).isNotEmpty ? ' + scene change' : ''}',
                   style: const TextStyle(fontSize: 12)),
             ),
           ),
       ]),
     );
+  }
+
+  /// A change for this scene only (e.g. smudged makeup), part by part, on top
+  /// of the outfit. The saved outfit and the next scene are not changed.
+  Future<void> _sceneOnly(StudioScene s, StudioCharacter c) async {
+    final current = s.outfitOverrides[c.id] ?? const {};
+    final ctl = {for (final k in StudioOutfit.parts) k: TextEditingController(text: current[k] ?? '')};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: Text('${c.name} in this scene only'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Fill in only what changes. The outfit, the other scenes, and the face and body stay the same.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35)),
+              const SizedBox(height: 10),
+              for (final k in StudioOutfit.parts) ...[
+                TextField(controller: ctl[k], maxLength: 300,
+                    decoration: studioField(StudioOutfit.partLabels[k]!, hint: 'Leave empty to keep the outfit\'s').copyWith(counterText: '')),
+                const SizedBox(height: 8),
+              ],
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    final parts = {for (final e in ctl.entries) if (e.value.text.trim().isNotEmpty) e.key: e.value.text.trim()};
+    for (final x in ctl.values) {
+      x.dispose();
+    }
+    if (ok != true) return;
+    final all = {...s.outfitOverrides, c.id: parts}..removeWhere((_, v) => v.isEmpty);
+    await _setLook({'outfit_overrides': all});
   }
 
   Future<void> _setLook(Map<String, dynamic> fields) async {
