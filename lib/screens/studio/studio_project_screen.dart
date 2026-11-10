@@ -1161,7 +1161,21 @@ class _SceneCardState extends State<_SceneCard> {
       overlay: Stack(children: [
         if (imgBusy || vidBusy) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5))),
         Positioned(left: 6, top: 6, child: _badge('${widget.index + 1}')),
-        if (s.hasVideo) Positioned(right: 6, top: 6, child: _badge('VIDEO', color: AppColors.secondary)),
+        if ((s.lipsyncUrl ?? s.videoUrl) != null && !imgBusy && !vidBusy)
+          Center(
+            child: Material(
+              color: Colors.black54,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Play video',
+                iconSize: 34,
+                onPressed: () => showDialog(
+                    context: context,
+                    builder: (_) => _PreviewDialog(url: (s.lipsyncUrl ?? s.videoUrl)!, vertical: vertical)),
+                icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+              ),
+            ),
+          ),
       ]),
     );
     final actions = Wrap(spacing: 6, runSpacing: 6, children: [
@@ -1194,9 +1208,9 @@ class _SceneCardState extends State<_SceneCard> {
       for (var i = 0; i < _lines.length; i++)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Row(children: [
+          child: Wrap(runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
             SizedBox(
-              width: MediaQuery.of(context).size.width < 500 ? 112 : 150,
+              width: MediaQuery.of(context).size.width < 500 ? 150 : 170,
               child: DropdownButtonFormField<String>(
                 initialValue: names.firstWhere((n) => n.toLowerCase() == _lines[i].$1.toLowerCase(), orElse: () => 'NARRATOR'),
                 isExpanded: true,
@@ -1206,8 +1220,7 @@ class _SceneCardState extends State<_SceneCard> {
                 onChanged: (v) => setState(() => _lines[i] = (v ?? 'NARRATOR', _lines[i].$2, _lines[i].$3, _lines[i].$4)),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _lines[i].$2, onChanged: (_) => setState(() {}), decoration: studioField('Line'))),
+            const SizedBox(width: 4),
             _moodButton(i),
             IconButton(
               tooltip: 'Remove line',
@@ -1217,6 +1230,13 @@ class _SceneCardState extends State<_SceneCard> {
               }),
               icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
             ),
+            // The words get the full width so the whole line can be read and edited.
+            SizedBox(width: double.infinity, child: TextField(
+                controller: _lines[i].$2,
+                onChanged: (_) => setState(() {}),
+                minLines: 1,
+                maxLines: 4,
+                decoration: studioField('What ${_lines[i].$1.isEmpty ? 'they say' : '${_lines[i].$1} says'}'))),
           ]),
         ),
       Align(
