@@ -118,6 +118,24 @@ class StudioProject {
   bool get vertical => aspectRatio == '9:16';
 }
 
+/// A place or an object that looks the same in every scene.
+class StudioElement {
+  final String id, kind, name, description, status;
+  final Map<String, String> details;
+  final String? imageUrl;
+  final bool hasImage;
+  StudioElement.fromJson(Map j)
+      : id = j['id'],
+        kind = j['kind'] ?? 'prop',
+        name = j['name'] ?? '',
+        description = j['description'] ?? '',
+        status = j['status'] ?? 'draft',
+        details = ((j['details'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', '$v')),
+        imageUrl = j['image_url'],
+        hasImage = j['has_image'] == true;
+  bool get isPlace => kind == 'location';
+}
+
 /// One picture on a character's reference sheet.
 class StudioView {
   final String view, label;
@@ -265,9 +283,19 @@ class StudioScene {
         camera = j['camera'] ?? 'auto',
         cameraUsed = j['camera_used'] ?? 'front',
         consistency = ((j['consistency'] as List?) ?? []).map((e) => e.toString()).toList(),
+        locationId = j['location_id'],
+        propIds = (j['props'] as List?)?.map((e) => e.toString()).toList(),
+        locationUsed = j['location_used'] is Map ? '${(j['location_used'] as Map)['name']}' : null,
+        propsUsed = ((j['props_used'] as List?) ?? []).map((e) => '${(e as Map)['name']}').toList(),
         madeWithReferences = ((j['made_with_references'] as List?) ?? []).map((e) => e.toString()).toList();
   /// Characters whose identity or outfit changed after this scene was made.
   final List<String> consistency;
+  /// The chosen place (null = worked out from the heading) and objects (null = worked out from the text).
+  final String? locationId;
+  final List<String>? propIds;
+  /// The place and objects this scene actually uses.
+  final String? locationUsed;
+  final List<String> propsUsed;
   /// The reference pictures the scene's picture or video was actually made with.
   final List<String> madeWithReferences;
   /// {character id: outfit id}; a character not listed keeps the outfit from the scene before.
@@ -338,7 +366,10 @@ class StudioProjectDetail {
         renders = ((j['renders'] as List?) ?? []).map((e) => StudioRender.fromJson(e)).toList(),
         jobs = ((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(),
         balance = StudioBalance.fromJson(j['balance']),
-        production = j['production'] is Map ? Map<String, dynamic>.from(j['production']) : null;
+        production = j['production'] is Map ? Map<String, dynamic>.from(j['production']) : null,
+        elements = ((j['elements'] as List?) ?? []).map((e) => StudioElement.fromJson(e as Map)).toList();
+  /// The production's places and objects.
+  final List<StudioElement> elements;
   /// The latest one-click production run with its progress, if any.
   final Map<String, dynamic>? production;
   bool get producing => production?['status'] == 'running';
@@ -564,6 +595,17 @@ class CreatorStudioService {
   static Future<void> resumeProduction(String runId) => _send('POST', '/production/$runId/resume');
 
   static Future<void> cancelProduction(String runId) => _send('POST', '/production/$runId/cancel');
+
+  // ------------------------------------------------ places and objects
+
+  static Future<void> addElement(String projectId, String kind, String name, String description,
+          {Map<String, String> details = const {}}) =>
+      _send('POST', '/projects/$projectId/elements',
+          {'kind': kind, 'name': name, 'description': description, 'details': details});
+
+  static Future<void> updateElement(String id, Map<String, dynamic> fields) => _send('PATCH', '/elements/$id', fields);
+
+  static Future<void> deleteElement(String id) => _send('DELETE', '/elements/$id');
 
   static Future<void> chooseCover(String projectId, String coverId) =>
       _send('POST', '/projects/$projectId/cover', {'cover_id': coverId});
