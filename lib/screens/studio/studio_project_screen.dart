@@ -2156,7 +2156,12 @@ class _SoundQualityCardState extends State<_SoundQualityCard> {
           const Icon(Icons.music_note_outlined, color: AppColors.secondary, size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(p.hasMusic ? (p.musicName ?? 'Background music') : 'No background music',
+            child: Text(
+                p.hasMusic
+                    ? (p.musicName ?? 'Background music')
+                    : p.autoMusic
+                        ? 'Viyo will make original music'
+                        : 'No background music',
                 maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: p.hasMusic ? AppColors.textPrimary : AppColors.textMuted)),
           ),
@@ -2175,6 +2180,16 @@ class _SoundQualityCardState extends State<_SoundQualityCard> {
               ),
           ],
         ]),
+        if (!p.hasMusic)
+          SwitchListTile(
+            contentPadding: const EdgeInsets.only(left: 30),
+            dense: true,
+            value: p.autoMusic,
+            onChanged: (v) => _save({'auto_music': v}),
+            title: const Text('Make original music for my film', style: TextStyle(fontSize: 13)),
+            subtitle: const Text('Made once when you render (about 11 credits, shown in the price). If it can\'t be made, your film is made without it.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+          ),
         if (p.hasMusic)
           Row(children: [
             const SizedBox(width: 30),

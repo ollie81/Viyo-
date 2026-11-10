@@ -78,6 +78,7 @@ class StudioProject {
   int targetSeconds;
   bool captions;
   bool hasMusic;
+  bool autoMusic;
   String? musicName;
   double musicVolume;
   String imageQuality;
@@ -94,6 +95,7 @@ class StudioProject {
         targetSeconds = (j['target_seconds'] as num?)?.toInt() ?? 90,
         captions = j['captions'] ?? true,
         hasMusic = j['has_music'] == true,
+        autoMusic = j['auto_music'] != false,
         musicName = j['music_name'],
         musicVolume = (j['music_volume'] as num?)?.toDouble() ?? 0.25,
         imageQuality = j['image_quality'] ?? 'standard',
