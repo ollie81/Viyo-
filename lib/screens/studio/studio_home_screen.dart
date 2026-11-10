@@ -56,6 +56,75 @@ class _StudioHomeScreenState extends State<StudioHomeScreen> {
     _load();
   }
 
+  /// Start with one sentence: a production is made from the idea and the
+  /// assistant chat opens with it, so the creator can develop it by talking.
+  Future<void> _startWithIdea() async {
+    final idea = TextEditingController();
+    var terms = false;
+    String? error;
+    var saving = false;
+    final id = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Start with an idea'),
+        content: SizedBox(
+          width: 460,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Tell Viyo your idea in a sentence. You\'ll develop it together in a chat.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 12),
+            TextField(controller: idea, autofocus: true, minLines: 2, maxLines: 5, maxLength: 2000,
+                decoration: studioField('Your idea', hint: 'e.g. A poor young man discovers he is a billionaire\'s son')
+                    .copyWith(counterText: '')),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: terms,
+              onChanged: (v) => setDialog(() => terms = v == true),
+              title: const Text('The story and characters are fictional or mine to use, and I won\'t depict real people '
+                  'without their consent.', style: TextStyle(fontSize: 12.5)),
+            ),
+            if (error != null) Text(error!, style: const TextStyle(color: AppColors.danger, fontSize: 12.5)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: saving
+                ? null
+                : () async {
+                    final text = idea.text.trim();
+                    if (text.isEmpty) return setDialog(() => error = 'Write your idea first.');
+                    if (!terms) return setDialog(() => error = 'Please confirm the box above.');
+                    setDialog(() {
+                      saving = true;
+                      error = null;
+                    });
+                    try {
+                      final words = text.split(RegExp(r'\s+'));
+                      final title = words.take(6).join(' ') + (words.length > 6 ? '…' : '');
+                      final id = await CreatorStudioService.createProject(
+                          {'title': title.length > 120 ? title.substring(0, 120) : title, 'logline': text, 'accept_terms': true});
+                      if (ctx.mounted) Navigator.pop(ctx, id);
+                    } on StudioException catch (e) {
+                      setDialog(() {
+                        saving = false;
+                        error = e.message;
+                      });
+                    }
+                  },
+            child: Text(saving ? 'Starting…' : 'Start chatting'),
+          ),
+        ],
+      )),
+    );
+    final text = idea.text.trim();
+    idea.dispose();
+    if (id == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => StudioProjectScreen(projectId: id, openChatWith: text)));
+    _load();
+  }
+
   Future<void> _open(StudioProjectSummary p) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => StudioProjectScreen(projectId: p.id)));
     _load();
@@ -109,7 +178,7 @@ class _StudioHomeScreenState extends State<StudioHomeScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1400),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _Hero(onNew: _new, compact: projects.isNotEmpty, wide: w > 900),
+              _Hero(onNew: _new, onIdea: _startWithIdea, compact: projects.isNotEmpty, wide: w > 900),
               const SizedBox(height: 24),
               if (projects.isNotEmpty) ...[
                 Text('Your productions', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -134,8 +203,9 @@ class _StudioHomeScreenState extends State<StudioHomeScreen> {
 
 class _Hero extends StatelessWidget {
   final VoidCallback onNew;
+  final VoidCallback? onIdea;
   final bool compact, wide;
-  const _Hero({required this.onNew, required this.compact, required this.wide});
+  const _Hero({required this.onNew, this.onIdea, required this.compact, required this.wide});
 
   @override
   Widget build(BuildContext context) {
@@ -189,6 +259,15 @@ class _Hero extends StatelessWidget {
           icon: const Icon(Icons.add),
           label: const Text('New production', style: TextStyle(fontWeight: FontWeight.w700)),
         ),
+        if (onIdea != null) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onIdea,
+            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: const Text('Start with an idea (chat)', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
       ]),
     );
   }
