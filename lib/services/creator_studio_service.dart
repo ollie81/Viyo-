@@ -269,7 +269,7 @@ class StudioScene {
   double durationSeconds;
   List<StudioLine> dialogue;
   List<String> sfx;
-  final String? imageUrl, videoUrl, audioUrl;
+  final String? imageUrl, videoUrl, audioUrl, lipsyncUrl;
   final double? audioSeconds;
   final bool hasImage, hasVideo, hasAudio;
   StudioScene.fromJson(Map j)
@@ -286,6 +286,7 @@ class StudioScene {
         imageUrl = j['image_url'],
         videoUrl = j['video_url'],
         audioUrl = j['audio_url'],
+        lipsyncUrl = j['lipsync_url'],
         audioSeconds = (j['audio_seconds'] as num?)?.toDouble(),
         hasImage = j['has_image'] == true,
         hasVideo = j['has_video'] == true,
