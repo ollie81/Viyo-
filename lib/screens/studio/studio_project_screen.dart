@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../services/creator_studio_service.dart';
 import '../../services/file_saver_io.dart' if (dart.library.html) '../../services/file_saver_web.dart' as saver;
 import '../../theme/app_theme.dart';
+import 'studio_chat_screen.dart';
 import 'studio_elements_section.dart';
 import 'studio_identity_section.dart';
 import 'studio_production_panel.dart';
@@ -17,7 +18,9 @@ import 'studio_widgets.dart';
 /// live activity panel. Three columns on a desktop browser, tabs on a phone.
 class StudioProjectScreen extends StatefulWidget {
   final String projectId;
-  const StudioProjectScreen({super.key, required this.projectId});
+  /// Opens the assistant chat right away and sends this (Start with an idea).
+  final String? openChatWith;
+  const StudioProjectScreen({super.key, required this.projectId, this.openChatWith});
   @override
   State<StudioProjectScreen> createState() => _StudioProjectScreenState();
 }
@@ -73,10 +76,38 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
     super.dispose();
   }
 
+  bool _chatOpenedOnce = false;
+
+  /// The assistant chat. Paid steps it suggests go through the normal price check.
+  Future<void> _openChat({String? first}) async {
+    final d = _d;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => StudioChatScreen(
+        projectId: widget.projectId,
+        projectTitle: d?.project.title ?? '',
+        initialMessage: first,
+        onPaidStep: (job) async {
+          if (job == 'production') {
+            if (mounted) Navigator.of(context).pop();
+            _goTo(3);
+            if (mounted) showStudioInfo(context, 'Here it is: tap See price under Make the whole film.');
+            return false;
+          }
+          return _run(job);
+        },
+      ),
+    ));
+    if (mounted) await _load();
+  }
+
   Future<void> _load() async {
     try {
       final d = await CreatorStudioService.project(widget.projectId);
       if (!mounted) return;
+      if (!_chatOpenedOnce && (widget.openChatWith ?? '').trim().isNotEmpty) {
+        _chatOpenedOnce = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openChat(first: widget.openChatWith));
+      }
       setState(() {
         _d = d;
         _error = null;
@@ -213,6 +244,12 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
             ? null
             : TabBar(controller: _tabs, isScrollable: false, tabs: [for (final (_, label) in _sections) Tab(text: label)]),
         actions: [
+          if (d != null)
+            IconButton(
+              tooltip: 'Viyo assistant',
+              onPressed: () => _openChat(),
+              icon: const Icon(Icons.chat_bubble_outline),
+            ),
           if (d != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Center(child: CreditPill(balance: d.balance, onTap: _needCredits))),
           if (d != null && !wide)
             Builder(

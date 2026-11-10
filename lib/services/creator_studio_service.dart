@@ -118,6 +118,21 @@ class StudioProject {
   bool get vertical => aspectRatio == '9:16';
 }
 
+/// One message in the assistant chat. Assistant messages can carry
+/// proposals: changes the creator applies or dismisses.
+class StudioChatMessage {
+  final String id, role, content;
+  final List<Map<String, dynamic>> proposals;
+  final DateTime? createdAt;
+  StudioChatMessage.fromJson(Map j)
+      : id = j['id'],
+        role = j['role'] ?? 'assistant',
+        content = j['content'] ?? '',
+        proposals = ((j['proposals'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+        createdAt = DateTime.tryParse(j['created_at'] ?? '');
+  bool get mine => role == 'user';
+}
+
 /// A place or an object that looks the same in every scene.
 class StudioElement {
   final String id, kind, name, description, status;
@@ -595,6 +610,25 @@ class CreatorStudioService {
   static Future<void> resumeProduction(String runId) => _send('POST', '/production/$runId/resume');
 
   static Future<void> cancelProduction(String runId) => _send('POST', '/production/$runId/cancel');
+
+  // ------------------------------------------------ assistant chat
+
+  static Future<Map<String, dynamic>> chatHistory(String projectId, {String? conversationId}) async =>
+      Map<String, dynamic>.from(await _send('GET',
+          '/projects/$projectId/assistant/chat${conversationId == null ? '' : '?conversation_id=$conversationId'}'));
+
+  static Future<Map<String, dynamic>> chatSend(String projectId, String message, String requestId, {String? conversationId}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/chat',
+          {'message': message, 'request_id': requestId, if (conversationId != null) 'conversation_id': conversationId}));
+
+  static Future<Map<String, dynamic>> chatNew(String projectId) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/chat/new'));
+
+  static Future<Map<String, dynamic>> applyProposal(String messageId, int index) async =>
+      Map<String, dynamic>.from(await _send('POST', '/assistant/messages/$messageId/proposals/$index/apply'));
+
+  static Future<void> setProposalStatus(String messageId, int index, String status) =>
+      _send('POST', '/assistant/messages/$messageId/proposals/$index/status', {'status': status});
 
   // ------------------------------------------------ places and objects
 
