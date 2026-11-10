@@ -86,14 +86,14 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
         projectId: widget.projectId,
         projectTitle: d?.project.title ?? '',
         initialMessage: first,
-        onPaidStep: (job) async {
+        onPaidStep: (job, targets) async {
           if (job == 'production') {
             if (mounted) Navigator.of(context).pop();
             _goTo(3);
             if (mounted) showStudioInfo(context, 'Here it is: tap See price under Make the whole film.');
             return false;
           }
-          return _run(job);
+          return _run(job, targets: targets);
         },
       ),
     ));
@@ -1010,6 +1010,7 @@ class _ScenesPanel extends StatelessWidget {
                 textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
           ]),
         ),
+      if (scenes.length > 1) _ContinuityPanel(d, run: run),
       for (var i = 0; i < scenes.length; i++)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -1027,6 +1028,57 @@ class _ScenesPanel extends StatelessWidget {
           ),
         ),
     ]);
+  }
+}
+
+/// The free scene-by-scene continuity check: what doesn't match between
+/// consecutive scenes, and a way to remake only the scene that needs it.
+class _ContinuityPanel extends StatelessWidget {
+  final StudioProjectDetail d;
+  final _Run run;
+  const _ContinuityPanel(this.d, {required this.run});
+
+  @override
+  Widget build(BuildContext context) {
+    final issues = d.continuityIssues;
+    final fix = issues.where((i) => i['severity'] == 'fix').length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: studioPanel(border: fix > 0 ? AppColors.coin.withValues(alpha: 0.5) : null),
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(fix > 0 ? Icons.link_off : Icons.link, size: 20, color: fix > 0 ? AppColors.coin : AppColors.success),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(issues.isEmpty ? 'Scenes connect: no continuity problems found' : 'Continuity check: ${issues.length} to look at',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          ),
+        ]),
+        if (issues.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text('Viyo compares each scene with the one before: clothes, place, time, what people hold, who is there.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+          ),
+        for (final i in issues.take(12))
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Scene ${i['previous']} → ${i['scene']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+              const SizedBox(height: 2),
+              Text('${i['message']}', style: const TextStyle(fontSize: 12.5, height: 1.35)),
+              Text('${i['fix']}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35)),
+              if (i['scene_id'] != null && (i['kind'] == 'stale' || i['kind'] == 'stale_outfit'))
+                TextButton.icon(
+                  onPressed: () => run('image', targets: ['${i['scene_id']}'], title: 'New picture: scene ${i['scene']}'),
+                  icon: const Icon(Icons.image_outlined, size: 16),
+                  label: Text('New picture for scene ${i['scene']}'),
+                ),
+            ]),
+          ),
+      ]),
+    );
   }
 }
 
@@ -1049,6 +1101,8 @@ class _SceneCard extends StatefulWidget {
 class _SceneCardState extends State<_SceneCard> {
   late final _heading = TextEditingController(text: widget.scene.heading);
   late final _visual = TextEditingController(text: widget.scene.visual);
+  late final _startState = TextEditingController(text: widget.scene.startState);
+  late final _endState = TextEditingController(text: widget.scene.endState);
   // (who, line, delivery). Delivery is optional, e.g. "whispering".
   // (who, line, emotion, delivery note). The delivery note comes from Viyo's
   // scene list and is kept as it is when the scene is saved.
@@ -1066,6 +1120,8 @@ class _SceneCardState extends State<_SceneCard> {
   void dispose() {
     _heading.dispose();
     _visual.dispose();
+    _startState.dispose();
+    _endState.dispose();
     for (final (_, c, _, _) in _lines) {
       c.dispose();
     }
@@ -1078,8 +1134,11 @@ class _SceneCardState extends State<_SceneCard> {
     final lines = _lines.map((l) => '${l.$1}|${l.$2.text}|${l.$3}|${l.$4}').join('\n');
     final orig = s.dialogue.map((l) => '${l.character}|${l.text}|${l.emotion}|${l.delivery}').join('\n');
     return _heading.text != s.heading || _visual.text != s.visual || lines != orig || _duration != s.durationSeconds || _mode != s.mode ||
-        _sfx.join(',') != s.sfx.join(',');
+        _sfx.join(',') != s.sfx.join(',') || _continuityDirty;
   }
+
+  bool get _continuityDirty =>
+      _startState.text != widget.scene.startState || _endState.text != widget.scene.endState;
 
   Future<bool> _save() async {
     if (!_dirty) return true;
@@ -1091,6 +1150,7 @@ class _SceneCardState extends State<_SceneCard> {
           for (final (ch, c, mood, delivery) in _lines)
             if (c.text.trim().isNotEmpty) StudioLine(ch, c.text.trim(), mood, delivery).toJson()
         ],
+        if (_continuityDirty) 'continuity': {'start_state': _startState.text.trim(), 'end_state': _endState.text.trim()},
       });
       await widget.reload();
       return true;
@@ -1146,6 +1206,40 @@ class _SceneCardState extends State<_SceneCard> {
 
   Future<void> _runFor(String kind) async {
     if (await _save()) widget.run(kind, targets: [widget.scene.id]);
+  }
+
+  static const _transitionLabel = {
+    'continuous': 'Continues straight from the scene before',
+    'same_place_cut': 'Same place, a moment later',
+    'new_place': 'A new place',
+    'time_jump': 'Later in time',
+    'flashback': 'Flashback',
+  };
+
+  /// How this scene connects: where it starts and where it ends. The next
+  /// scene's picture is told this scene's ending.
+  Widget _continuityEditor() {
+    final s = widget.scene;
+    final label = _transitionLabel[s.transition];
+    final note = '${s.continuity['transition_note'] ?? ''}';
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 6),
+        leading: const Icon(Icons.link, size: 18, color: AppColors.secondary),
+        title: const Text('Continuity', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        subtitle: Text(label == null ? 'How this scene starts and ends' : '$label${note.isEmpty ? '' : ': $note'}',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+        children: [
+          TextField(controller: _startState, onChanged: (_) => setState(() {}), minLines: 1, maxLines: 3,
+              decoration: studioField('Starts with', hint: 'Who is where, holding what, how they feel')),
+          const SizedBox(height: 8),
+          TextField(controller: _endState, onChanged: (_) => setState(() {}), minLines: 1, maxLines: 3,
+              decoration: studioField('Ends with', hint: 'The next scene starts from this')),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1204,6 +1298,8 @@ class _SceneCardState extends State<_SceneCard> {
       const SizedBox(height: 8),
       TextField(controller: _visual, onChanged: (_) => setState(() {}), minLines: 2, maxLines: 5,
           decoration: studioField('What we see', hint: 'Who is in frame, what they do, the place, the light, the camera')),
+      const SizedBox(height: 8),
+      _continuityEditor(),
       const SizedBox(height: 10),
       for (var i = 0; i < _lines.length; i++)
         Padding(
