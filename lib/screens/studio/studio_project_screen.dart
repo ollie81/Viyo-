@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../services/creator_studio_service.dart';
 import '../../services/file_saver_io.dart' if (dart.library.html) '../../services/file_saver_web.dart' as saver;
 import '../../theme/app_theme.dart';
+import 'studio_elements_section.dart';
 import 'studio_identity_section.dart';
 import 'studio_production_panel.dart';
 import 'studio_widgets.dart';
@@ -723,6 +724,8 @@ class _CastPanel extends StatelessWidget {
             ),
         ]);
       }),
+      const SizedBox(height: 16),
+      ElementsSection(d: d, run: run, busy: (k) => busy(k), reload: reload),
     ]);
   }
 }
@@ -1351,6 +1354,29 @@ class _SceneCardState extends State<_SceneCard> {
                 style: const TextStyle(fontSize: 12)),
           ),
         ),
+        if (widget.d.elements.any((e) => e.isPlace))
+          PopupMenuButton<String>(
+            tooltip: 'Where this scene happens',
+            color: StudioColors.panel,
+            onSelected: (v) => _setLook({'location_id': v}),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: '', child: Text('Automatic (from the scene heading)')),
+              for (final e in widget.d.elements.where((e) => e.isPlace)) PopupMenuItem(value: e.id, child: Text(e.name)),
+            ],
+            child: Chip(
+              visualDensity: VisualDensity.compact,
+              avatar: const Icon(Icons.place_outlined, size: 16),
+              label: Text('Place: ${s.locationUsed ?? 'none'}', style: const TextStyle(fontSize: 12)),
+            ),
+          ),
+        if (widget.d.elements.any((e) => !e.isPlace))
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.category_outlined, size: 16),
+            label: Text(s.propsUsed.isEmpty ? 'Objects: none' : 'Objects: ${s.propsUsed.join(', ')}',
+                style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+            onPressed: () => _pickProps(s),
+          ),
         for (final c in dressed)
           PopupMenuButton<String>(
             tooltip: 'What ${c.name} wears',
@@ -1415,6 +1441,50 @@ class _SceneCardState extends State<_SceneCard> {
     if (ok != true) return;
     final all = {...s.outfitOverrides, c.id: parts}..removeWhere((_, v) => v.isEmpty);
     await _setLook({'outfit_overrides': all});
+  }
+
+  /// The scene's objects: automatic (from the text) or exactly the ticked ones.
+  Future<void> _pickProps(StudioScene s) async {
+    final objects = widget.d.elements.where((e) => !e.isPlace).toList();
+    final chosen = <String>{...(s.propIds ?? widget.d.elements.where((e) => s.propsUsed.contains(e.name)).map((e) => e.id))};
+    var auto = s.propIds == null;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: Text('Objects in scene ${widget.index + 1}'),
+          content: SizedBox(
+            width: 380,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: auto,
+                  onChanged: (v) => setDialog(() => auto = v),
+                  title: const Text('Automatic', style: TextStyle(fontSize: 13.5)),
+                  subtitle: const Text('Use the objects the scene mentions.', style: TextStyle(fontSize: 11.5)),
+                ),
+                if (!auto)
+                  for (final o in objects)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: chosen.contains(o.id),
+                      title: Text(o.name, style: const TextStyle(fontSize: 13)),
+                      onChanged: (v) => setDialog(() => v == true ? chosen.add(o.id) : chosen.remove(o.id)),
+                    ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    await _setLook(auto ? {'props_auto': true} : {'props': chosen.toList()});
   }
 
   Future<void> _setLook(Map<String, dynamic> fields) async {

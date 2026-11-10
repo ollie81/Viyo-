@@ -93,6 +93,8 @@ const _kindTitles = {
   'render': 'Render the film',
   'outfits': 'Suggest outfits',
   'cover': 'Make the cover',
+  'elements': 'Find places & objects',
+  'element': 'Place & object pictures',
 };
 
 String kindTitle(String kind) => _kindTitles[kind] ?? kind;
