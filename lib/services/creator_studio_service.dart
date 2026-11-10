@@ -305,7 +305,14 @@ class StudioScene {
         propIds = (j['props'] as List?)?.map((e) => e.toString()).toList(),
         locationUsed = j['location_used'] is Map ? '${(j['location_used'] as Map)['name']}' : null,
         propsUsed = ((j['props_used'] as List?) ?? []).map((e) => '${(e as Map)['name']}').toList(),
-        madeWithReferences = ((j['made_with_references'] as List?) ?? []).map((e) => e.toString()).toList();
+        madeWithReferences = ((j['made_with_references'] as List?) ?? []).map((e) => e.toString()).toList(),
+        continuity = j['continuity'] is Map ? Map<String, dynamic>.from(j['continuity']) : const {};
+  /// The continuity director's record: how the scene starts and ends, who is
+  /// where, and how it follows the scene before (`transition`).
+  final Map<String, dynamic> continuity;
+  String get startState => '${continuity['start_state'] ?? ''}';
+  String get endState => '${continuity['end_state'] ?? ''}';
+  String get transition => '${continuity['transition'] ?? ''}';
   /// Characters whose identity or outfit changed after this scene was made.
   final List<String> consistency;
   /// The chosen place (null = worked out from the heading) and objects (null = worked out from the text).
@@ -385,7 +392,10 @@ class StudioProjectDetail {
         jobs = ((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(),
         balance = StudioBalance.fromJson(j['balance']),
         production = j['production'] is Map ? Map<String, dynamic>.from(j['production']) : null,
-        elements = ((j['elements'] as List?) ?? []).map((e) => StudioElement.fromJson(e as Map)).toList();
+        elements = ((j['elements'] as List?) ?? []).map((e) => StudioElement.fromJson(e as Map)).toList(),
+        continuityIssues = ((j['continuity_issues'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  /// Problems between consecutive scenes: {scene, previous, scene_id, kind, severity, message, fix}.
+  final List<Map<String, dynamic>> continuityIssues;
   /// The production's places and objects.
   final List<StudioElement> elements;
   /// The latest one-click production run with its progress, if any.
