@@ -40,6 +40,8 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
   String? _loadError;
   _Pending? _pending;
   final Set<String> _busyProposals = {};
+  final Set<String> _expanded = {};
+  static const _fold = 600;
 
   @override
   void initState() {
@@ -190,7 +192,21 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
               ),
               border: Border.all(color: mine ? AppColors.primary.withValues(alpha: 0.35) : StudioColors.panelBorder),
             ),
-            child: SelectableText(m.content, style: const TextStyle(fontSize: 14.5, height: 1.45)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              SelectableText(
+                !mine && m.content.length > _fold && !_expanded.contains(m.id)
+                    ? '${m.content.substring(0, _fold).trimRight()}…'
+                    : m.content,
+                style: const TextStyle(fontSize: 14.5, height: 1.45),
+              ),
+              if (!mine && m.content.length > _fold)
+                TextButton(
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                  onPressed: () => setState(() =>
+                      _expanded.contains(m.id) ? _expanded.remove(m.id) : _expanded.add(m.id)),
+                  child: Text(_expanded.contains(m.id) ? 'Show less' : 'Show more'),
+                ),
+            ]),
           ),
           for (var i = 0; i < m.proposals.length; i++) _proposal(m, i),
         ]),
