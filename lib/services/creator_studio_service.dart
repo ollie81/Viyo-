@@ -337,7 +337,11 @@ class StudioProjectDetail {
         scenes = ((j['scenes'] as List?) ?? []).map((e) => StudioScene.fromJson(e)).toList(),
         renders = ((j['renders'] as List?) ?? []).map((e) => StudioRender.fromJson(e)).toList(),
         jobs = ((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(),
-        balance = StudioBalance.fromJson(j['balance']);
+        balance = StudioBalance.fromJson(j['balance']),
+        production = j['production'] is Map ? Map<String, dynamic>.from(j['production']) : null;
+  /// The latest one-click production run with its progress, if any.
+  final Map<String, dynamic>? production;
+  bool get producing => production?['status'] == 'running';
 }
 
 class StudioEstimate {
@@ -547,6 +551,19 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> publishRender(String renderId, {required int coinPrice, String caption = ''}) async =>
       Map<String, dynamic>.from(await _send('POST', '/renders/$renderId/publish',
           {'coin_price': coinPrice, 'caption': caption, 'confirm': true}));
+
+  // ------------------------------------------------ one-click production
+
+  static Future<Map<String, dynamic>> productionQuote(String projectId, {bool sheets = true}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/production/quote', {'sheets': sheets}));
+
+  static Future<Map<String, dynamic>> startProduction(String projectId, {required int confirmCredits, bool sheets = true}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/production',
+          {'request_id': newRequestId(), 'confirm_credits': confirmCredits, 'sheets': sheets}));
+
+  static Future<void> resumeProduction(String runId) => _send('POST', '/production/$runId/resume');
+
+  static Future<void> cancelProduction(String runId) => _send('POST', '/production/$runId/cancel');
 
   static Future<void> chooseCover(String projectId, String coverId) =>
       _send('POST', '/projects/$projectId/cover', {'cover_id': coverId});

@@ -9,6 +9,7 @@ import '../../services/creator_studio_service.dart';
 import '../../services/file_saver_io.dart' if (dart.library.html) '../../services/file_saver_web.dart' as saver;
 import '../../theme/app_theme.dart';
 import 'studio_identity_section.dart';
+import 'studio_production_panel.dart';
 import 'studio_widgets.dart';
 
 /// One production's workspace: Story -> Cast -> Scenes -> Export, with a
@@ -87,6 +88,13 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
 
   void _schedulePoll() {
     _poll?.cancel();
+    if (_d?.producing ?? false) {
+      // A one-click production moves between steps on its own: keep refreshing.
+      _poll = Timer(const Duration(seconds: 5), () async {
+        if (mounted) await _load();
+      });
+      return;
+    }
     if (!(_d?.jobs.any((j) => j.active) ?? false)) return;
     _poll = Timer(const Duration(seconds: 3), () async {
       try {
@@ -271,7 +279,7 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
       0 => _StoryPanel(d, run: _run, busy: _busy, reload: _load, goTo: _goTo),
       1 => _CastPanel(d, voices: _voices, run: _run, busy: _busy, reload: _load),
       2 => _ScenesPanel(d, effects: _effects, lipsync: _lipsync, run: _run, busy: _busy, reload: _load),
-      _ => _ExportPanel(d, run: _run, busy: _busy, reload: _load),
+      _ => _ExportPanel(d, run: _run, busy: _busy, reload: _load, onNeedCredits: _needCredits),
     };
     return Align(
       alignment: Alignment.topCenter,
@@ -1477,7 +1485,8 @@ class _ExportPanel extends StatefulWidget {
   final _Run run;
   final _Busy busy;
   final Future<void> Function() reload;
-  const _ExportPanel(this.d, {required this.run, required this.busy, required this.reload});
+  final Future<void> Function() onNeedCredits;
+  const _ExportPanel(this.d, {required this.run, required this.busy, required this.reload, required this.onNeedCredits});
   @override
   State<_ExportPanel> createState() => _ExportPanelState();
 }
@@ -1730,6 +1739,8 @@ class _ExportPanelState extends State<_ExportPanel> {
     final canRender = scenes.isNotEmpty && ready == scenes.length;
     return ListView(padding: const EdgeInsets.fromLTRB(20, 20, 20, 40), children: [
       _sectionHeader('Export', '${d.project.vertical ? '1080×1920 vertical' : '1920×1080 landscape'} MP4 · captions ${d.project.captions ? 'on' : 'off'}'),
+      ProductionPanel(d: d, reload: widget.reload, onNeedCredits: widget.onNeedCredits),
+      const SizedBox(height: 14),
       _coverPanel(d),
       const SizedBox(height: 14),
       Container(
