@@ -640,6 +640,20 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> applyProposal(String messageId, int index) async =>
       Map<String, dynamic>.from(await _send('POST', '/assistant/messages/$messageId/proposals/$index/apply'));
 
+  /// What the assistant remembers about this production: {memory: {category: [{id, text, source}]}, labels}.
+  static Future<Map<String, dynamic>> assistantMemory(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/assistant/memory'));
+
+  static Future<Map<String, dynamic>> rememberFact(String projectId, String category, String text) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/memory', {'category': category, 'text': text}));
+
+  static Future<Map<String, dynamic>> correctMemory(String projectId, String itemId, {String? text, String? category}) async =>
+      Map<String, dynamic>.from(await _send('PATCH', '/projects/$projectId/assistant/memory/$itemId',
+          {if (text != null) 'text': text, if (category != null) 'category': category}));
+
+  static Future<Map<String, dynamic>> forgetMemory(String projectId, String itemId) async =>
+      Map<String, dynamic>.from(await _send('DELETE', '/projects/$projectId/assistant/memory/$itemId'));
+
   static Future<void> setProposalStatus(String messageId, int index, String status) =>
       _send('POST', '/assistant/messages/$messageId/proposals/$index/status', {'status': status});
 
