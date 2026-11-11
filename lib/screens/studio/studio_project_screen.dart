@@ -86,14 +86,14 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
         projectId: widget.projectId,
         projectTitle: d?.project.title ?? '',
         initialMessage: first,
-        onPaidStep: (job, targets) async {
+        onPaidStep: (job, targets, extra) async {
           if (job == 'production') {
             if (mounted) Navigator.of(context).pop();
             _goTo(3);
             if (mounted) showStudioInfo(context, 'Here it is: tap See price under Make the whole film.');
             return false;
           }
-          return _run(job, targets: targets);
+          return _run(job, targets: targets, extra: extra);
         },
       ),
     ));
@@ -1042,6 +1042,15 @@ class _ContinuityPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final issues = d.continuityIssues;
     final fix = issues.where((i) => i['severity'] == 'fix').length;
+    // Pictures never checked, or checked before they changed (unchanged ones aren't checked again).
+    final toCheck = [
+      for (final s in d.scenes)
+        if (s.hasImage && (s.inspection == null || s.inspection!['outdated'] == true)) s.id
+    ];
+    final attention = [
+      for (var i = 0; i < d.scenes.length; i++)
+        if (d.scenes[i].inspection?['needs_attention'] == true && d.scenes[i].inspection?['outdated'] != true) i + 1
+    ];
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: studioPanel(border: fix > 0 ? AppColors.coin.withValues(alpha: 0.5) : null),
@@ -1054,7 +1063,20 @@ class _ContinuityPanel extends StatelessWidget {
             child: Text(issues.isEmpty ? 'Scenes connect: no continuity problems found' : 'Continuity check: ${issues.length} to look at',
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           ),
+          if (toCheck.isNotEmpty)
+            TextButton.icon(
+              onPressed: () => run('inspect', targets: toCheck, title: 'Check ${toCheck.length} pictures'),
+              icon: const Icon(Icons.fact_check_outlined, size: 16),
+              label: const Text('Check pictures'),
+            ),
         ]),
+        if (attention.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('Picture check: scene${attention.length == 1 ? '' : 's'} ${attention.join(', ')} '
+                'need${attention.length == 1 ? 's' : ''} attention. Open the scene to see what and fix it.',
+                style: const TextStyle(color: AppColors.coin, fontSize: 12.5)),
+          ),
         if (issues.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 4),
@@ -1242,6 +1264,148 @@ class _SceneCardState extends State<_SceneCard> {
     );
   }
 
+  /// The vision check of this scene's picture, approval and earlier versions.
+  Widget _pictureCheck() {
+    final s = widget.scene;
+    final ins = s.inspection;
+    final scores = Map<String, dynamic>.from((ins?['scores'] as Map?) ?? {});
+    final overall = scores['overall'];
+    final problems = ((ins?['problems'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final outdated = ins?['outdated'] == true;
+    final attention = ins?['needs_attention'] == true && !outdated;
+    final correction = '${ins?['correction'] ?? ''}';
+    final color = ins == null || outdated
+        ? AppColors.textMuted
+        : attention
+            ? AppColors.coin
+            : AppColors.success;
+    return Container(
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(border: Border.all(color: color.withValues(alpha: 0.4)), borderRadius: BorderRadius.circular(10)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.fact_check_outlined, size: 18, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+                ins == null
+                    ? 'Picture not checked yet'
+                    : outdated
+                        ? 'Checked an earlier picture'
+                        : 'Picture check: $overall/100${attention ? ' · needs attention' : ''}',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: color)),
+          ),
+          IconButton(
+            tooltip: s.imageApproved ? 'Approved: tap to unapprove' : 'Approve this picture',
+            icon: Icon(s.imageApproved ? Icons.verified : Icons.verified_outlined,
+                size: 20, color: s.imageApproved ? AppColors.success : AppColors.textMuted),
+            onPressed: () async {
+              try {
+                await CreatorStudioService.approveImage(s.id, !s.imageApproved);
+                await widget.reload();
+              } on StudioException catch (e) {
+                if (mounted) showStudioError(context, e.message);
+              }
+            },
+          ),
+          IconButton(tooltip: 'Earlier versions', icon: const Icon(Icons.history, size: 20), onPressed: _versions),
+        ]),
+        if (ins != null && !outdated && '${ins['summary'] ?? ''}'.isNotEmpty)
+          Text('${ins['summary']}', style: const TextStyle(fontSize: 12.5, height: 1.35)),
+        if (!outdated)
+          for (final p in problems.take(6))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text.rich(TextSpan(children: [
+                TextSpan(
+                    text: p['intentional'] == true
+                        ? 'Intended · '
+                        : '${p['severity']}${p['certainty'] == 'uncertain' ? ' · not sure' : ''} · ',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: p['intentional'] == true
+                            ? AppColors.textMuted
+                            : p['severity'] == 'high'
+                                ? AppColors.danger
+                                : AppColors.coin)),
+                TextSpan(text: '${p['kind']}: expected ${p['expected']}, the picture shows ${p['seen']}.', style: const TextStyle(fontSize: 12.5)),
+                if (p['intentional'] != true && '${p['fix'] ?? ''}'.isNotEmpty)
+                  TextSpan(text: '  Fix: ${p['fix']}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ])),
+            ),
+        Wrap(spacing: 6, children: [
+          if (ins == null || outdated)
+            TextButton.icon(
+              onPressed: () => widget.run('inspect', targets: [s.id], title: 'Check scene ${widget.index + 1}'),
+              icon: const Icon(Icons.search, size: 16),
+              label: const Text('Check picture'),
+            ),
+          if (!outdated && correction.isNotEmpty && !s.imageApproved)
+            TextButton.icon(
+              onPressed: () => widget.run('image',
+                  targets: [s.id], extra: {'correction': correction}, title: 'Fix scene ${widget.index + 1}'),
+              icon: const Icon(Icons.auto_fix_high, size: 16),
+              label: const Text('Fix with a new picture'),
+            ),
+        ]),
+        if (!outdated && correction.isNotEmpty && s.imageApproved)
+          const Text('This picture is approved. Unapprove it to make a corrected one.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+      ]),
+    );
+  }
+
+  Future<void> _versions() async {
+    final s = widget.scene;
+    List<Map<String, dynamic>> list;
+    try {
+      list = await CreatorStudioService.sceneVersions(s.id);
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+      return;
+    }
+    if (!mounted) return;
+    final pick = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: const Text('Earlier versions'),
+        content: SizedBox(
+          width: 420,
+          child: list.isEmpty
+              ? const Text('Nothing made for this scene yet.')
+              : ListView(shrinkWrap: true, children: [
+                  for (final v in list)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: v['kind'] == 'image' && v['url'] != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Image.network('${v['url']}', width: 48, height: 48, fit: BoxFit.cover))
+                          : const Icon(Icons.movie_outlined),
+                      title: Text('${v['kind'] == 'image' ? 'Picture' : 'Video'} · ${'${v['created_at'] ?? ''}'.split('T').first}',
+                          style: const TextStyle(fontSize: 13)),
+                      trailing: v['current'] == true
+                          ? const Text('In use', style: TextStyle(color: AppColors.success, fontSize: 12))
+                          : TextButton(onPressed: () => Navigator.pop(ctx, '${v['id']}'), child: const Text('Restore')),
+                    ),
+                ]),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+      ),
+    );
+    if (pick == null) return;
+    try {
+      await CreatorStudioService.restoreVersion(s.id, pick);
+      await widget.reload();
+      if (mounted) showStudioInfo(context, 'Restored. The other version is kept too.');
+    } on StudioException catch (e) {
+      if (mounted) showStudioError(context, e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.scene;
@@ -1273,7 +1437,8 @@ class _SceneCardState extends State<_SceneCard> {
       ]),
     );
     final actions = Wrap(spacing: 6, runSpacing: 6, children: [
-      _act(Icons.image_outlined, s.hasImage ? 'New image' : 'Make image', imgBusy ? null : () => _runFor('image')),
+      _act(Icons.image_outlined, s.imageApproved ? 'Approved picture' : (s.hasImage ? 'New image' : 'Make image'),
+          imgBusy || s.imageApproved ? null : () => _runFor('image')),
       if (!(_mode == 'video' && s.spokenInVideo))
         _act(Icons.record_voice_over_outlined, s.voiceOutdated.isNotEmpty ? 'Re-record' : (s.hasAudio ? 'Re-voice' : 'Voice'),
             voiceBusy || _lines.every((l) => l.$2.text.trim().isEmpty) ? null : () => _runFor('voice')),
@@ -1300,6 +1465,7 @@ class _SceneCardState extends State<_SceneCard> {
           decoration: studioField('What we see', hint: 'Who is in frame, what they do, the place, the light, the camera')),
       const SizedBox(height: 8),
       _continuityEditor(),
+      if (s.hasImage) _pictureCheck(),
       const SizedBox(height: 10),
       for (var i = 0; i < _lines.length; i++)
         Padding(
@@ -2337,6 +2503,15 @@ class _SoundQualityCardState extends State<_SoundQualityCard> {
         const Text('High makes new images at 2K: sharper on big screens, about 50% more per image. '
             'Images you already made keep their quality.',
             style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.35)),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: p.autoInspect,
+          onChanged: (v) => _save({'auto_inspect': v}),
+          title: const Text('Check every new picture', style: TextStyle(fontSize: 14)),
+          subtitle: const Text('Viyo compares each scene picture with the faces, outfits, place and the scene before, '
+              'and tells you what doesn\'t match. About 2 credits, included in the picture\'s price.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+        ),
         const SizedBox(height: 4),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,

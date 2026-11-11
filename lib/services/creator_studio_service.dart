@@ -79,6 +79,8 @@ class StudioProject {
   bool captions;
   bool hasMusic;
   bool autoMusic;
+  /// Check every new scene picture with the vision model (included in its price).
+  bool autoInspect;
   String? musicName;
   double musicVolume;
   String imageQuality;
@@ -96,6 +98,7 @@ class StudioProject {
         captions = j['captions'] ?? true,
         hasMusic = j['has_music'] == true,
         autoMusic = j['auto_music'] != false,
+        autoInspect = j['auto_inspect'] != false,
         musicName = j['music_name'],
         musicVolume = (j['music_volume'] as num?)?.toDouble() ?? 0.25,
         imageQuality = j['image_quality'] ?? 'standard',
@@ -306,7 +309,13 @@ class StudioScene {
         locationUsed = j['location_used'] is Map ? '${(j['location_used'] as Map)['name']}' : null,
         propsUsed = ((j['props_used'] as List?) ?? []).map((e) => '${(e as Map)['name']}').toList(),
         madeWithReferences = ((j['made_with_references'] as List?) ?? []).map((e) => e.toString()).toList(),
-        continuity = j['continuity'] is Map ? Map<String, dynamic>.from(j['continuity']) : const {};
+        continuity = j['continuity'] is Map ? Map<String, dynamic>.from(j['continuity']) : const {},
+        imageApproved = j['image_approved'] == true,
+        inspection = j['inspection'] is Map ? Map<String, dynamic>.from(j['inspection']) : null;
+  /// The creator approved this exact picture: it is never replaced until unapproved.
+  final bool imageApproved;
+  /// The latest picture check: {scores, problems, summary, needs_attention, correction, outdated}.
+  final Map<String, dynamic>? inspection;
   /// The continuity director's record: how the scene starts and ends, who is
   /// where, and how it follows the scene before (`transition`).
   final Map<String, dynamic> continuity;
@@ -656,6 +665,20 @@ class CreatorStudioService {
 
   static Future<void> setProposalStatus(String messageId, int index, String status) =>
       _send('POST', '/assistant/messages/$messageId/proposals/$index/status', {'status': status});
+
+  // ------------------------------------------------ picture approval and versions
+
+  static Future<void> approveImage(String sceneId, bool approved) =>
+      _send('POST', '/scenes/$sceneId/approve-image', {'approved': approved});
+
+  /// Every picture and video made for a scene: [{id, kind, url, created_at, current}].
+  static Future<List<Map<String, dynamic>>> sceneVersions(String sceneId) async {
+    final j = await _send('GET', '/scenes/$sceneId/versions');
+    return ((j['versions'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  static Future<void> restoreVersion(String sceneId, String assetId) =>
+      _send('POST', '/scenes/$sceneId/restore', {'asset_id': assetId});
 
   // ------------------------------------------------ places and objects
 
