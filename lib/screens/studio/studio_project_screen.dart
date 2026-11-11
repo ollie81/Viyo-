@@ -13,6 +13,7 @@ import 'studio_elements_section.dart';
 import 'studio_identity_section.dart';
 import 'studio_production_panel.dart';
 import 'studio_widgets.dart';
+import 'studio_world_card.dart';
 
 /// One production's workspace: Story -> Cast -> Scenes -> Export, with a
 /// live activity panel. Three columns on a desktop browser, tabs on a phone.
@@ -87,6 +88,16 @@ class _StudioProjectScreenState extends State<StudioProjectScreen> with SingleTi
         projectTitle: d?.project.title ?? '',
         initialMessage: first,
         onPaidStep: (job, targets, extra) async {
+          if (job == 'world' || job == 'saga') {
+            if (mounted) Navigator.of(context).pop();
+            _goTo(0);
+            if (mounted) {
+              showStudioInfo(context, job == 'world'
+                  ? 'Open "Story world & series" at the top: choose the kind of world and tap Build (the price is shown first).'
+                  : 'Open "Story world & series" at the top: choose the length and tap Plan the series (the price is shown first).');
+            }
+            return false;
+          }
           if (job == 'production') {
             if (mounted) Navigator.of(context).pop();
             _goTo(3);
@@ -611,7 +622,10 @@ class _StoryPanelState extends State<_StoryPanel> {
         decoration: studioPanel(),
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (widget.d.project.storyBible != null) ...[
+          StudioWorldCard(projectId: widget.d.project.id, reload: widget.reload),
+          const SizedBox(height: 14),
+          if (widget.d.project.storyBible != null &&
+              (widget.d.project.storyBible!['beats'] != null || widget.d.project.storyBible!['logline'] != null)) ...[
             _StoryPlanCard(widget.d.project.storyBible!,
                 projectId: widget.d.project.id, outdated: widget.d.project.storyCheckOutdated, reload: widget.reload),
             const SizedBox(height: 14),
