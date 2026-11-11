@@ -2866,7 +2866,26 @@ class _StoryPlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final chars = ((plan['characters'] as List?) ?? []).whereType<Map>().toList();
     final fixes = ((plan['fixes'] as List?) ?? []).map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList();
-    final threads = ((plan['open_threads'] as List?) ?? []).map((e) => e.toString()).toList();
+    final record = Map<String, dynamic>.from((plan['episode_record'] as Map?) ?? {});
+    final openQs = ((record['open_questions'] as List?) ?? (plan['open_threads'] as List?) ?? []).map((e) => e.toString()).toList();
+    final threads = openQs;
+    final hp = Map<String, dynamic>.from((plan['hook_plan'] as Map?) ?? {});
+    final ev = Map<String, dynamic>.from((plan['evaluation'] as Map?) ?? {});
+    final scores = Map<String, dynamic>.from((ev['scores'] as Map?) ?? {});
+    final below = ((ev['below_bar'] as List?) ?? []).map((e) => e.toString()).toSet();
+    final knowledge = ((plan['knowledge'] as List?) ?? []).whereType<Map>().toList();
+    final next = ((record['next_episode'] as List?) ?? []).map((e) => e.toString()).toList();
+    String tech(Object? v) => _s(v).replaceAll('_', ' ');
+    const names = {
+      'opening_hook': 'Opening hook',
+      'progression': 'Story moves forward',
+      'emotion': 'Emotion',
+      'suspense': 'Suspense',
+      'dialogue': 'Dialogue',
+      'scene_relevance': 'Every scene matters',
+      'ending_hook': 'Ending hook',
+      'continuity': 'Follows the last episode',
+    };
     Widget row(String label, String value) => value.isEmpty
         ? const SizedBox.shrink()
         : Padding(
@@ -2890,8 +2909,36 @@ class _StoryPlanCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            row('Opening hook', _s(plan['opening_hook'])),
-            row('Ending hook', _s(plan['ending_hook'])),
+            row(hp.isEmpty ? 'Opening hook' : 'Opening hook · ${tech(hp['opening_technique'])}',
+                _s(plan['opening_hook']).isNotEmpty ? _s(plan['opening_hook']) : _s(hp['opening_moment'])),
+            if (_s(hp['opening_why']).isNotEmpty) row('Why it hooks', _s(hp['opening_why'])),
+            row(hp.isEmpty ? 'Ending hook' : 'Ending hook · ${tech(hp['ending_technique'])}',
+                _s(plan['ending_hook']).isNotEmpty ? _s(plan['ending_hook']) : _s(hp['ending_moment'])),
+            row('What viewers will want to know', _s(hp['viewer_question'])),
+            row('Picks up from the last episode', _s(plan['continues_from'])),
+            if (scores.isNotEmpty) ...[
+              const Text('Story check of the final script',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              for (final e in scores.entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${below.contains(e.key) ? '⚠ ' : '✓ '}${names[e.key] ?? e.key}: ${(e.value as Map)['score']}/10 – ${_s((e.value as Map)['reason'])}',
+                    style: TextStyle(fontSize: 12.5, height: 1.35, color: below.contains(e.key) ? AppColors.coin : null),
+                  ),
+                ),
+              if (ev['revised'] == true)
+                Text('Viyo revised the script once to fix: ${((ev['fixed'] as List?) ?? []).map((e) => names[e] ?? e).toSet().join(', ')}.',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              if (_s(ev['revision_rejected']).isNotEmpty)
+                Text(_s(ev['revision_rejected']), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              if (below.isNotEmpty)
+                const Text('Ask the assistant how to make the weak parts stronger.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+            ] else if (_s(ev['error']).isNotEmpty)
+              row('Story check', _s(ev['error'])),
             row('What makes it different', _s(plan['premise_twist'])),
             row('Conflict', _s(plan['central_conflict'])),
             row('What\'s at stake', _s(plan['stakes'])),
@@ -2913,6 +2960,15 @@ class _StoryPlanCard extends StatelessWidget {
             row('Ending', _s(plan['ending'])),
             if (fixes.isNotEmpty) row('What the script doctor improved', fixes.map((f) => '• $f').join('\n')),
             if (threads.isNotEmpty) row('Open storylines for the next episode', threads.map((f) => '• $f').join('\n')),
+            if (knowledge.isNotEmpty)
+              row(
+                  'Who knows what',
+                  knowledge
+                      .map((k) => '• ${_s(k['character'])}: knows ${_s(k['knows'])}'
+                          '${_s(k['hides']).isEmpty ? '' : '; hides ${_s(k['hides'])}'}'
+                          '${_s(k['does_not_know']).isEmpty ? '' : "; doesn't know ${_s(k['does_not_know'])}"}')
+                      .join('\n')),
+            if (next.isNotEmpty) row('Planned for the next episode', next.map((f) => '• $f').join('\n')),
           ],
         ),
       ),
