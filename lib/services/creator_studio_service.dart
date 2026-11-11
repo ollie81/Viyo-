@@ -394,8 +394,44 @@ class StudioRender {
 }
 
 /// One camera shot of a scene (studio_shots).
+/// One continuity check of a shot picture (against the shot before it and the approved references).
+class ShotCheckItem {
+  final String check, label;
+  final bool passed;
+  final String? severity;
+  final int? score;
+  final List<Map<String, dynamic>> problems;
+  ShotCheckItem.fromJson(Map j)
+      : check = j['check'] ?? '',
+        label = j['label'] ?? '',
+        passed = j['passed'] == true,
+        severity = j['severity'],
+        score = (j['score'] as num?)?.toInt(),
+        problems = ((j['problems'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+}
+
+class ShotCheck {
+  /// no_picture, unchecked, outdated, passed, attention, failed, accepted
+  final String status, summary, fix;
+  final int? overall;
+  final List<String> critical;
+  final List<ShotCheckItem> checks;
+  final String? acceptedNote;
+  ShotCheck.fromJson(Map? j)
+      : status = j?['status'] ?? 'unchecked',
+        summary = j?['summary'] ?? '',
+        fix = j?['fix'] ?? '',
+        overall = (j?['overall'] as num?)?.toInt(),
+        critical = ((j?['critical'] as List?) ?? []).map((e) => '$e').toList(),
+        checks = ((j?['checks'] as List?) ?? []).map((e) => ShotCheckItem.fromJson(e as Map)).toList(),
+        acceptedNote = (j?['accepted'] as Map?)?['note'];
+  bool get checked => const ['passed', 'attention', 'failed', 'accepted'].contains(status);
+  List<ShotCheckItem> get failed => checks.where((c) => !c.passed).toList();
+}
+
 class StudioShot {
   final String id, sceneId, shotType, cameraAngle, cameraMovement, description, reason, status;
+  final ShotCheck check;
   final int position;
   final double durationSeconds;
   final String? imageUrl, videoUrl;
@@ -410,6 +446,7 @@ class StudioShot {
         description = j['description'] ?? '',
         reason = j['reason'] ?? '',
         status = j['status'] ?? 'planned',
+        check = ShotCheck.fromJson(j['continuity_check'] as Map?),
         position = (j['position'] as num?)?.toInt() ?? 0,
         durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 3,
         imageUrl = j['image_url'],
@@ -736,6 +773,10 @@ class CreatorStudioService {
 
   static Future<void> approveShot(String shotId, bool approved) =>
       _send('POST', '/shots/$shotId/approve', {'approved': approved});
+
+  /// The creator says a flagged change in this shot picture is intentional (this picture only).
+  static Future<void> acceptShotContinuity(String shotId, bool accepted, {String note = ''}) =>
+      _send('POST', '/shots/$shotId/continuity/accept', {'accepted': accepted, 'note': note});
 
   // ------------------------------------------------ places and objects
 

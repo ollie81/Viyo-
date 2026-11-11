@@ -99,6 +99,7 @@ const _kindTitles = {
   'shotplan': 'Plan camera shots',
   'shot_image': 'Shot pictures',
   'shot_video': 'Shot clips',
+  'shot_inspect': 'Check shots',
 };
 
 String kindTitle(String kind) => _kindTitles[kind] ?? kind;
