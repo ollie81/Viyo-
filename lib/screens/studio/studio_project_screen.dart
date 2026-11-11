@@ -1420,6 +1420,13 @@ class _SceneCardState extends State<_SceneCard> {
               icon: const Icon(Icons.videocam_outlined, size: 16),
               label: const Text('Make shot clips'),
             ),
+          if (shots.any((x) => x.hasImage && !x.check.checked))
+            TextButton.icon(
+              onPressed: () => widget.run('shot_inspect',
+                  targets: [for (final x in shots) if (x.hasImage && !x.check.checked) x.id], title: 'Check shots: scene $n'),
+              icon: const Icon(Icons.fact_check_outlined, size: 16),
+              label: const Text('Check shots'),
+            ),
           if (shots.any((x) => x.hasImage || x.hasVideo))
             TextButton.icon(
               onPressed: () => showDialog(context: context, builder: (_) => _ShotPreview(shots: shots, vertical: widget.d.project.vertical)),
@@ -1489,6 +1496,7 @@ class _SceneCardState extends State<_SceneCard> {
             if (lastFailed != null && working.isEmpty)
               Text('Last try failed: ${lastFailed.error ?? 'unknown error'}',
                   style: const TextStyle(fontSize: 11, color: AppColors.danger)),
+            if (sh.hasImage && working.isEmpty) _checkChip(sh, scene, call),
           ]),
         ),
         PopupMenuButton<String>(
@@ -1518,6 +1526,103 @@ class _SceneCardState extends State<_SceneCard> {
         ),
       ]),
     );
+  }
+
+  /// The shot's continuity check at a glance; tap for every check, the fix and the choices.
+  Widget _checkChip(StudioShot sh, int scene, Future<void> Function(Future<void> Function()) call) {
+    final c = sh.check;
+    final failedNames = c.failed.map((x) => x.label.toLowerCase()).join(', ');
+    final (String text, Color color, IconData icon) = switch (c.status) {
+      'passed' => ('Matches the shot before${c.overall != null ? ' · ${c.overall}/100' : ''}', AppColors.success, Icons.check_circle_outline),
+      'accepted' => ('Change accepted as intentional', AppColors.textSecondary, Icons.verified_outlined),
+      'failed' => ('Doesn\'t match: $failedNames', AppColors.danger, Icons.error_outline),
+      'attention' => ('Worth a look: $failedNames', AppColors.coin, Icons.info_outline),
+      'outdated' => ('Checked before this picture changed', AppColors.textMuted, Icons.history),
+      _ => ('Not checked yet', AppColors.textMuted, Icons.help_outline),
+    };
+    return InkWell(
+      onTap: c.checked ? () => _showCheck(sh, scene, call) : null,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Flexible(child: Text(text, style: TextStyle(fontSize: 11.5, color: color), overflow: TextOverflow.ellipsis)),
+          if (c.checked) Icon(Icons.chevron_right, size: 14, color: color),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _showCheck(StudioShot sh, int scene, Future<void> Function(Future<void> Function()) call) async {
+    final c = sh.check;
+    final canFix = !sh.approved && widget.scene.shotPlanApproved && (c.status == 'failed' || c.status == 'attention');
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: Text('Scene $scene, shot ${sh.position + 1}: continuity'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              if (c.summary.isNotEmpty) Text(c.summary, style: const TextStyle(height: 1.35)),
+              const SizedBox(height: 8),
+              for (final item in c.checks) ...[
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(item.passed ? Icons.check : Icons.close,
+                      size: 16,
+                      color: item.passed
+                          ? AppColors.success
+                          : item.severity == 'high'
+                              ? AppColors.danger
+                              : AppColors.coin),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${item.label}${item.score != null ? ' · ${item.score}' : ''}'
+                          '${c.critical.contains(item.check) ? ' · critical' : ''}',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      for (final p in item.problems)
+                        Text(
+                            '${p['intentional'] == true ? 'Intentional: ' : p['certainty'] == 'uncertain' ? 'Not sure: ' : ''}'
+                            'expected ${p['expected'] ?? '?'}, seen ${p['seen'] ?? '?'}',
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+              ],
+              if (c.fix.isNotEmpty && c.status != 'passed')
+                Text('Suggested fix: ${c.fix}', style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+              if (c.acceptedNote != null)
+                Text('You accepted this change${c.acceptedNote!.isNotEmpty ? ': ${c.acceptedNote}' : ''}.',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              const Text('A vision model made this check. It can be wrong, so you decide.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          if (c.status == 'accepted') TextButton(onPressed: () => Navigator.pop(ctx, 'unaccept'), child: const Text('Undo accept')),
+          if (c.status == 'failed' || c.status == 'attention')
+            TextButton(onPressed: () => Navigator.pop(ctx, 'accept'), child: const Text('It\'s intentional')),
+          if (canFix) FilledButton(onPressed: () => Navigator.pop(ctx, 'fix'), child: const Text('Fix this shot')),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'fix':
+        widget.run('shot_image',
+            targets: [sh.id], extra: {'correction': c.fix}, title: 'Scene $scene, shot ${sh.position + 1}: fixed picture');
+      case 'accept':
+        await call(() => CreatorStudioService.acceptShotContinuity(sh.id, true));
+      case 'unaccept':
+        await call(() => CreatorStudioService.acceptShotContinuity(sh.id, false));
+    }
   }
 
   Future<void> _editShot(StudioShot sh) async {
