@@ -443,6 +443,7 @@ class StudioShot {
   final String? imageUrl, videoUrl;
   final bool hasImage, hasVideo, approved;
   final List<Map<String, dynamic>> dialogue;
+  final Map<String, dynamic>? voiceCheck;
   StudioShot.fromJson(Map j)
       : id = j['id'],
         sceneId = j['scene_id'] ?? '',
@@ -460,6 +461,7 @@ class StudioShot {
         hasImage = j['has_image'] == true,
         hasVideo = j['has_video'] == true,
         approved = j['approved'] == true,
+        voiceCheck = j['voice_check'] is Map ? Map<String, dynamic>.from(j['voice_check']) : null,
         dialogue = ((j['dialogue'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
   static const labels = {
@@ -824,6 +826,10 @@ class CreatorStudioService {
 
   static Future<void> approveShot(String shotId, bool approved) =>
       _send('POST', '/shots/$shotId/approve', {'approved': approved});
+
+  /// The creator keeps a talking clip's voices as they are; they become the reference for later clips.
+  static Future<void> approveSceneVoice(String sceneId) => _send('POST', '/scenes/$sceneId/voice/approve');
+  static Future<void> approveShotVoice(String shotId) => _send('POST', '/shots/$shotId/voice/approve');
 
   /// The creator says a flagged change in this shot picture is intentional (this picture only).
   static Future<void> acceptShotContinuity(String shotId, bool accepted, {String note = ''}) =>
