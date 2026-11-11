@@ -1436,25 +1436,47 @@ class _SceneCardState extends State<_SceneCard> {
 
   Widget _shotRow(StudioShot sh, int scene, Future<void> Function(Future<void> Function()) call) {
     final s = widget.scene;
-    final made = sh.hasVideo ? 'Clip made' : sh.hasImage ? 'Picture made' : 'Planned';
+    final working = widget.d.jobs.where((j) => j.active && j.shotId == sh.id).toList();
+    final failed = widget.d.jobs.where((j) => j.shotId == sh.id).toList();
+    final lastFailed = failed.isNotEmpty && failed.first.status == 'failed' ? failed.first : null;
+    final made = working.isNotEmpty
+        ? (working.first.kind == 'shot_video' ? 'Making the clip…' : 'Making the picture…')
+        : sh.hasVideo
+            ? 'Clip made'
+            : sh.hasImage
+                ? 'Picture made'
+                : 'Planned';
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            width: 56,
-            height: 56,
-            color: const Color(0xFF17173A),
-            child: sh.imageUrl != null
-                ? Image.network(sh.imageUrl!, fit: BoxFit.cover)
-                : Center(child: Text('${sh.position + 1}', style: const TextStyle(color: AppColors.textMuted))),
+        InkWell(
+          onTap: sh.hasImage || sh.hasVideo
+              ? () => showDialog(context: context, builder: (_) => _ShotPreview(shots: [sh], vertical: widget.d.project.vertical))
+              : null,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              width: 56,
+              height: 56,
+              color: const Color(0xFF17173A),
+              child: Stack(fit: StackFit.expand, children: [
+                if (sh.imageUrl != null)
+                  Image.network(sh.imageUrl!, fit: BoxFit.cover)
+                else
+                  Center(child: Text('${sh.position + 1}', style: const TextStyle(color: AppColors.textMuted))),
+                if (working.isNotEmpty)
+                  Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(strokeWidth: 2)))
+                else if (sh.hasVideo)
+                  const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 22)),
+              ]),
+            ),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${sh.position + 1} · ${sh.label} · ${sh.durationSeconds.toStringAsFixed(1)} s'
+                '${sh.cameraAngle.isNotEmpty ? ' · ${sh.cameraAngle}' : ''}'
                 '${sh.cameraMovement != 'static' ? ' · ${sh.cameraMovement}' : ''}',
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
             Text(sh.description, style: const TextStyle(fontSize: 12.5, height: 1.3)),
@@ -1464,6 +1486,9 @@ class _SceneCardState extends State<_SceneCard> {
               Text('${d['character']}: "${d['text']}"', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
             Text(sh.approved ? '$made · approved' : made,
                 style: TextStyle(fontSize: 11, color: sh.approved ? AppColors.success : AppColors.textMuted)),
+            if (lastFailed != null && working.isEmpty)
+              Text('Last try failed: ${lastFailed.error ?? 'unknown error'}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.danger)),
           ]),
         ),
         PopupMenuButton<String>(

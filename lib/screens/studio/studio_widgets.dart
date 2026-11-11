@@ -95,6 +95,10 @@ const _kindTitles = {
   'cover': 'Make the cover',
   'elements': 'Find places & objects',
   'element': 'Place & object pictures',
+  'inspect': 'Check pictures',
+  'shotplan': 'Plan camera shots',
+  'shot_image': 'Shot pictures',
+  'shot_video': 'Shot clips',
 };
 
 String kindTitle(String kind) => _kindTitles[kind] ?? kind;
