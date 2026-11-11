@@ -16,7 +16,7 @@ class StudioChatScreen extends StatefulWidget {
   /// if it was started. 'production' means: open Make the whole film.
   /// Runs a paid step through the normal price check; `targets` limits it to
   /// those scenes (e.g. a new picture for one scene).
-  final Future<bool> Function(String job, List<String> targets) onPaidStep;
+  final Future<bool> Function(String job, List<String> targets, Map<String, dynamic> extra) onPaidStep;
   const StudioChatScreen(
       {super.key, required this.projectId, required this.projectTitle, this.initialMessage, required this.onPaidStep});
 
@@ -209,7 +209,8 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
     try {
       if (prop['paid'] == true) {
         final targets = ((prop['targets'] as List?) ?? const []).map((e) => '$e').toList();
-        final started = await widget.onPaidStep('${prop['job']}', targets);
+        final extra = prop['extra'] is Map ? Map<String, dynamic>.from(prop['extra'] as Map) : <String, dynamic>{};
+        final started = await widget.onPaidStep('${prop['job']}', targets, extra);
         if (started) {
           await CreatorStudioService.setProposalStatus(m.id, i, 'started');
           setState(() => m.proposals[i] = {...prop, 'status': 'started'});
