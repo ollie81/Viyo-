@@ -645,6 +645,27 @@ class CreatorStudioService {
   }
 
   /// A new episode with the same settings and cast (same voices and faces).
+  // ------------------------------------------------ story world and larger story
+
+  /// {world, inherited, check, saga, saga_problems, modes, prices}
+  static Future<Map<String, dynamic>> world(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/world'));
+
+  static Future<void> buildWorld(String projectId, String mode, String setting, String requestId) =>
+      _send('POST', '/projects/$projectId/world', {'request_id': requestId, 'mode': mode, 'setting': setting});
+
+  static Future<void> correctWorld(String projectId, String field, String value, String note) =>
+      _send('POST', '/projects/$projectId/world/correct', {'field': field, 'value': value, 'note': note});
+
+  static Future<void> approveWorld(String projectId, bool approved) =>
+      _send('POST', '/projects/$projectId/world/approve', {'approved': approved});
+
+  static Future<void> planSaga(String projectId, String mode, int count, String requestId) =>
+      _send('POST', '/projects/$projectId/saga', {'request_id': requestId, 'mode': mode, 'count': count});
+
+  static Future<void> approveSaga(String projectId, bool approved) =>
+      _send('POST', '/projects/$projectId/saga/approve', {'approved': approved});
+
   /// Price of re-checking the current script ({credits, outdated, status}).
   static Future<Map<String, dynamic>> storyCheckInfo(String projectId) async =>
       Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/story-check'));
