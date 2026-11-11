@@ -355,7 +355,7 @@ class StudioScene {
 
 class StudioJob {
   final String id, kind, status;
-  final String? sceneId, characterId, error;
+  final String? sceneId, characterId, shotId, error;
   final int estimatedCredits, chargedCredits;
   final DateTime? createdAt;
   StudioJob.fromJson(Map j)
@@ -364,6 +364,7 @@ class StudioJob {
         status = j['status'],
         sceneId = j['scene_id'],
         characterId = j['character_id'],
+        shotId = j['shot_id'],
         error = j['error'],
         estimatedCredits = (j['estimated_credits'] as num?)?.toInt() ?? 0,
         chargedCredits = (j['charged_credits'] as num?)?.toInt() ?? 0,
