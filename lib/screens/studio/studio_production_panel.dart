@@ -92,6 +92,11 @@ class _ProductionPanelState extends State<ProductionPanel> {
                   Text('Fix these first:\n• ${blocked.take(5).join('\n• ')}',
                       style: const TextStyle(color: AppColors.danger, fontSize: 12.5, height: 1.4)),
                 ],
+                for (final a in ((q['advice'] as List?) ?? []))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('Better coverage: $a', style: const TextStyle(color: AppColors.coin, fontSize: 12.5, height: 1.4)),
+                  ),
                 if (stages.isEmpty && blocked.isEmpty)
                   const Text('Everything is already made.', style: TextStyle(color: AppColors.success)),
               ]),
@@ -99,6 +104,11 @@ class _ProductionPanelState extends State<ProductionPanel> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            if (((q['single_shot_scenes'] as List?) ?? []).isNotEmpty)
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, {'plan_shots': (q['single_shot_scenes'] as List).map((e) => '$e').toList()}),
+                child: const Text('Plan shots first'),
+              ),
             if (short && blocked.isEmpty && stages.isNotEmpty)
               FilledButton(onPressed: () => Navigator.pop(ctx, {'credits': true}), child: const Text('Get credits'))
             else
@@ -113,6 +123,19 @@ class _ProductionPanelState extends State<ProductionPanel> {
       }),
     );
     if (go == null || !mounted) return;
+    if (go['plan_shots'] is List) {
+      // The director plans those scenes' shots (price shown first); approve each plan on the Scenes tab,
+      // then the film is made shot by shot.
+      await confirmAndRun(context,
+          projectId: widget.d.project.id,
+          kind: 'shotplan',
+          targets: (go['plan_shots'] as List).cast<String>(),
+          title: 'Plan camera shots',
+          extraWarning: 'Then check and approve each scene\'s shot plan on the Scenes tab before making the film.',
+          onStarted: (_) => widget.reload(),
+          onNeedCredits: () => widget.onNeedCredits());
+      return;
+    }
     if (go['credits'] == true) {
       await widget.onNeedCredits();
       return;
