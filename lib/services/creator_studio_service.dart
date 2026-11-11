@@ -311,7 +311,13 @@ class StudioScene {
         madeWithReferences = ((j['made_with_references'] as List?) ?? []).map((e) => e.toString()).toList(),
         continuity = j['continuity'] is Map ? Map<String, dynamic>.from(j['continuity']) : const {},
         imageApproved = j['image_approved'] == true,
-        inspection = j['inspection'] is Map ? Map<String, dynamic>.from(j['inspection']) : null;
+        inspection = j['inspection'] is Map ? Map<String, dynamic>.from(j['inspection']) : null,
+        shots = ((j['shots'] as List?) ?? []).map((e) => StudioShot.fromJson(e as Map)).toList(),
+        shotPlanApproved = j['shot_plan_approved'] == true;
+  /// The director's camera shots for this scene, in order (empty = one picture/clip for the scene).
+  final List<StudioShot> shots;
+  /// The creator approved the shot plan: shots can be made and the film uses them.
+  final bool shotPlanApproved;
   /// The creator approved this exact picture: it is never replaced until unapproved.
   final bool imageApproved;
   /// The latest picture check: {scores, problems, summary, needs_attention, correction, outdated}.
@@ -384,6 +390,46 @@ class StudioRender {
   /// The Viyo post this version became, once published.
   final String? postId;
   bool get published => postId != null;
+}
+
+/// One camera shot of a scene (studio_shots).
+class StudioShot {
+  final String id, sceneId, shotType, cameraAngle, cameraMovement, description, reason, status;
+  final int position;
+  final double durationSeconds;
+  final String? imageUrl, videoUrl;
+  final bool hasImage, hasVideo, approved;
+  final List<Map<String, dynamic>> dialogue;
+  StudioShot.fromJson(Map j)
+      : id = j['id'],
+        sceneId = j['scene_id'] ?? '',
+        shotType = j['shot_type'] ?? 'medium',
+        cameraAngle = j['camera_angle'] ?? '',
+        cameraMovement = j['camera_movement'] ?? 'static',
+        description = j['description'] ?? '',
+        reason = j['reason'] ?? '',
+        status = j['status'] ?? 'planned',
+        position = (j['position'] as num?)?.toInt() ?? 0,
+        durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 3,
+        imageUrl = j['image_url'],
+        videoUrl = j['video_url'],
+        hasImage = j['has_image'] == true,
+        hasVideo = j['has_video'] == true,
+        approved = j['approved'] == true,
+        dialogue = ((j['dialogue'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+  static const labels = {
+    'establishing_wide': 'Establishing wide',
+    'wide_two_shot': 'Wide two-shot',
+    'medium': 'Medium',
+    'close_up': 'Close-up',
+    'extreme_close_up': 'Extreme close-up',
+    'over_the_shoulder': 'Over the shoulder',
+    'reaction': 'Reaction',
+    'pov': 'Point of view',
+    'insert': 'Insert',
+  };
+  String get label => labels[shotType] ?? shotType;
 }
 
 class StudioProjectDetail {
@@ -679,6 +725,16 @@ class CreatorStudioService {
 
   static Future<void> restoreVersion(String sceneId, String assetId) =>
       _send('POST', '/scenes/$sceneId/restore', {'asset_id': assetId});
+
+  // ------------------------------------------------ camera shots
+
+  static Future<void> updateShot(String shotId, Map<String, dynamic> fields) => _send('PATCH', '/shots/$shotId', fields);
+
+  static Future<void> approveShotPlan(String sceneId, bool approved) =>
+      _send('POST', '/scenes/$sceneId/shots/approve', {'approved': approved});
+
+  static Future<void> approveShot(String shotId, bool approved) =>
+      _send('POST', '/shots/$shotId/approve', {'approved': approved});
 
   // ------------------------------------------------ places and objects
 
