@@ -612,7 +612,8 @@ class _StoryPanelState extends State<_StoryPanel> {
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (widget.d.project.storyBible != null) ...[
-            _StoryPlanCard(widget.d.project.storyBible!),
+            _StoryPlanCard(widget.d.project.storyBible!,
+                projectId: widget.d.project.id, outdated: widget.d.project.storyCheckOutdated, reload: widget.reload),
             const SizedBox(height: 14),
           ],
           const Text('Screenplay', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
@@ -2858,7 +2859,35 @@ class _SoundQualityCardState extends State<_SoundQualityCard> {
 /// how their idea was developed.
 class _StoryPlanCard extends StatelessWidget {
   final Map<String, dynamic> plan;
-  const _StoryPlanCard(this.plan);
+  final String projectId;
+  final bool outdated;
+  final Future<void> Function() reload;
+  const _StoryPlanCard(this.plan, {required this.projectId, required this.outdated, required this.reload});
+
+  Future<void> _recheck(BuildContext context) async {
+    try {
+      final info = await CreatorStudioService.storyCheckInfo(projectId);
+      if (!context.mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: const Text('Check the story again?'),
+          content: Text('Viyo judges your current script (with your edits) and quotes the lines behind every score. '
+              'It never changes your script. About ${info['credits']} credits; nothing is charged if it fails.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Check story')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await CreatorStudioService.recheckStory(projectId, DateTime.now().microsecondsSinceEpoch.toString());
+      await reload();
+    } on StudioException catch (e) {
+      if (context.mounted) showStudioError(context, e.message);
+    }
+  }
 
   String _s(Object? v) => (v ?? '').toString().trim();
 
@@ -2871,8 +2900,12 @@ class _StoryPlanCard extends StatelessWidget {
     final threads = openQs;
     final hp = Map<String, dynamic>.from((plan['hook_plan'] as Map?) ?? {});
     final ev = Map<String, dynamic>.from((plan['evaluation'] as Map?) ?? {});
-    final scores = Map<String, dynamic>.from((ev['scores'] as Map?) ?? {});
+    final cats = Map<String, dynamic>.from((ev['categories'] as Map?) ?? {});
     final below = ((ev['below_bar'] as List?) ?? []).map((e) => e.toString()).toSet();
+    final status = _s(ev['status']);
+    final weak = ((ev['weak'] as List?) ?? []).whereType<Map>().toList();
+    final scriptChecks = ((ev['checks'] as List?) ?? []).whereType<Map>().toList();
+    final revision = Map<String, dynamic>.from((ev['revision'] as Map?) ?? {});
     final knowledge = ((plan['knowledge'] as List?) ?? []).whereType<Map>().toList();
     final next = ((record['next_episode'] as List?) ?? []).map((e) => e.toString()).toList();
     String tech(Object? v) => _s(v).replaceAll('_', ' ');
@@ -2916,29 +2949,92 @@ class _StoryPlanCard extends StatelessWidget {
                 _s(plan['ending_hook']).isNotEmpty ? _s(plan['ending_hook']) : _s(hp['ending_moment'])),
             row('What viewers will want to know', _s(hp['viewer_question'])),
             row('Picks up from the last episode', _s(plan['continues_from'])),
-            if (scores.isNotEmpty) ...[
-              const Text('Story check of the final script',
-                  style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              for (final e in scores.entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '${below.contains(e.key) ? '⚠ ' : '✓ '}${names[e.key] ?? e.key}: ${(e.value as Map)['score']}/10 – ${_s((e.value as Map)['reason'])}',
-                    style: TextStyle(fontSize: 12.5, height: 1.35, color: below.contains(e.key) ? AppColors.coin : null),
-                  ),
+            if (ev.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: outdated
+                          ? AppColors.textMuted
+                          : status == 'passed'
+                              ? AppColors.success
+                              : status == 'needs_work'
+                                  ? AppColors.coin
+                                  : AppColors.danger),
                 ),
-              if (ev['revised'] == true)
-                Text('Viyo revised the script once to fix: ${((ev['fixed'] as List?) ?? []).map((e) => names[e] ?? e).toSet().join(', ')}.',
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              if (_s(ev['revision_rejected']).isNotEmpty)
-                Text(_s(ev['revision_rejected']), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              if (below.isNotEmpty)
-                const Text('Ask the assistant how to make the weak parts stronger.',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              const SizedBox(height: 8),
-            ] else if (_s(ev['error']).isNotEmpty)
-              row('Story check', _s(ev['error'])),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                      outdated
+                          ? 'Story check: out of date. You changed the script since it was checked.'
+                          : status == 'passed'
+                              ? 'Story check: passed'
+                              : status == 'needs_work'
+                                  ? 'Story check: needs work'
+                                  : 'Story check: incomplete, so this is not a pass',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  if (_s(ev['summary']).isNotEmpty && !outdated)
+                    Text(_s(ev['summary']), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  const SizedBox(height: 6),
+                  for (final e in cats.entries) ...[
+                    Builder(builder: (_) {
+                      final c = Map<String, dynamic>.from(e.value as Map);
+                      final verified = c['status'] == 'verified';
+                      final weakHere = below.contains(e.key);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 5),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(
+                            '${!verified ? '? ' : weakHere ? '⚠ ' : '✓ '}${names[e.key] ?? e.key}: '
+                            '${verified ? '${c['score']}/10 – ${_s(c['reason'])}' : 'not verified (${_s(c['why'])})'}',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                height: 1.35,
+                                color: !verified
+                                    ? AppColors.textMuted
+                                    : weakHere
+                                        ? AppColors.coin
+                                        : null),
+                          ),
+                          if (verified && _s(c['quote']).isNotEmpty)
+                            Text('Scene ${c['scene']}: "${_s(c['quote'])}"',
+                                style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
+                        ]),
+                      );
+                    }),
+                  ],
+                  for (final c in scriptChecks)
+                    Text('⚠ ${_s(c['problem'])}', style: const TextStyle(fontSize: 12, color: AppColors.coin)),
+                  if (weak.isNotEmpty || scriptChecks.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    const Text('What Viyo recommends', style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                    for (final w in [...weak, ...scriptChecks])
+                      Text('• ${(w['scene'] ?? 0) != 0 ? 'Scene ${w['scene']}: ' : ''}${_s(w['fix'])}',
+                          style: const TextStyle(fontSize: 12, height: 1.35)),
+                  ],
+                  if (revision['attempted'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                          revision['kept'] == true
+                              ? 'Viyo rewrote scene(s) ${((revision['rewrote'] as List?) ?? []).join(', ')} once: ${_s(revision['why'])}.'
+                              : 'Viyo tried a rewrite of scene(s) ${((revision['scenes'] as List?) ?? []).join(', ')}. ${_s(revision['why'])}',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    ),
+                  if (_s(ev['error']).isNotEmpty) Text(_s(ev['error']), style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => _recheck(context),
+                      icon: const Icon(Icons.fact_check_outlined, size: 16),
+                      label: Text(outdated ? 'Check my edited script' : 'Check the story again'),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
             row('What makes it different', _s(plan['premise_twist'])),
             row('Conflict', _s(plan['central_conflict'])),
             row('What\'s at stake', _s(plan['stakes'])),
