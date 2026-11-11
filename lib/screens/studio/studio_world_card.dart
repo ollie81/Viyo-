@@ -18,6 +18,7 @@ class StudioWorldCard extends StatefulWidget {
 
 class _StudioWorldCardState extends State<StudioWorldCard> {
   Map<String, dynamic>? _d;
+  Map<String, dynamic>? _voices;
   bool _busy = false;
   String _mode = 'grounded';
   final _setting = TextEditingController();
@@ -70,7 +71,18 @@ class _StudioWorldCardState extends State<StudioWorldCard> {
   Future<void> _load() async {
     try {
       final d = await CreatorStudioService.world(widget.projectId);
-      if (mounted) setState(() => _d = d);
+      Map<String, dynamic>? v;
+      try {
+        v = await CreatorStudioService.voiceBible(widget.projectId);
+      } on StudioException {
+        v = null;
+      }
+      if (mounted) {
+        setState(() {
+          _d = d;
+          _voices = v;
+        });
+      }
     } on StudioException catch (e) {
       if (mounted) showStudioError(context, e.message);
     }
@@ -253,6 +265,90 @@ class _StudioWorldCardState extends State<StudioWorldCard> {
     ]);
   }
 
+  static const _voiceFields = {
+    'identity': 'The voice in one sentence',
+    'pitch': 'Pitch',
+    'texture': 'Texture',
+    'accent': 'Accent',
+    'speed': 'Pace',
+    'rhythm': 'Rhythm and pauses',
+    'vocal_age': 'Sounds like (age)',
+    'emotional_range': 'How they sound when emotional',
+  };
+
+  Future<void> _editVoice(String name, Map<String, dynamic> v) async {
+    var field = 'identity';
+    final value = TextEditingController(text: _s(v['identity']));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: Text('$name\'s voice'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              initialValue: field,
+              isExpanded: true,
+              dropdownColor: StudioColors.panel,
+              decoration: studioField('What to change'),
+              items: [for (final e in _voiceFields.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+              onChanged: (f) => set(() {
+                field = f ?? field;
+                value.text = _s(v[field]);
+              }),
+            ),
+            const SizedBox(height: 8),
+            TextField(controller: value, maxLines: 3, decoration: studioField('New direction')),
+            const SizedBox(height: 6),
+            const Text('Used for every clip from now on. Clips already made keep their voice until remade.',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true && value.text.trim().isNotEmpty) {
+      await _run(() => CreatorStudioService.editVoice(widget.projectId, name, {field: value.text.trim()}));
+    }
+  }
+
+  Widget _voicesView() {
+    final voices = Map<String, dynamic>.from((_voices?['voices'] as Map?) ?? {});
+    if (voices.isEmpty) {
+      return const Text('Voices are cast from the story when the script is broken into scenes.',
+          style: TextStyle(fontSize: 12, color: AppColors.textMuted));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (final v in voices.values.whereType<Map>())
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Text.rich(TextSpan(children: [
+                TextSpan(text: '${v['character']}: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                TextSpan(
+                    text: [_s(v['identity']), if (_s(v['accent']).isNotEmpty) '${_s(v['accent'])} accent', if (_s(v['speed']).isNotEmpty) _s(v['speed'])]
+                        .join(' · '),
+                    style: const TextStyle(fontSize: 12.5, height: 1.35)),
+                if (v['fallback'] == true)
+                  const TextSpan(text: ' (basic, not directed yet)', style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+              ])),
+            ),
+            IconButton(
+                tooltip: 'Change voice',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                onPressed: _busy ? null : () => _editVoice('${v['character']}', Map<String, dynamic>.from(v))),
+          ]),
+        ),
+      const Text('No video model takes a fixed voice, so the same direction is sent every time; voices can still drift '
+          'a little between clips. Saved voices never change.', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+    ]);
+  }
+
   List<String> _list(Object? m, String key) => ((m is Map ? m[key] : null) as List? ?? []).map((e) => '$e').toList();
 
   Widget _sagaView(Map<String, dynamic> s) {
@@ -327,6 +423,10 @@ class _StudioWorldCardState extends State<StudioWorldCard> {
                   onPressed: _busy ? null : _build, icon: const Icon(Icons.travel_explore, size: 18), label: const Text('Build the world')),
             ] else
               _worldView(world),
+            const Divider(height: 24),
+            const Text('Character voices', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            _voicesView(),
             const Divider(height: 24),
             const Text('Larger story', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             const SizedBox(height: 4),

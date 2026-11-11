@@ -315,6 +315,7 @@ class StudioScene {
         continuity = j['continuity'] is Map ? Map<String, dynamic>.from(j['continuity']) : const {},
         imageApproved = j['image_approved'] == true,
         inspection = j['inspection'] is Map ? Map<String, dynamic>.from(j['inspection']) : null,
+        voiceCheck = j['voice_check'] is Map ? Map<String, dynamic>.from(j['voice_check']) : null,
         shots = ((j['shots'] as List?) ?? []).map((e) => StudioShot.fromJson(e as Map)).toList(),
         shotPlanApproved = j['shot_plan_approved'] == true;
   /// The director's camera shots for this scene, in order (empty = one picture/clip for the scene).
@@ -325,6 +326,8 @@ class StudioScene {
   final bool imageApproved;
   /// The latest picture check: {scores, problems, summary, needs_attention, correction, outdated}.
   final Map<String, dynamic>? inspection;
+  /// The talking clip's voice record: which model spoke it, its limits, and the sound check.
+  final Map<String, dynamic>? voiceCheck;
   /// The continuity director's record: how the scene starts and ends, who is
   /// where, and how it follows the scene before (`transition`).
   final Map<String, dynamic> continuity;
@@ -665,6 +668,15 @@ class CreatorStudioService {
 
   static Future<void> approveSaga(String projectId, bool approved) =>
       _send('POST', '/projects/$projectId/saga/approve', {'approved': approved});
+
+  // ------------------------------------------------ voice direction
+
+  /// {voices: {name: profile}, similar, providers, price}
+  static Future<Map<String, dynamic>> voiceBible(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/voices'));
+
+  static Future<void> editVoice(String projectId, String name, Map<String, String> fields) =>
+      _send('PATCH', '/projects/$projectId/voices/${Uri.encodeComponent(name)}', {'fields': fields});
 
   /// Price of re-checking the current script ({credits, outdated, status}).
   static Future<Map<String, dynamic>> storyCheckInfo(String projectId) async =>
