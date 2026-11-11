@@ -106,9 +106,12 @@ class StudioProject {
         seriesId = j['series_id'],
         coverUrl = j['cover_url'],
         covers = ((j['covers'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+        storyCheckOutdated = j['story_check_outdated'] == true,
         storyBible = j['story_bible'] is Map && (j['story_bible'] as Map).isNotEmpty
             ? Map<String, dynamic>.from(j['story_bible'])
             : null;
+  /// The script changed since its story check: the check describes an older version.
+  final bool storyCheckOutdated;
   /// What Viyo's writers' room planned: premise, characters, beats, ending,
   /// and what the script doctor fixed. Null until a script is written.
   final Map<String, dynamic>? storyBible;
@@ -642,6 +645,14 @@ class CreatorStudioService {
   }
 
   /// A new episode with the same settings and cast (same voices and faces).
+  /// Price of re-checking the current script ({credits, outdated, status}).
+  static Future<Map<String, dynamic>> storyCheckInfo(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/story-check'));
+
+  /// Checks the current script strictly (never rewrites it).
+  static Future<void> recheckStory(String projectId, String requestId) =>
+      _send('POST', '/projects/$projectId/story-check', {'request_id': requestId});
+
   static Future<String> nextEpisode(String projectId) async {
     final j = await _send('POST', '/projects/$projectId/next-episode');
     return j['id'] as String;
