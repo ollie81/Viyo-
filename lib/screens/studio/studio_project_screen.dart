@@ -1513,6 +1513,8 @@ class _SceneCardState extends State<_SceneCard> {
               Text('Last try failed: ${lastFailed.error ?? 'unknown error'}',
                   style: const TextStyle(fontSize: 11, color: AppColors.danger)),
             if (sh.hasImage && working.isEmpty) _checkChip(sh, scene, call),
+            if (sh.voiceCheck != null && sh.hasVideo && working.isEmpty)
+              _voiceCheckLine(sh.voiceCheck!, () => call(() => CreatorStudioService.approveShotVoice(sh.id))),
           ]),
         ),
         PopupMenuButton<String>(
@@ -1914,7 +1916,8 @@ class _SceneCardState extends State<_SceneCard> {
           },
           style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.35),
         ),
-        if (s.voiceCheck != null) _voiceCheckLine(s.voiceCheck!),
+        if (s.voiceCheck != null)
+          _voiceCheckLine(s.voiceCheck!, () => _approveSceneVoice(s.id)),
         const SizedBox(height: 8),
       ],
       _lookRow(s),
@@ -2014,25 +2017,65 @@ class _SceneCardState extends State<_SceneCard> {
   }
 
   /// Camera framing and, for characters with more than one outfit, what they wear.
-  /// What the voice check heard in this scene's talking clip.
-  Widget _voiceCheckLine(Map<String, dynamic> v) {
+  Future<void> _approveSceneVoice(String sceneId) async {
+    try {
+      await CreatorStudioService.approveSceneVoice(sceneId);
+      await widget.reload();
+    } on StudioException catch (e) {
+      if (!mounted) return;
+      showStudioError(context, e.message);
+    }
+  }
+
+  /// The voices of a talking clip: their check, whether Viyo fixed them automatically,
+  /// whether the creator's approval is needed, and any remaining limit.
+  Widget _voiceCheckLine(Map<String, dynamic> v, Future<void> Function() approve) {
     final chk = Map<String, dynamic>.from((v['check'] as Map?) ?? {});
-    final status = '${chk['status'] ?? 'unchecked'}';
+    final checkStatus = '${chk['status'] ?? 'unchecked'}';
+    // Older clips have only the check; newer ones say what the automatic fix did.
+    final status = '${v['status'] ?? (checkStatus == 'passed' ? 'passed' : checkStatus == 'unchecked' ? 'unchecked' : 'needs_approval')}';
     final problems = ((chk['problems'] as List?) ?? []).whereType<Map>().map((p) => '${p['problem']}').toList();
-    final color = status == 'passed' ? AppColors.success : status == 'failed' ? AppColors.danger : AppColors.coin;
-    final label = switch (status) {
-      'passed' => 'Voice check: every line heard, voices as directed',
-      'failed' => 'Voice check: ${problems.isNotEmpty ? problems.first : 'failed'}',
-      'needs_work' => 'Voice check: ${problems.isNotEmpty ? problems.first : 'worth a listen'}',
-      _ => 'Voice check: not checked',
+    final message = '${v['message'] ?? ''}';
+    final (color, icon, label) = switch (status) {
+      'passed' => (AppColors.success, Icons.record_voice_over_outlined, 'Voices passed the check'),
+      'fixed' => (AppColors.success, Icons.auto_fix_high, 'Voices fixed automatically'),
+      'approved' => (AppColors.success, Icons.check_circle_outline, 'You approved these voices'),
+      'unchecked' => (AppColors.textMuted, Icons.hearing_outlined, 'Voices not checked: please listen'),
+      _ => (AppColors.coin, Icons.hearing_outlined, 'Voices need your approval'),
     };
+    final detail = status == 'passed'
+        ? ''
+        : message.isNotEmpty
+            ? message
+            : problems.isNotEmpty
+                ? problems.first
+                : '';
+    final limit = '${v['limitation'] ?? ''}';
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(fontSize: 12, color: color)),
-        if (status == 'failed' || status == 'needs_work')
-          const Text('Make the video again for this scene, or switch to Saved voices (a voice that never changes).',
-              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        Row(children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Flexible(child: Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600))),
+        ]),
+        if (detail.isNotEmpty && status != 'approved')
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(detail, style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35)),
+          ),
+        if (limit.isNotEmpty)
+          Text(limit, style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.35)),
+        if (status == 'needs_approval' || status == 'unchecked')
+          Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            TextButton.icon(
+              onPressed: approve,
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Keep these voices'),
+            ),
+            const Text('or make the video again, or switch to Saved voices.',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+          ]),
       ]),
     );
   }
