@@ -38,6 +38,8 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
   List<Map<String, dynamic>> _conversations = [];
   String? _conversationId;
   String _priceNote = '';
+  Map<String, dynamic> _status = const {};
+  int _memoryCount = 0;
   bool _loading = true;
   String? _loadError;
   _Pending? _pending;
@@ -75,6 +77,8 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
         _conversations = ((j['conversations'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
         _conversationId = (j['conversation'] as Map?)?['id'];
         _priceNote = '${j['price_note'] ?? ''}';
+        _status = j['status'] is Map ? Map<String, dynamic>.from(j['status']) : const {};
+        _memoryCount = (j['memory_count'] as num?)?.toInt() ?? 0;
         _loading = false;
       });
       _toBottom();
@@ -117,10 +121,71 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
         _pending = null;
       });
       _toBottom();
+      _refreshSide();
     } on StudioException catch (e) {
       if (!mounted) return;
       setState(() => p.error = e.notEnoughCredits ? 'Not enough credits for the assistant. Add credits, then retry.' : e.message);
     }
+  }
+
+  /// Status, memory count and suggested questions after something changed.
+  Future<void> _refreshSide() async {
+    try {
+      final j = await CreatorStudioService.chatHistory(widget.projectId, conversationId: _conversationId);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = ((j['suggestions'] as List?) ?? []).map((e) => '$e').toList();
+        _status = j['status'] is Map ? Map<String, dynamic>.from(j['status']) : _status;
+        _memoryCount = (j['memory_count'] as num?)?.toInt() ?? _memoryCount;
+      });
+    } on StudioException {
+      // The chat itself already worked; the side panel can wait.
+    }
+  }
+
+  Future<void> _openMemory() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: StudioColors.panel,
+      builder: (_) => _MemorySheet(projectId: widget.projectId),
+    );
+    _refreshSide();
+  }
+
+  /// What exists and what's missing, at a glance.
+  Widget _statusStrip() {
+    final st = _status;
+    if (st.isEmpty || (st['scenes'] ?? 0) == 0 && (st['characters'] ?? 0) == 0) return const SizedBox.shrink();
+    Widget chip(IconData icon, String text, {Color? color}) => Container(
+          margin: const EdgeInsets.only(right: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: (color ?? AppColors.textMuted).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 13, color: color ?? AppColors.textSecondary),
+            const SizedBox(width: 4),
+            Text(text, style: TextStyle(fontSize: 11.5, color: color ?? AppColors.textSecondary)),
+          ]),
+        );
+    final failed = (st['failed'] ?? 0) as num, problems = (st['continuity_problems'] ?? 0) as num;
+    return SizedBox(
+      height: 34,
+      child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(16, 6, 16, 2), children: [
+        chip(Icons.view_carousel_outlined, '${st['scenes']} scenes'),
+        chip(Icons.image_outlined, '${st['pictures']}/${st['scenes']} pictures'),
+        if ((st['video_scenes'] ?? 0) > 0) chip(Icons.videocam_outlined, '${st['videos']}/${st['video_scenes']} videos'),
+        if ((st['with_lines'] ?? 0) > 0) chip(Icons.record_voice_over_outlined, '${st['voiced']}/${st['with_lines']} voiced'),
+        chip(Icons.people_outline, '${st['characters']} characters'),
+        if ((st['running'] ?? 0) > 0) chip(Icons.hourglass_top, '${st['running']} making', color: AppColors.primary),
+        if (failed > 0) chip(Icons.error_outline, '$failed failed', color: AppColors.danger),
+        if (problems > 0) chip(Icons.link_off, '$problems continuity', color: AppColors.coin),
+        chip(Icons.movie_outlined, (st['films'] ?? 0) > 0 ? 'Film made' : 'No film yet',
+            color: (st['films'] ?? 0) > 0 ? AppColors.success : null),
+      ]),
+    );
   }
 
   Future<void> _newChat() async {
@@ -226,7 +291,8 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
       'applied' => ('Saved', AppColors.success),
       'started' => ('Started', AppColors.success),
       'dismissed' => ('Dismissed', AppColors.textMuted),
-      _ => (paid ? 'Costs credits' : 'Suggestion', paid ? AppColors.coin : AppColors.primary),
+      'failed' => ('Not possible', AppColors.danger),
+      _ => (paid ? 'Costs credits' : 'Suggestion · not saved yet', paid ? AppColors.coin : AppColors.primary),
     };
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 4),
@@ -254,7 +320,13 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Text('${p['result']}', style: const TextStyle(color: AppColors.success, fontSize: 12)),
           ),
-        if (status == 'proposed' && p['error'] != null)
+        if (status == 'proposed' && paid)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text('Nothing starts until you see the price and confirm.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+          ),
+        if ((status == 'proposed' || status == 'failed') && p['error'] != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text('${p['error']}', style: const TextStyle(color: AppColors.danger, fontSize: 12)),
@@ -320,6 +392,15 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
               style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
         ]),
         actions: [
+          IconButton(
+            tooltip: 'What Viyo remembers',
+            onPressed: _openMemory,
+            icon: Badge(
+              isLabelVisible: _memoryCount > 0,
+              label: Text('$_memoryCount'),
+              child: const Icon(Icons.psychology_outlined),
+            ),
+          ),
           PopupMenuButton<String>(
             tooltip: 'Chats',
             icon: const Icon(Icons.forum_outlined),
@@ -343,6 +424,7 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 780),
             child: Column(children: [
+              _statusStrip(),
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
@@ -398,6 +480,20 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 8, 8, 6),
                 decoration: const BoxDecoration(border: Border(top: BorderSide(color: StudioColors.panelBorder))),
                 child: Column(children: [
+                  if (_messages.isNotEmpty && pending == null && _suggestions.isNotEmpty)
+                    SizedBox(
+                      height: 36,
+                      child: ListView(scrollDirection: Axis.horizontal, children: [
+                        for (final q in _suggestions)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6, bottom: 4),
+                            child: ActionChip(
+                              label: Text(q, style: const TextStyle(fontSize: 12)),
+                              onPressed: () => _send(q),
+                            ),
+                          ),
+                      ]),
+                    ),
                   Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Expanded(
                       child: TextField(
@@ -426,6 +522,149 @@ class _StudioChatScreenState extends State<StudioChatScreen> {
               ),
             ]),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// What the assistant remembers about this production, which the creator can
+/// correct or delete. Ideas are kept apart from what was decided.
+class _MemorySheet extends StatefulWidget {
+  final String projectId;
+  const _MemorySheet({required this.projectId});
+  @override
+  State<_MemorySheet> createState() => _MemorySheetState();
+}
+
+class _MemorySheetState extends State<_MemorySheet> {
+  Map<String, dynamic> _memory = const {};
+  Map<String, dynamic> _labels = const {};
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _run(() => CreatorStudioService.assistantMemory(widget.projectId));
+  }
+
+  Future<void> _run(Future<Map<String, dynamic>> Function() call) async {
+    try {
+      final j = await call();
+      if (!mounted) return;
+      setState(() {
+        _memory = Map<String, dynamic>.from(j['memory'] as Map? ?? {});
+        _labels = Map<String, dynamic>.from(j['labels'] as Map? ?? {});
+        _loading = false;
+        _error = null;
+      });
+    } on StudioException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _write({String? itemId, String? text, String category = 'story'}) async {
+    final ctrl = TextEditingController(text: text ?? '');
+    var cat = category;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          backgroundColor: StudioColors.panel,
+          title: Text(itemId == null ? 'Tell Viyo to remember' : 'Correct this'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              initialValue: cat,
+              isExpanded: true,
+              dropdownColor: StudioColors.panel,
+              decoration: studioField('Kind'),
+              items: [for (final e in _labels.entries) DropdownMenuItem(value: e.key, child: Text('${e.value}'))],
+              onChanged: (v) => set(() => cat = v ?? cat),
+            ),
+            const SizedBox(height: 10),
+            TextField(controller: ctrl, maxLength: 300, maxLines: 3, autofocus: true, decoration: studioField('What to remember')),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    final value = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true || value.isEmpty) return;
+    await _run(() => itemId == null
+        ? CreatorStudioService.rememberFact(widget.projectId, cat, value)
+        : CreatorStudioService.correctMemory(widget.projectId, itemId, text: value, category: cat));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cats = _labels.keys.where((k) => ((_memory[k] as List?) ?? []).isNotEmpty).toList();
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              const Expanded(
+                child: Text('What Viyo remembers', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              ),
+              TextButton.icon(onPressed: _loading ? null : () => _write(), icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
+            ]),
+            const Text('Shared by every chat about this production. Tap to correct; ideas are never treated as decided.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+            else if (_error != null)
+              Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: AppColors.danger)))
+            else if (cats.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text('Nothing yet. As you talk, Viyo keeps the facts and decisions here.',
+                    textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted)),
+              )
+            else
+              Flexible(
+                child: ListView(shrinkWrap: true, children: [
+                  for (final k in cats) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 2),
+                      child: Text('${_labels[k]}',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: k == 'ideas' ? AppColors.coin : AppColors.textPrimary)),
+                    ),
+                    for (final it in (_memory[k] as List).cast<Map>())
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('${it['text']}', style: const TextStyle(fontSize: 13.5)),
+                        subtitle: it['source'] == 'applied'
+                            ? const Text('From a change you applied', style: TextStyle(fontSize: 11))
+                            : null,
+                        onTap: () => _write(itemId: '${it['id']}', text: '${it['text']}', category: k),
+                        trailing: IconButton(
+                          tooltip: 'Forget',
+                          icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+                          onPressed: () => _run(() => CreatorStudioService.forgetMemory(widget.projectId, '${it['id']}')),
+                        ),
+                      ),
+                  ],
+                ]),
+              ),
+          ]),
         ),
       ),
     );
