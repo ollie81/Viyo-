@@ -23,10 +23,11 @@ class _ProductionPanelState extends State<ProductionPanel> {
 
   Future<void> _start() async {
     var sheets = true;
+    var direct = true;
     Map<String, dynamic> q;
     setState(() => _working = true);
     try {
-      q = await CreatorStudioService.productionQuote(widget.d.project.id, sheets: sheets);
+      q = await CreatorStudioService.productionQuote(widget.d.project.id, sheets: sheets, direct: direct);
     } on StudioException catch (e) {
       if (mounted) showStudioError(context, e.message);
       return;
@@ -69,6 +70,29 @@ class _ProductionPanelState extends State<ProductionPanel> {
                 Text('Your balance: ${creditsLabel(available)}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 const SizedBox(height: 10),
                 Text('${q['note'] ?? ''}', style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.35)),
+                if ('${q['note_direct'] ?? ''}'.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text('${q['note_direct']}', style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.35)),
+                  ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: direct,
+                  title: const Text('Direct every scene automatically', style: TextStyle(fontSize: 13.5)),
+                  subtitle: const Text('The AI director films each scene as several shots (wide, close-up, reaction...) '
+                      'and checks its own plan. Recommended.', style: TextStyle(fontSize: 11.5)),
+                  onChanged: (v) async {
+                    try {
+                      final nq = await CreatorStudioService.productionQuote(widget.d.project.id, sheets: sheets, direct: v);
+                      setDialog(() {
+                        direct = v;
+                        q = nq;
+                      });
+                    } on StudioException catch (e) {
+                      if (ctx.mounted) showStudioError(ctx, e.message);
+                    }
+                  },
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: sheets,
@@ -77,7 +101,7 @@ class _ProductionPanelState extends State<ProductionPanel> {
                       style: TextStyle(fontSize: 11.5)),
                   onChanged: (v) async {
                     try {
-                      final nq = await CreatorStudioService.productionQuote(widget.d.project.id, sheets: v);
+                      final nq = await CreatorStudioService.productionQuote(widget.d.project.id, sheets: v, direct: direct);
                       setDialog(() {
                         sheets = v;
                         q = nq;
@@ -115,7 +139,7 @@ class _ProductionPanelState extends State<ProductionPanel> {
               FilledButton(
                 onPressed: blocked.isNotEmpty || stages.isEmpty
                     ? null
-                    : () => Navigator.pop(ctx, {'total': total, 'sheets': sheets}),
+                    : () => Navigator.pop(ctx, {'total': total, 'sheets': sheets, 'direct': direct}),
                 child: Text('Reserve ${creditsLabel(total)} & start'),
               ),
           ],
@@ -143,7 +167,7 @@ class _ProductionPanelState extends State<ProductionPanel> {
     setState(() => _working = true);
     try {
       await CreatorStudioService.startProduction(widget.d.project.id,
-          confirmCredits: go['total'] as int, sheets: go['sheets'] as bool);
+          confirmCredits: go['total'] as int, sheets: go['sheets'] as bool, direct: go['direct'] as bool);
       await widget.reload();
       if (mounted) showStudioInfo(context, 'Production started. You can close the app; it keeps working.');
     } on StudioException catch (e) {

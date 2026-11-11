@@ -738,12 +738,19 @@ class CreatorStudioService {
 
   // ------------------------------------------------ one-click production
 
-  static Future<Map<String, dynamic>> productionQuote(String projectId, {bool sheets = true}) async =>
-      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/production/quote', {'sheets': sheets}));
+  /// direct: the AI director plans every unmade scene's camera shots first (the default).
+  static Future<Map<String, dynamic>> productionQuote(String projectId, {bool sheets = true, bool direct = true}) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/projects/$projectId/production/quote', {'sheets': sheets, 'direct': direct}));
 
-  static Future<Map<String, dynamic>> startProduction(String projectId, {required int confirmCredits, bool sheets = true}) async =>
+  static Future<Map<String, dynamic>> startProduction(String projectId,
+          {required int confirmCredits, bool sheets = true, bool direct = true}) async =>
       Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/production',
-          {'request_id': newRequestId(), 'confirm_credits': confirmCredits, 'sheets': sheets}));
+          {'request_id': newRequestId(), 'confirm_credits': confirmCredits, 'sheets': sheets, 'direct': direct}));
+
+  /// Rearranges a scene's shots (refused if it would change the order of the lines).
+  static Future<void> reorderShots(String sceneId, List<String> shotIds) =>
+      _send('POST', '/scenes/$sceneId/shots/order', {'shot_ids': shotIds});
 
   static Future<void> resumeProduction(String runId) => _send('POST', '/production/$runId/resume');
 

@@ -1410,7 +1410,8 @@ class _SceneCardState extends State<_SceneCard> {
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
-                'Viyo can direct this scene as several shots (wide, over-the-shoulder, close-up, reaction...) instead of one clip.',
+                'Make the whole film directs this scene for you (wide, over-the-shoulder, close-up, reaction...). '
+                'Plan shots here only if you want to see or change them first.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
           ),
         for (final sh in shots) _shotRow(sh, n, call),
@@ -1527,6 +1528,16 @@ class _SceneCardState extends State<_SceneCard> {
                 widget.run('shot_video', targets: [sh.id], title: 'Scene $scene, shot ${sh.position + 1}: clip');
               case 'approve':
                 await call(() => CreatorStudioService.approveShot(sh.id, !sh.approved));
+              case 'up':
+              case 'down':
+                final ids = [for (final x in widget.scene.shots) x.id];
+                final i = ids.indexOf(sh.id);
+                final j = v == 'up' ? i - 1 : i + 1;
+                if (j >= 0 && j < ids.length) {
+                  ids[i] = ids[j];
+                  ids[j] = sh.id;
+                  await call(() => CreatorStudioService.reorderShots(widget.scene.id, ids));
+                }
             }
           },
           itemBuilder: (_) => [
@@ -1537,6 +1548,8 @@ class _SceneCardState extends State<_SceneCard> {
               PopupMenuItem(value: 'video', child: Text(sh.hasVideo ? 'New clip' : 'Make clip')),
             if (sh.hasImage || sh.hasVideo)
               PopupMenuItem(value: 'approve', child: Text(sh.approved ? 'Unapprove shot' : 'Approve shot')),
+            if (sh.position > 0) const PopupMenuItem(value: 'up', child: Text('Move earlier')),
+            if (sh.position < widget.scene.shots.length - 1) const PopupMenuItem(value: 'down', child: Text('Move later')),
           ],
         ),
       ]),
