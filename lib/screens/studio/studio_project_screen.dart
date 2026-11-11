@@ -1914,6 +1914,7 @@ class _SceneCardState extends State<_SceneCard> {
           },
           style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.35),
         ),
+        if (s.voiceCheck != null) _voiceCheckLine(s.voiceCheck!),
         const SizedBox(height: 8),
       ],
       _lookRow(s),
@@ -2013,6 +2014,29 @@ class _SceneCardState extends State<_SceneCard> {
   }
 
   /// Camera framing and, for characters with more than one outfit, what they wear.
+  /// What the voice check heard in this scene's talking clip.
+  Widget _voiceCheckLine(Map<String, dynamic> v) {
+    final chk = Map<String, dynamic>.from((v['check'] as Map?) ?? {});
+    final status = '${chk['status'] ?? 'unchecked'}';
+    final problems = ((chk['problems'] as List?) ?? []).whereType<Map>().map((p) => '${p['problem']}').toList();
+    final color = status == 'passed' ? AppColors.success : status == 'failed' ? AppColors.danger : AppColors.coin;
+    final label = switch (status) {
+      'passed' => 'Voice check: every line heard, voices as directed',
+      'failed' => 'Voice check: ${problems.isNotEmpty ? problems.first : 'failed'}',
+      'needs_work' => 'Voice check: ${problems.isNotEmpty ? problems.first : 'worth a listen'}',
+      _ => 'Voice check: not checked',
+    };
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 12, color: color)),
+        if (status == 'failed' || status == 'needs_work')
+          const Text('Make the video again for this scene, or switch to Saved voices (a voice that never changes).',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+      ]),
+    );
+  }
+
   Widget _lookRow(StudioScene s) {
     final dressed = _inScene(s).where((c) => c.outfits.isNotEmpty).toList();
     return Padding(
