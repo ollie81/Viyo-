@@ -95,6 +95,25 @@ class RepurposeService {
     }
   }
 
+  /// A version of a finished clip for one platform ("tiktok", "shorts" or "reels"): captions placed
+  /// clear of that app's buttons, plus the packaging written for it. Null if it couldn't be made.
+  static Future<Map<String, dynamic>?> platformClip(
+      {required String jobId, required int rank, required String platform, bool tag = false}) async {
+    try {
+      final res = await http
+          .post(
+              Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId/clips/$rank/platform/$platform'
+                  '${tag ? '?tag=true' : ''}'),
+              headers: _authHeaders())
+          .timeout(const Duration(seconds: 180));
+      if (res.statusCode != 200) return null;
+      final body = jsonDecode(res.body);
+      return body is Map ? Map<String, dynamic>.from(body) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<RepurposeUploadTicket> requestUpload({required String contentType, required int sizeBytes}) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/uploads'),
