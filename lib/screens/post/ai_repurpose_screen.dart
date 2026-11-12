@@ -98,6 +98,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   bool _addViyoTag = true;
   String? _jobId;
   final Map<String, String> _taggedUrls = {};
+  // Which version to share or download: '' = the standard clip (fits every app), or one platform.
+  String _platform = '';
+  final Map<String, String> _platformUrls = {};
 
   // Free first video. Guests see it as free too: a new account gets it.
   RepurposeFreeTrial? _freeTrial;
@@ -133,6 +136,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         if (status == 'done' && body['result'] != null) {
           _jobId = jobId;
           _taggedUrls.clear();
+          _platformUrls.clear();
           _result = body['result'] as Map<String, dynamic>;
           _selectedClipIndex = 0;
         } else if (status == 'failed') {
@@ -290,6 +294,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       final jobId = jsonDecode(startResponse.body)['job_id'] as String;
       _jobId = jobId;
       _taggedUrls.clear();
+      _platformUrls.clear();
 
       // Step 3: poll. A long video can wait in the queue and then take
       // several minutes to transcribe and edit, so this waits up to 40
@@ -428,7 +433,22 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     }
   }
 
+  Map<String, dynamic> get _packaging =>
+      Map<String, dynamic>.from((_selectedClip?['packaging'] as Map?) ?? const {});
+  Map<String, dynamic> get _edits => Map<String, dynamic>.from((_selectedClip?['edits'] as Map?) ?? const {});
+  Map<String, dynamic> get _quality => Map<String, dynamic>.from((_selectedClip?['quality'] as Map?) ?? const {});
+  List<String> get _clipPlatforms =>
+      ((_selectedClip?['platforms'] as List<dynamic>?) ?? const []).map((e) => '$e').toList();
+
   String get _postText {
+    final pk = Map<String, dynamic>.from(((_packaging['platforms'] as Map?)?[_platform] as Map?) ?? const {});
+    if (pk.isNotEmpty) {
+      final tags = ((pk['hashtags'] as List?) ?? const []).map((t) => '#$t').join(' ');
+      return [pk['title'] ?? '', pk['caption'] ?? pk['description'] ?? '', tags]
+          .map((e) => '$e'.trim())
+          .where((e) => e.isNotEmpty)
+          .join('\n\n');
+    }
     final hashtags = _clipHashtags.map((t) => '#$t').join(' ');
     final title = (_selectedClip?['highlight']?['suggested_title'] as String?)?.trim() ?? '';
     return [
@@ -443,6 +463,26 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   /// falling back to the plain clip if the tag couldn't be added.
   Future<String?> _exportUrl() async {
     final url = _clipVideoUrl;
+    if (url != null && _platform.isNotEmpty && _clipPlatforms.contains(_platform)) {
+      final key = '$url|$_platform|$_addViyoTag';
+      final cached = _platformUrls[key];
+      if (cached != null) return cached;
+      final rank = int.tryParse(RegExp(r'clip_(\d+)\.mp4').firstMatch(url)?.group(1) ?? '');
+      final jobId = _jobId;
+      if (rank != null && jobId != null) {
+        final v = await RepurposeService.platformClip(jobId: jobId, rank: rank, platform: _platform, tag: _addViyoTag);
+        final made = v?['url'] as String?;
+        if (made != null) {
+          _platformUrls[key] = made;
+          return made;
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Couldn't make that version, so this is the standard clip.")),
+          );
+        }
+      }
+    }
     if (url == null || !_addViyoTag) return url;
     final cached = _taggedUrls[url];
     if (cached != null) return cached;
@@ -1058,6 +1098,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                         ),
                       ),
                     ],
+                    if (_packaging.isNotEmpty) _PackagingCard(packaging: _packaging, onCopy: _copy),
+                    if (_quality.isNotEmpty) _QualityCard(quality: _quality),
+                    if (_edits.isNotEmpty) _EditsCard(edits: _edits),
                     if (_deadAirRemoved > 0.3 || _fillerWordsRemovedCount > 0) ...[
                       const SizedBox(height: 10),
                       Wrap(
@@ -1112,6 +1155,28 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
+                    if (_clipPlatforms.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      const Text('Export for',
+                          style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      Wrap(spacing: 6, runSpacing: 6, children: [
+                        for (final e in const {'': 'Any app', 'tiktok': 'TikTok', 'shorts': 'YouTube Shorts', 'reels': 'Reels'}.entries)
+                          if (e.key.isEmpty || _clipPlatforms.contains(e.key))
+                            ChoiceChip(
+                              label: Text(e.value, style: const TextStyle(fontSize: 12)),
+                              selected: _platform == e.key,
+                              onSelected: _sharing ? null : (_) => setState(() => _platform = e.key),
+                            ),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(
+                        _platform.isEmpty
+                            ? 'Captions placed clear of every app\'s buttons.'
+                            : 'Captions placed for this app, and its own title, caption and hashtags are copied.',
+                        style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                      ),
+                    ],
                     SwitchListTile(
                       value: _addViyoTag,
                       onChanged: _sharing ? null : (v) => setState(() => _addViyoTag = v),
@@ -1439,6 +1504,160 @@ class _TrimPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+String _clock(num seconds) {
+  final s = seconds.round();
+  return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+}
+
+/// What the AI editor did to this clip, in plain words.
+class _EditsCard extends StatelessWidget {
+  final Map<String, dynamic> edits;
+  const _EditsCard({required this.edits});
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = ((edits['parts'] as List?) ?? const []).whereType<List>().toList();
+    final repeats = ((edits['repeats_removed'] as List?) ?? const []).length;
+    final pauses = (edits['pauses_tightened'] as num?)?.toInt() ?? 0;
+    final cold = edits['cold_open'] as Map?;
+    final zoom = (edits['zoom_cuts'] as num?)?.toInt() ?? 0;
+    final lines = <(IconData, String)>[
+      if (cold != null) (Icons.flash_on_rounded, 'Opens with a preview of a line from later in the clip: "${cold['text']}"'),
+      if (edits['joined'] == true && parts.length >= 2)
+        (Icons.call_merge_rounded,
+            'Combines ${parts.length} parts of your video: ${parts.map((p) => '${_clock(p[0] as num)}–${_clock(p[1] as num)}').join(', ')}. '
+                'Viewers see "Later in the video" where they join.'),
+      if ((edits['dropped_sentences'] as num? ?? 0) > 0)
+        (Icons.content_cut, 'Cut ${edits['dropped_sentences']} off-topic sentence(s) from the middle.'),
+      if (edits['trimmed_ending'] == true) (Icons.last_page_rounded, 'Ends on the payoff, not the sign-off.'),
+      if (pauses > 0) (Icons.timer_outlined, 'Shortened $pauses long pause(s) (${edits['pause_seconds_removed']}s).'),
+      if (repeats > 0) (Icons.replay_rounded, 'Removed $repeats false start(s), like "I— I think".'),
+      if (zoom > 0) (Icons.zoom_in_rounded, 'A gentle zoom on $zoom cut(s), so jumps look intentional.'),
+    ];
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('WHAT THE EDITOR DID',
+            style: TextStyle(fontSize: 9.5, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        for (final (icon, text) in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(icon, size: 14, color: AppColors.primary),
+              const SizedBox(width: 7),
+              Expanded(child: Text(text, style: const TextStyle(fontSize: 12, height: 1.35))),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+/// The checks the clip went through before it was delivered. "Not checked" is never shown as passed.
+class _QualityCard extends StatelessWidget {
+  final Map<String, dynamic> quality;
+  const _QualityCard({required this.quality});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = ((quality['items'] as List?) ?? const []).whereType<Map>().toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    final passed = items.where((i) => i['status'] == 'passed').length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text('Quality checks: $passed of ${items.length} passed',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          children: [
+            for (final i in items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(
+                    switch (i['status']) {
+                      'passed' => Icons.check_circle_rounded,
+                      'failed' => Icons.cancel_rounded,
+                      'warning' => Icons.error_outline_rounded,
+                      _ => Icons.help_outline_rounded,
+                    },
+                    size: 15,
+                    color: switch (i['status']) {
+                      'passed' => AppColors.success,
+                      'failed' => AppColors.danger,
+                      'warning' => AppColors.coin,
+                      _ => AppColors.textMuted,
+                    },
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '${i['label']}${i['status'] == 'unchecked' ? ' — not checked' : ''}'
+                      '${'${i['note'] ?? ''}'.isNotEmpty ? '. ${i['note']}' : ''}',
+                      style: const TextStyle(fontSize: 12, height: 1.35),
+                    ),
+                  ),
+                ]),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Title and hook options and thumbnail ideas, each checked against what the speaker actually says.
+class _PackagingCard extends StatelessWidget {
+  final Map<String, dynamic> packaging;
+  final void Function(String label, String text) onCopy;
+  const _PackagingCard({required this.packaging, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    final titles = ((packaging['titles'] as List?) ?? const []).map((e) => '$e').where((e) => e.isNotEmpty).toList();
+    final hooks = ((packaging['hooks'] as List?) ?? const []).map((e) => '$e').where((e) => e.isNotEmpty).toList();
+    final thumbs = ((packaging['thumbnail'] as List?) ?? const []).whereType<Map>().toList();
+    if (titles.isEmpty && hooks.isEmpty) return const SizedBox.shrink();
+    Widget option(String label, String text) => InkWell(
+          onTap: () => onCopy(label, text),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Expanded(child: Text(text, style: const TextStyle(fontSize: 12.5, height: 1.3))),
+              const Icon(Icons.copy_rounded, size: 13, color: AppColors.primary),
+            ]),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('TITLE AND HOOK OPTIONS',
+            style: TextStyle(fontSize: 9.5, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        for (final t in titles) option('Title', t),
+        if (hooks.isNotEmpty) const Divider(height: 12),
+        for (final h in hooks) option('Hook', h),
+        if (thumbs.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Thumbnail ideas: ${thumbs.map((t) => '${t['moment']}${'${t['text'] ?? ''}'.isNotEmpty ? ' ("${t['text']}")' : ''}').join('; ')}',
+            style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35),
+          ),
+        ],
+        const SizedBox(height: 4),
+        const Text('Written only from what the speaker says in this clip. No promise of views.',
+            style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+      ]),
     );
   }
 }
