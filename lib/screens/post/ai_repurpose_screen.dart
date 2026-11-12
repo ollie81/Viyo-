@@ -86,6 +86,8 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   // Preferred clip length. A target for the AI, not a hard cut: a moment
   // that needs a little longer to land its hook and payoff keeps it.
   String _clipLength = 'auto';
+  // How many shorts to make: 0 = as many as the video supports (up to 6).
+  int _clipCount = 0;
   static const _clipLengths = [
     ('auto', 'Auto', 'The AI picks the best length for each moment.'),
     ('short', 'Short', 'About 15–30 seconds, 40 at most unless it\'s a standout moment.'),
@@ -261,6 +263,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         if (viaBunny) 'source': 'bunny',
         'client_request_id': requestId,
         if (_clipLength != 'auto') 'clip_length': _clipLength,
+        if (_clipCount > 0) 'clip_count': _clipCount,
         if (_promptController.text.trim().isNotEmpty)
           'creative_prompt': _promptController.text.trim(),
       });
@@ -444,6 +447,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       Map<String, dynamic>.from(((_version?['edits'] ?? _selectedClip?['edits']) as Map?) ?? const {});
   Map<String, dynamic> get _quality =>
       Map<String, dynamic>.from(((_version?['quality'] ?? _selectedClip?['quality']) as Map?) ?? const {});
+  Map<String, dynamic> get _scores => Map<String, dynamic>.from((_selectedClip?['scores'] as Map?) ?? const {});
   Map<String, dynamic> get _retention => Map<String, dynamic>.from((_selectedClip?['retention'] as Map?) ?? const {});
   List<String> get _clipPlatforms =>
       ((_selectedClip?['platforms'] as List<dynamic>?) ?? const []).map((e) => '$e').toList();
@@ -798,6 +802,35 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
               style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
             ),
             const SizedBox(height: 16),
+            const Text(
+              'How many shorts',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final n in const [0, 1, 3, 5, 8, 10])
+                ChoiceChip(
+                  label: Text(n == 0 ? 'Auto' : '$n'),
+                  selected: _clipCount == n,
+                  onSelected: _isBusy ? null : (_) => setState(() => _clipCount = n),
+                  selectedColor: AppColors.primary.withValues(alpha: 0.22),
+                  labelStyle: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _clipCount == n ? AppColors.primary : AppColors.textSecondary,
+                  ),
+                  side: BorderSide(color: _clipCount == n ? AppColors.primary : AppColors.surfaceBorder),
+                  showCheckmark: false,
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              _clipCount == 0
+                  ? 'As many strong moments as your video holds (up to 6).'
+                  : 'Up to $_clipCount. You get fewer if your video doesn\'t have that many strong moments.',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 16),
 
             // Optional — only matters for a silent video or one with
             // just music/ambient sound, where there's no speech for the
@@ -1137,6 +1170,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       ),
                     ],
                     if (_packaging.isNotEmpty) _PackagingCard(packaging: _packaging, onCopy: _copy),
+                    if (_scores['source'] == 'decisions') _ScoresCard(scores: _scores),
                     if (_quality.isNotEmpty) _QualityCard(quality: _quality),
                     if (_edits.isNotEmpty) _EditsCard(edits: _edits),
                     if (_edits['editable'] == true || (_selectedClip?['edits'] as Map?)?['editable'] == true)
@@ -1812,6 +1846,59 @@ class _RetentionCard extends StatelessWidget {
         const Text('Suggestions only: changing these would change what is said.',
             style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
       ]),
+    );
+  }
+}
+
+
+/// How the AI judged this clip (OpenAI Decisions): each criterion's level and why. A judgement, not a view count.
+class _ScoresCard extends StatelessWidget {
+  final Map<String, dynamic> scores;
+  const _ScoresCard({required this.scores});
+
+  static const _names = {
+    'hook': 'Hook',
+    'standalone': 'Makes sense alone',
+    'story': 'Story value',
+    'suitable': 'Works as a short',
+    'ending': 'Ending',
+    'visual': 'Picture',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final ex = Map<String, dynamic>.from((scores['explanations'] as Map?) ?? const {});
+    if (ex.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text('Why this clip${scores['composite'] != null ? ' · AI score ${scores['composite']}/100' : ''}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          children: [
+            for (final k in _names.keys)
+              if (ex[k] != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    SizedBox(
+                        width: 120,
+                        child: Text(_names[k]!,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                    Expanded(child: Text('${ex[k]}', style: const TextStyle(fontSize: 12, height: 1.35))),
+                  ]),
+                ),
+            if (scores['needs_second_look'] == true)
+              const Text('The AI was unsure about part of this clip, so a second check was run.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            const Text('An AI judgement of the clip, not a prediction of views.',
+                style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+          ],
+        ),
+      ),
     );
   }
 }
