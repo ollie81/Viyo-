@@ -98,12 +98,13 @@ class RepurposeService {
   /// A version of a finished clip for one platform ("tiktok", "shorts" or "reels"): captions placed
   /// clear of that app's buttons, plus the packaging written for it. Null if it couldn't be made.
   static Future<Map<String, dynamic>?> platformClip(
-      {required String jobId, required int rank, required String platform, bool tag = false}) async {
+      {required String jobId, required int rank, required String platform, bool tag = false, String? version}) async {
     try {
+      final q = [if (tag) 'tag=true', if (version != null) 'version=$version'].join('&');
       final res = await http
           .post(
               Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId/clips/$rank/platform/$platform'
-                  '${tag ? '?tag=true' : ''}'),
+                  '${q.isEmpty ? '' : '?$q'}'),
               headers: _authHeaders())
           .timeout(const Duration(seconds: 180));
       if (res.statusCode != 200) return null;
@@ -112,6 +113,21 @@ class RepurposeService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Makes a clip again with some of the editor's changes switched off (or back on). Returns
+  /// {version, url, edits, quality}, or throws a [StateError] with a message the creator can read.
+  static Future<Map<String, dynamic>> clipEdits(
+      {required String jobId, required int rank, required Map<String, bool> toggles}) async {
+    final res = await http
+        .post(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId/clips/$rank/edits'),
+            headers: {..._authHeaders(), 'Content-Type': 'application/json'}, body: jsonEncode(toggles))
+        .timeout(const Duration(seconds: 240));
+    final body = jsonDecode(res.body);
+    if (res.statusCode != 200) {
+      throw StateError(body is Map && body['detail'] is String ? body['detail'] as String : "Couldn't make this version.");
+    }
+    return Map<String, dynamic>.from(body as Map);
   }
 
   static Future<RepurposeUploadTicket> requestUpload({required String contentType, required int sizeBytes}) async {

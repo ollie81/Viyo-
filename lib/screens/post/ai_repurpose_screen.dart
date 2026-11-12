@@ -100,6 +100,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   final Map<String, String> _taggedUrls = {};
   // Which version to share or download: '' = the standard clip (fits every app), or one platform.
   String _platform = '';
+  // Versions the creator made by switching edits, per clip index: {version, url, edits, quality}.
+  final Map<int, Map<String, dynamic>> _versions = {};
+  bool _applying = false;
   final Map<String, String> _platformUrls = {};
 
   // Free first video. Guests see it as free too: a new account gets it.
@@ -137,6 +140,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           _jobId = jobId;
           _taggedUrls.clear();
           _platformUrls.clear();
+          _versions.clear();
           _result = body['result'] as Map<String, dynamic>;
           _selectedClipIndex = 0;
         } else if (status == 'failed') {
@@ -295,6 +299,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       _jobId = jobId;
       _taggedUrls.clear();
       _platformUrls.clear();
+      _versions.clear();
 
       // Step 3: poll. A long video can wait in the queue and then take
       // several minutes to transcribe and edit, so this waits up to 40
@@ -435,8 +440,11 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
 
   Map<String, dynamic> get _packaging =>
       Map<String, dynamic>.from((_selectedClip?['packaging'] as Map?) ?? const {});
-  Map<String, dynamic> get _edits => Map<String, dynamic>.from((_selectedClip?['edits'] as Map?) ?? const {});
-  Map<String, dynamic> get _quality => Map<String, dynamic>.from((_selectedClip?['quality'] as Map?) ?? const {});
+  Map<String, dynamic> get _edits =>
+      Map<String, dynamic>.from(((_version?['edits'] ?? _selectedClip?['edits']) as Map?) ?? const {});
+  Map<String, dynamic> get _quality =>
+      Map<String, dynamic>.from(((_version?['quality'] ?? _selectedClip?['quality']) as Map?) ?? const {});
+  Map<String, dynamic> get _retention => Map<String, dynamic>.from((_selectedClip?['retention'] as Map?) ?? const {});
   List<String> get _clipPlatforms =>
       ((_selectedClip?['platforms'] as List<dynamic>?) ?? const []).map((e) => '$e').toList();
 
@@ -457,7 +465,35 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     ].where((s) => s.isNotEmpty).join('\n\n');
   }
 
-  String? get _clipVideoUrl => _selectedClip?['processed_video_url'] as String?;
+  String? get _originalUrl => _selectedClip?['processed_video_url'] as String?;
+  Map<String, dynamic>? get _version => _versions[_selectedClipIndex];
+  String? get _clipVideoUrl => (_version?['url'] as String?) ?? _originalUrl;
+  int? get _rank => int.tryParse(RegExp(r'clip_(\d+)\.mp4').firstMatch(_originalUrl ?? '')?.group(1) ?? '');
+
+  Future<void> _applyEdits(Map<String, bool> toggles) async {
+    final jobId = _jobId, rank = _rank;
+    if (jobId == null || rank == null) return;
+    setState(() => _applying = true);
+    try {
+      final v = await RepurposeService.clipEdits(jobId: jobId, rank: rank, toggles: toggles);
+      if (!mounted) return;
+      setState(() {
+        if (v['version'] == 'original') {
+          _versions.remove(_selectedClipIndex);
+        } else {
+          _versions[_selectedClipIndex] = v;
+        }
+      });
+    } on StateError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't make this version. Try again.")));
+      }
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
+  }
 
   /// The file to download or share: the tagged copy when the tag is on,
   /// falling back to the plain clip if the tag couldn't be added.
@@ -467,10 +503,11 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       final key = '$url|$_platform|$_addViyoTag';
       final cached = _platformUrls[key];
       if (cached != null) return cached;
-      final rank = int.tryParse(RegExp(r'clip_(\d+)\.mp4').firstMatch(url)?.group(1) ?? '');
+      final rank = _rank;
       final jobId = _jobId;
       if (rank != null && jobId != null) {
-        final v = await RepurposeService.platformClip(jobId: jobId, rank: rank, platform: _platform, tag: _addViyoTag);
+        final v = await RepurposeService.platformClip(
+            jobId: jobId, rank: rank, platform: _platform, tag: _addViyoTag, version: _version?['version'] as String?);
         final made = v?['url'] as String?;
         if (made != null) {
           _platformUrls[key] = made;
@@ -484,6 +521,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       }
     }
     if (url == null || !_addViyoTag) return url;
+    if (_version != null) return url;   // the tag is added to platform versions; a plain edited version stays as is
     final cached = _taggedUrls[url];
     if (cached != null) return cached;
     final rank = int.tryParse(RegExp(r'clip_(\d+)\.mp4').firstMatch(url)?.group(1) ?? '');
@@ -1101,6 +1139,23 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                     if (_packaging.isNotEmpty) _PackagingCard(packaging: _packaging, onCopy: _copy),
                     if (_quality.isNotEmpty) _QualityCard(quality: _quality),
                     if (_edits.isNotEmpty) _EditsCard(edits: _edits),
+                    if (_edits['editable'] == true || (_selectedClip?['edits'] as Map?)?['editable'] == true)
+                      _EditChoices(
+                        key: ValueKey('choices-$_selectedClipIndex-${_version?['version']}'),
+                        edits: Map<String, dynamic>.from((_selectedClip?['edits'] as Map?) ?? const {}),
+                        current: Map<String, dynamic>.from((_edits['toggles'] as Map?) ?? const {}),
+                        busy: _applying,
+                        onApply: _applyEdits,
+                      ),
+                    if (_version != null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('Your edited version is shown. Posting to your Viyo feed uses the original clip; '
+                            'download or share to use this version.',
+                            style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+                      ),
+                    if (((_retention['suggestions'] as List?) ?? const []).isNotEmpty)
+                      _RetentionCard(retention: _retention),
                     if (_deadAirRemoved > 0.3 || _fillerWordsRemovedCount > 0) ...[
                       const SizedBox(height: 10),
                       Wrap(
@@ -1531,7 +1586,14 @@ class _EditsCard extends StatelessWidget {
       if (edits['joined'] == true && parts.length >= 2)
         (Icons.call_merge_rounded,
             'Combines ${parts.length} parts of your video: ${parts.map((p) => '${_clock(p[0] as num)}–${_clock(p[1] as num)}').join(', ')}. '
-                'Viewers see "Later in the video" where they join.'),
+                'Viewers see "Later in the video" where they join.'
+                '${(edits['join'] as Map?)?['why'] != null && '${(edits['join'] as Map)['why']}'.isNotEmpty ? ' Why: ${(edits['join'] as Map)['why']}' : ''}'),
+      if (((edits['retention_cuts'] as List?) ?? const []).isNotEmpty)
+        (Icons.content_cut, 'Cut ${(edits['retention_cuts'] as List).length} sentence(s) that only repeated an earlier point.'),
+      if ((edits['pacing_reframes'] as num? ?? 0) > 0)
+        (Icons.crop_rounded, 'Reframed ${edits['pacing_reframes']} long static shot(s) at a new sentence.'),
+      if ((edits['edges_moved_to_camera_cuts'] as num? ?? 0) > 0)
+        (Icons.movie_filter_outlined, 'Lined up ${edits['edges_moved_to_camera_cuts']} cut(s) with camera changes.'),
       if ((edits['dropped_sentences'] as num? ?? 0) > 0)
         (Icons.content_cut, 'Cut ${edits['dropped_sentences']} off-topic sentence(s) from the middle.'),
       if (edits['trimmed_ending'] == true) (Icons.last_page_rounded, 'Ends on the payoff, not the sign-off.'),
@@ -1656,6 +1718,98 @@ class _PackagingCard extends StatelessWidget {
         ],
         const SizedBox(height: 4),
         const Text('Written only from what the speaker says in this clip. No promise of views.',
+            style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+      ]),
+    );
+  }
+}
+
+
+/// The creator's say over each edit: switch it off (or back on) and the clip is made again from the original.
+class _EditChoices extends StatefulWidget {
+  final Map<String, dynamic> edits;
+  final Map<String, dynamic> current;
+  final bool busy;
+  final Future<void> Function(Map<String, bool>) onApply;
+  const _EditChoices({super.key, required this.edits, required this.current, required this.busy, required this.onApply});
+
+  @override
+  State<_EditChoices> createState() => _EditChoicesState();
+}
+
+class _EditChoicesState extends State<_EditChoices> {
+  late final Map<String, bool> _on = {
+    for (final k in const ['join', 'cold_open', 'retention_cuts', 'tighten', 'zoom']) k: widget.current[k] != false,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.edits;
+    final options = <(String, String)>[
+      if (e['can_unjoin'] == true) ('join', 'Include the part from later in the video'),
+      if (e['can_cold_open'] == true) ('cold_open', 'Open with the preview line'),
+      if (((e['retention_cuts'] as List?) ?? const []).isNotEmpty) ('retention_cuts', 'Cut repeated points'),
+      ('tighten', 'Shorten pauses and false starts'),
+      ('zoom', 'Zooms and reframes'),
+    ];
+    final changed = options.any((o) => _on[o.$1] != (widget.current[o.$1] != false));
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: const Text('Change the edits', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          subtitle: const Text('Switch any change off and the clip is made again from your original video.',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          children: [
+            for (final (key, label) in options)
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: _on[key]!,
+                onChanged: widget.busy ? null : (v) => setState(() => _on[key] = v),
+                title: Text(label, style: const TextStyle(fontSize: 13)),
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: widget.busy || !changed ? null : () => widget.onApply(Map.of(_on)),
+                child: Text(widget.busy ? 'Making it… (about a minute)' : 'Apply'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Where viewers may lose interest, measured from the clip's own words and timing.
+class _RetentionCard extends StatelessWidget {
+  final Map<String, dynamic> retention;
+  const _RetentionCard({required this.retention});
+
+  @override
+  Widget build(BuildContext context) {
+    final tips = ((retention['suggestions'] as List?) ?? const []).whereType<Map>().toList();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('WHERE VIEWERS MAY DROP OFF',
+            style: TextStyle(fontSize: 9.5, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        for (final t in tips)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.trending_down_rounded, size: 14, color: AppColors.coin),
+              const SizedBox(width: 7),
+              Expanded(child: Text('${t['text']}', style: const TextStyle(fontSize: 12, height: 1.35))),
+            ]),
+          ),
+        const Text('Suggestions only: changing these would change what is said.',
             style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
       ]),
     );
