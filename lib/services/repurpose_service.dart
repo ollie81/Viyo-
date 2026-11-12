@@ -130,6 +130,18 @@ class RepurposeService {
     return Map<String, dynamic>.from(body as Map);
   }
 
+  /// Tells Viyo what the creator did with a clip (downloaded, shared, not_useful, kept). Fire and forget.
+  static Future<void> clipFeedback(
+      {required String jobId, required int rank, required String event, String? platform}) async {
+    try {
+      await http
+          .post(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/$jobId/clips/$rank/feedback'),
+              headers: {..._authHeaders(), 'Content-Type': 'application/json'},
+              body: jsonEncode({'event': event, if (platform != null) 'platform': platform}))
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {}
+  }
+
   static Future<RepurposeUploadTicket> requestUpload({required String contentType, required int sizeBytes}) async {
     final res = await http.post(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/repurpose/uploads'),
