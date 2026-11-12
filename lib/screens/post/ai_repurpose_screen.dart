@@ -88,6 +88,20 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   String _clipLength = 'auto';
   // How many shorts to make: 0 = as many as the video supports (up to 6).
   int _clipCount = 0;
+  // The kind of moments to look for (sent as moment_focus); 'visual' skips speech-to-text entirely.
+  String _focus = 'best';
+  static const _focuses = [
+    ('best', 'Best overall'),
+    ('funny', 'Funny'),
+    ('emotional', 'Emotional'),
+    ('educational', 'Educational'),
+    ('conversation', 'Conversations'),
+    ('story', 'Stories'),
+    ('product', 'Product'),
+    ('highlights', 'Key highlights'),
+    ('visual', 'Visual (no talking)'),
+  ];
+  final Set<int> _notUseful = {};
   static const _clipLengths = [
     ('auto', 'Auto', 'The AI picks the best length for each moment.'),
     ('short', 'Short', 'About 15–30 seconds, 40 at most unless it\'s a standout moment.'),
@@ -143,6 +157,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
           _taggedUrls.clear();
           _platformUrls.clear();
           _versions.clear();
+          _notUseful.clear();
           _result = body['result'] as Map<String, dynamic>;
           _selectedClipIndex = 0;
         } else if (status == 'failed') {
@@ -264,6 +279,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
         'client_request_id': requestId,
         if (_clipLength != 'auto') 'clip_length': _clipLength,
         if (_clipCount > 0) 'clip_count': _clipCount,
+        if (_focus != 'best') 'moment_focus': _focus,
         if (_promptController.text.trim().isNotEmpty)
           'creative_prompt': _promptController.text.trim(),
       });
@@ -474,6 +490,13 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
   String? get _clipVideoUrl => (_version?['url'] as String?) ?? _originalUrl;
   int? get _rank => int.tryParse(RegExp(r'clip_(\d+)\.mp4').firstMatch(_originalUrl ?? '')?.group(1) ?? '');
 
+  /// What the creator did with this clip; it only tunes this creator's own future picks.
+  void _logFeedback(String event) {
+    final jobId = _jobId, rank = _rank;
+    if (jobId == null || rank == null) return;
+    RepurposeService.clipFeedback(jobId: jobId, rank: rank, event: event, platform: _platform.isEmpty ? null : _platform);
+  }
+
   Future<void> _applyEdits(Map<String, bool> toggles) async {
     final jobId = _jobId, rank = _rank;
     if (jobId == null || rank == null) return;
@@ -559,6 +582,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       if (res.statusCode != 200) throw Exception('download failed (${res.statusCode})');
       final file = XFile.fromData(res.bodyBytes, name: 'viyo-clip.mp4', mimeType: 'video/mp4');
       await Share.shareXFiles([file], text: text);
+      _logFeedback('shared');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Caption copied — paste it when you post.')),
@@ -579,6 +603,7 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
     if (mounted) setState(() => _sharing = false);
     if (url == null) return;
     if (!captionAlreadyCopied) await Clipboard.setData(ClipboardData(text: _postText));
+    _logFeedback('downloaded');
     // Supabase Storage sends the file as a download when ?download= is set.
     final sep = url.endsWith('?') ? '' : (url.contains('?') ? '&' : '?');
     final ok = await launchUrl(Uri.parse('$url${sep}download=viyo-clip.mp4'),
@@ -832,26 +857,49 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Optional — only matters for a silent video or one with
-            // just music/ambient sound, where there's no speech for the
-            // AI to find highlights in. Any video with real speech in it
-            // ignores this completely, so it stays out of the way rather
-            // than gating the flow.
             const Text(
-              'No dialogue, or just music? (optional)',
+              'What kind of moments?',
               style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final (value, label) in _focuses)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _focus == value,
+                  onSelected: _isBusy ? null : (_) => setState(() => _focus = value),
+                  selectedColor: AppColors.primary.withValues(alpha: 0.22),
+                  labelStyle: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _focus == value ? AppColors.primary : AppColors.textSecondary,
+                  ),
+                  side: BorderSide(color: _focus == value ? AppColors.primary : AppColors.surfaceBorder),
+                  showCheckmark: false,
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              _focus == 'visual'
+                  ? 'For cooking, travel, nature, gameplay, crafts and demos: moments are chosen from what\'s on screen.'
+                  : _focus == 'best'
+                      ? 'The strongest moments of any kind.'
+                      : 'Only moments of this kind. You may get fewer clips, never unrelated ones.',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _promptController,
               enabled: !_isBusy,
               minLines: 2,
               maxLines: 4,
               maxLength: 500,
-              decoration: const InputDecoration(
-                hintText: "Describe what you want the clip to look like, e.g. "
-                    "\"a slow-motion sunset walk on the beach\"",
-                hintStyle: TextStyle(fontSize: 12.5),
+              decoration: InputDecoration(
+                labelText: 'Describe what you want (optional)',
+                hintText: _focus == 'visual'
+                    ? 'e.g. "the moment the cake comes out of the oven"'
+                    : 'e.g. "the part where they talk about pricing"',
+                hintStyle: const TextStyle(fontSize: 12.5),
               ),
               style: const TextStyle(fontSize: 13),
             ),
@@ -1244,6 +1292,18 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
+                    TextButton.icon(
+                      onPressed: _notUseful.contains(_selectedClipIndex)
+                          ? null
+                          : () {
+                              _logFeedback('not_useful');
+                              setState(() => _notUseful.add(_selectedClipIndex));
+                            },
+                      icon: const Icon(Icons.thumb_down_alt_outlined, size: 16),
+                      label: Text(_notUseful.contains(_selectedClipIndex)
+                          ? 'Thanks: future picks will lean away from clips like this'
+                          : 'Not useful'),
+                    ),
                     if (_clipPlatforms.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       const Text('Export for',
