@@ -78,6 +78,56 @@ class CoinService {
   /// client with money movement" line as giftCoins above. The backend
   /// is also what enforces today's claim cap; a client-only cap could
   /// just be skipped by whoever's calling this.
+  /// Asks the backend for a one-time ad session before an ad is shown.
+  /// `verification == 'server'`: attach `session`/`userId` to the ad and
+  /// wait for Google's confirmation (rewardedAdStatus). `'client'`: the
+  /// backend still uses the old claim (claimRewardedAd).
+  static Future<({String verification, String? session, String? userId})> startRewardedAd() async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/rewarded-ad/start'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      return (
+        verification: (data['verification'] as String?) ?? 'client',
+        session: data['session'] as String?,
+        userId: data['user_id'] as String?,
+      );
+    }
+    throw Exception(_adError(res));
+  }
+
+  /// Coins credited for a verified ad session, or null while Google's
+  /// confirmation hasn't arrived yet.
+  static Future<int?> rewardedAdStatus(String session) async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/rewarded-ad/$session'),
+      headers: {if (token != null) 'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode != 200) return null;
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['credited'] == true ? (data['coins'] as num).toInt() : null;
+  }
+
+  static String _adError(http.Response res) {
+    try {
+      final data = jsonDecode(res.body);
+      final detail = data is Map ? data['detail'] : null;
+      if (detail is Map && detail['error'] == 'daily_ad_cap_reached') {
+        return "You've hit today's limit of ${detail['daily_cap']} ad watches — come back tomorrow.";
+      }
+      if (detail is Map && detail['message'] is String) return detail['message'] as String;
+      if (detail is String) return detail;
+    } catch (_) {}
+    return 'Could not start an ad right now (${res.statusCode})';
+  }
+
   static Future<int> claimRewardedAd() async {
     final token = _client.auth.currentSession?.accessToken;
     final res = await http.post(
@@ -92,17 +142,7 @@ class CoinService {
       return (data['coins_earned'] as num).toInt();
     }
 
-    String? message;
-    try {
-      final data = jsonDecode(res.body);
-      final detail = data is Map ? data['detail'] : null;
-      if (detail is Map && detail['error'] == 'daily_ad_cap_reached') {
-        message = "You've hit today's limit of ${detail['daily_cap']} ad watches — come back tomorrow.";
-      } else if (detail is String) {
-        message = detail;
-      }
-    } catch (_) {}
-    throw Exception(message ?? 'Could not claim ad reward (${res.statusCode})');
+    throw Exception(_adError(res));
   }
 
   static Future<List<AppBadge>> getStoreBadges(String userId) async {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -81,6 +82,8 @@ class _WalletScreenState extends State<WalletScreen> {
       if (mounted) setState(() => _withdrawing = false);
     }
   }
+
+  static bool get _isAndroidApp => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   Future<void> _watchAdForCoins() async {
     setState(() => _watchingAd = true);
@@ -200,18 +203,22 @@ class _WalletScreenState extends State<WalletScreen> {
                                   backgroundColor: AppColors.coin,
                                   foregroundColor: AppColors.background,
                                 ),
-                                label: const Text('Buy Coins'),
+                                // Android sells nothing (Google Play policy); its screen offers ads and missions.
+                                label: Text(_isAndroidApp ? 'Get Coins' : 'Buy Coins'),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _watchingAd ? null : _watchAdForCoins,
-                                icon: const Icon(Icons.smart_display_outlined, size: 18),
-                                label: Text(_watchingAd ? 'Loading ad...' : 'Watch Ad for Free Coins'),
+                            // Rewarded ads only exist in the mobile app.
+                            if (!kIsWeb) ...[
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _watchingAd ? null : _watchAdForCoins,
+                                  icon: const Icon(Icons.smart_display_outlined, size: 18),
+                                  label: Text(_watchingAd ? 'Loading ad...' : 'Watch Ad for Free Coins'),
+                                ),
                               ),
-                            ),
+                            ],
                             const SizedBox(height: 10),
                             SizedBox(
                               width: double.infinity,
