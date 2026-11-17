@@ -61,22 +61,41 @@ class RewardedAdService {
     );
   }
 
-  /// Shows a rewarded ad and, only if the viewer actually watches it
-  /// through to the reward point (the SDK calls onUserEarnedReward —
-  /// closing early never fires it), claims the coin reward from the
-  /// backend. The backend is what actually credits the balance and
-  /// enforces the daily cap (see viyo_ai's rewarded_ads.py) — this
-  /// method never assumes the claim succeeded just because the ad played.
+  /// Shows a rewarded ad and returns the coins it earned.
   ///
-  /// Returns the coins earned, or null if no ad was available, the
-  /// viewer closed it before earning the reward, or the backend claim
-  /// failed (e.g. today's daily cap already hit).
+  /// Asks the backend for an ad session first (this also checks the daily
+  /// cap before anyone sits through an ad). When the backend verifies
+  /// rewards with Google (verification == 'server'), the session and user
+  /// id are attached to the ad; AdMob then tells the backend directly that
+  /// the reward was earned, and this method waits for those coins to show
+  /// up. Otherwise it falls back to the old claim. Either way the app
+  /// never credits anything itself, and closing the ad early (no
+  /// onUserEarnedReward) earns nothing.
+  ///
+  /// Returns null if no ad was available or the viewer closed it early.
+  /// Throws [AdRewardException] with a message to show for anything else
+  /// (daily limit reached, coins still on their way, backend error).
   static Future<int?> showAndClaim() async {
     if (kIsWeb) return null;
+
+    ({String verification, String? session, String? userId}) start;
+    try {
+      start = await CoinService.startRewardedAd();
+    } catch (e) {
+      throw AdRewardException(_clean(e));
+    }
+    final verified = start.verification == 'server' && start.session != null;
+
     var ad = _preloaded;
     _preloaded = null;
     ad ??= await _loadNow();
     if (ad == null) return null;
+
+    if (verified) {
+      await ad.setServerSideOptions(
+        ServerSideVerificationOptions(userId: start.userId, customData: start.session),
+      );
+    }
 
     final dismissed = Completer<void>();
     ad.fullScreenContentCallback = FullScreenContentCallback(
@@ -97,12 +116,28 @@ class RewardedAdService {
     await dismissed.future;
     if (!earned) return null;
 
-    try {
-      return await CoinService.claimRewardedAd();
-    } catch (_) {
-      return null;
+    if (!verified) {
+      try {
+        return await CoinService.claimRewardedAd();
+      } catch (e) {
+        throw AdRewardException(_clean(e));
+      }
     }
+
+    // Google's confirmation usually reaches the backend within seconds.
+    for (var i = 0; i < 12; i++) {
+      await Future.delayed(Duration(milliseconds: i == 0 ? 800 : 1500));
+      try {
+        final coins = await CoinService.rewardedAdStatus(start.session!);
+        if (coins != null) return coins;
+      } catch (_) {}
+    }
+    throw const AdRewardException(
+      "Your coins are on the way — they'll show in your wallet shortly.",
+    );
   }
+
+  static String _clean(Object e) => '$e'.replaceFirst('Exception: ', '');
 
   static Future<RewardedInterstitialAd?> _loadNow() async {
     final completer = Completer<RewardedInterstitialAd?>();
@@ -116,4 +151,13 @@ class RewardedAdService {
     );
     return completer.future;
   }
+}
+
+/// A message about an ad reward that's meant to be shown as-is.
+class AdRewardException implements Exception {
+  final String message;
+  const AdRewardException(this.message);
+
+  @override
+  String toString() => message;
 }
