@@ -61,7 +61,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
   // closed (no ad shown) rather than open (an ad shown to a Premium
   // subscriber who should never see one).
   int _swipesSinceInterstitial = 0;
-  static const _interstitialEverySwipes = 4;
+  static const _interstitialEverySwipes = 6;
   bool _isSubscriber = true;
 
   // One view recorded per post per time this screen is alive — a post
