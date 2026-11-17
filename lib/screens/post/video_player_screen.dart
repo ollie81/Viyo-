@@ -67,7 +67,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // How often a non-subscriber gets paused for an interstitial during
   // a single long-form video — sparser than the swipe feed's
-  // every-4-swipes cadence (InterstitialAdService itself), since this
+  // every-6-swipes cadence (InterstitialAdService itself), since this
   // is one sitting, not a fast scroll through many posts.
   static const _adBreakInterval = Duration(minutes: 6);
   Duration _positionAtLastAdBreak = Duration.zero;
