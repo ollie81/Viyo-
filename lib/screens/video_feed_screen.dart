@@ -112,8 +112,11 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     if (_isSubscriber) return;
     _swipesSinceInterstitial++;
     if (_swipesSinceInterstitial >= _interstitialEverySwipes) {
-      _swipesSinceInterstitial = 0;
-      InterstitialAdService.showIfReady();
+      // Reset only once an ad actually showed: if none was loaded yet, try again on the
+      // next swipe instead of silently waiting another full round.
+      InterstitialAdService.showIfReady().then((shown) {
+        if (shown) _swipesSinceInterstitial = 0;
+      });
     }
   }
 
@@ -324,6 +327,10 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
               : PageView.builder(
                   controller: _pageController,
                   scrollDirection: Axis.vertical,
+                  // Builds one page either side of the visible one, so the next video is
+                  // already downloading (paused, muted to the user) while this one plays and
+                  // starts at once on swipe, instead of loading from scratch after it.
+                  allowImplicitScrolling: true,
                   itemCount: _posts.length,
                   onPageChanged: _onPageChanged,
                   itemBuilder: (ctx, i) {
@@ -504,6 +511,10 @@ class _VideoPageState extends State<_VideoPage> {
       return;
     }
 
+    // Where this viewer stopped last time (a database read): started now so it runs while
+    // the video loads, instead of adding a second wait after it.
+    final resumeLookup = WatchProgressService.getPosition(widget.post.id);
+
     var controller = VideoPlayerController.networkUrl(Uri.parse(url));
 
     try {
@@ -551,7 +562,7 @@ class _VideoPageState extends State<_VideoPage> {
 
       // Resume where this viewer left off, if anywhere — local-only
       // (see WatchProgressService), so this is per-device, not synced.
-      final resumeAt = await WatchProgressService.getPosition(widget.post.id);
+      final resumeAt = await resumeLookup;
       if (resumeAt != null && resumeAt < controller.value.duration) {
         await controller.seekTo(resumeAt);
         _lastSavedPosition = resumeAt;
@@ -812,6 +823,22 @@ class _VideoPageState extends State<_VideoPage> {
                                       ),
           ),
         ),
+
+        // Paused: a play icon (tap anywhere resumes). Stalled mid-video: a spinner.
+        if (!widget.isLocked && ready && !_showUpNext)
+          IgnorePointer(
+            child: Center(
+              child: c!.value.isBuffering
+                  ? const CircularProgressIndicator(color: Colors.white70)
+                  : !c.value.isPlaying
+                      ? Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 56),
+                        )
+                      : const SizedBox.shrink(),
+            ),
+          ),
 
         if (post.isEpisode)
           SafeArea(
