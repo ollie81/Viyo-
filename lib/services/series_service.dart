@@ -627,7 +627,7 @@ class SeriesService {
   /// credits a *different* user's earnings balance, the same
   /// cross-user-money-movement rule as gifting/boost_post.
   /// Episode tickets from ads: 2 (adsPerEpisode) unlock one episode.
-  static Future<({int tickets, int adsPerEpisode, int adsToday, int dailyCap})> adTickets() async {
+  static Future<({int tickets, int adsPerEpisode, int adsToday, int dailyCap, DateTime? nextFreeAt})> adTickets() async {
     final token = _client.auth.currentSession?.accessToken;
     final res = await http.get(
       Uri.parse('${AiBackendConstants.baseUrl}/api/v1/episodes/ad-tickets'),
@@ -639,7 +639,8 @@ class SeriesService {
       tickets: (d['tickets'] as num?)?.toInt() ?? 0,
       adsPerEpisode: (d['ads_per_episode'] as num?)?.toInt() ?? 2,
       adsToday: (d['ads_today'] as num?)?.toInt() ?? 0,
-      dailyCap: (d['daily_cap'] as num?)?.toInt() ?? 20,
+      dailyCap: (d['daily_cap'] as num?)?.toInt() ?? 30,
+      nextFreeAt: DateTime.tryParse('${d['next_free_at'] ?? ''}')?.toLocal(),
     );
   }
 

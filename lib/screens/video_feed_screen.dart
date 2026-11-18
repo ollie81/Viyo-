@@ -1280,7 +1280,8 @@ class _AdUnlockSheet extends StatefulWidget {
 class _AdUnlockSheetState extends State<_AdUnlockSheet> {
   int? _tickets;
   int _perEpisode = 2;
-  int _adsLeftToday = 20;
+  int _adsLeftToday = 30;
+  DateTime? _nextFreeAt;
   String? _error;
   bool _running = false;
   bool _stop = false;
@@ -1301,10 +1302,20 @@ class _AdUnlockSheetState extends State<_AdUnlockSheet> {
         _tickets = t.tickets;
         _perEpisode = t.adsPerEpisode;
         _adsLeftToday = (t.dailyCap - t.adsToday).clamp(0, t.dailyCap);
+        _nextFreeAt = t.nextFreeAt;
       });
     } catch (e) {
       if (mounted) setState(() => _error = friendlyErrorMessage(e));
     }
+  }
+
+  String _comeBack() {
+    final at = _nextFreeAt;
+    if (at == null) return 'Come back in a few hours to unlock more.';
+    final mins = at.difference(DateTime.now()).inMinutes;
+    if (mins <= 1) return 'You can unlock more now — reopen this.';
+    final hours = (mins / 60).round();
+    return mins >= 90 ? 'Come back in about $hours hours to unlock more.' : 'Come back in about $mins minutes to unlock more.';
   }
 
   int _adsFor(int episodes) => (episodes * _perEpisode - (_tickets ?? 0)).clamp(0, 1 << 30);
@@ -1356,7 +1367,10 @@ class _AdUnlockSheetState extends State<_AdUnlockSheet> {
   @override
   Widget build(BuildContext context) {
     final available = widget.episodes.length;
-    final options = <int>{1, 3, 5, available}.where((n) => n >= 1 && n <= available).toList()..sort();
+    final options = <int>{1, 3, 5, 10, 15, if (available <= 15) available}
+        .where((n) => n >= 1 && n <= available)
+        .toList()
+      ..sort();
     return PopScope(
       canPop: !_running,
       child: SafeArea(
@@ -1402,7 +1416,10 @@ class _AdUnlockSheetState extends State<_AdUnlockSheet> {
                     ),
                   ),
                 Text(
-                  'You can watch $_adsLeftToday more episode ad${_adsLeftToday == 1 ? '' : 's'} today.',
+                  _adsLeftToday > 0
+                      ? 'You can unlock up to ${_adsLeftToday ~/ _perEpisode} more episode'
+                          '${_adsLeftToday ~/ _perEpisode == 1 ? '' : 's'} with ads right now. More open up a few hours later.'
+                      : 'You\'ve unlocked the most episodes with ads for now. ${_comeBack()}',
                   style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
               ],
