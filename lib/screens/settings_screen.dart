@@ -139,31 +139,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
+    setState(() => _deleting = true);
+    final summary = await AiService.accountDeletionSummary();
+    if (!context.mounted) return;
+    setState(() => _deleting = false);
+
+    // Creators with dramas choose what happens to them; the default deletes everything.
+    var keepDramas = false;
+    final hasDramas = summary.dramas > 0;
+    final dramaWord = summary.dramas == 1 ? 'drama' : 'dramas';
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: const Text(
-          'This permanently deletes your posts, Coach history, and profile, '
-          'and signs you out for good. This cannot be undone.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Delete your account?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'This permanently deletes your profile, posts, Studio projects, Coach history and coins, '
+                  'and signs you out for good. This cannot be undone.',
+                ),
+                if (hasDramas) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'You have ${summary.dramas} $dramaWord (${summary.episodes} episodes). What should happen to them?',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  RadioGroup<bool>(
+                    groupValue: keepDramas,
+                    onChanged: (v) => setDialog(() => keepDramas = v ?? false),
+                    child: const Column(
+                      children: [
+                        RadioListTile<bool>(
+                          contentPadding: EdgeInsets.zero,
+                          value: false,
+                          title: Text('Delete them too'),
+                        ),
+                        RadioListTile<bool>(
+                          contentPadding: EdgeInsets.zero,
+                          value: true,
+                          title: Text('Keep them on Viyo'),
+                          subtitle: Text(
+                            'Shown as "Former creator", without your name or profile. Viewers keep what they unlocked. '
+                            'You will no longer earn from them, and you can\'t get them back later.',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete account', style: TextStyle(color: AppColors.danger)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
       ),
     );
     if (confirmed != true || !context.mounted) return;
 
     setState(() => _deleting = true);
     try {
-      await AiService.deleteAccount();
+      await AiService.deleteAccount(keepDramas: keepDramas);
       await AuthService.signOut();
       if (!context.mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
