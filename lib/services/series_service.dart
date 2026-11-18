@@ -626,6 +626,37 @@ class SeriesService {
   /// backend's service-role client since it both debits the viewer and
   /// credits a *different* user's earnings balance, the same
   /// cross-user-money-movement rule as gifting/boost_post.
+  /// Episode tickets from ads: 2 (adsPerEpisode) unlock one episode.
+  static Future<({int tickets, int adsPerEpisode, int adsToday, int dailyCap, DateTime? nextFreeAt})> adTickets() async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.get(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/episodes/ad-tickets'),
+      headers: {if (token != null) 'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode != 200) throw _errorFor(res, 'Could not load your ad tickets');
+    final d = jsonDecode(res.body) as Map<String, dynamic>;
+    return (
+      tickets: (d['tickets'] as num?)?.toInt() ?? 0,
+      adsPerEpisode: (d['ads_per_episode'] as num?)?.toInt() ?? 2,
+      adsToday: (d['ads_today'] as num?)?.toInt() ?? 0,
+      dailyCap: (d['daily_cap'] as num?)?.toInt() ?? 30,
+      nextFreeAt: DateTime.tryParse('${d['next_free_at'] ?? ''}')?.toLocal(),
+    );
+  }
+
+  /// Spends ad tickets on one locked episode. Returns false (nothing spent)
+  /// when there aren't enough tickets yet.
+  static Future<bool> unlockEpisodeWithAds(String postId) async {
+    final token = _client.auth.currentSession?.accessToken;
+    final res = await http.post(
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/episodes/$postId/unlock-with-ads'),
+      headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode == 200) return true;
+    if (res.statusCode == 402) return false;
+    throw _errorFor(res, 'Could not unlock with ads');
+  }
+
   static Future<int> unlockEpisode(String postId) async {
     final token = _client.auth.currentSession?.accessToken;
     final res = await http.post(

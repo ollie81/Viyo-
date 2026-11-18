@@ -219,17 +219,20 @@ class _WalletScreenState extends State<WalletScreen> {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+                            // Premium can't be bought in the Android app (Google Play), so it isn't offered there.
+                            if (!_isAndroidApp) ...[
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+                                  ),
+                                  icon: const Icon(Icons.workspace_premium_outlined, size: 18),
+                                  label: const Text('Go Premium — Unlimited Episodes'),
                                 ),
-                                icon: const Icon(Icons.workspace_premium_outlined, size: 18),
-                                label: const Text('Go Premium — Unlimited Episodes'),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),

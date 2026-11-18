@@ -82,10 +82,13 @@ class CoinService {
   /// `verification == 'server'`: attach `session`/`userId` to the ad and
   /// wait for Google's confirmation (rewardedAdStatus). `'client'`: the
   /// backend still uses the old claim (claimRewardedAd).
-  static Future<({String verification, String? session, String? userId})> startRewardedAd() async {
+  /// [purpose] 'episode': the ad earns an episode ticket instead of coins.
+  static Future<({String verification, String? session, String? userId})> startRewardedAd(
+      {String purpose = 'coins'}) async {
     final token = _client.auth.currentSession?.accessToken;
     final res = await http.post(
-      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/rewarded-ad/start'),
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/rewarded-ad/start'
+          '${purpose == 'coins' ? '' : '?purpose=$purpose'}'),
       headers: {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',

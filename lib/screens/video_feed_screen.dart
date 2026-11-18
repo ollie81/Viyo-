@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -13,6 +14,7 @@ import '../models/series.dart';
 import '../services/bunny_stream_service.dart';
 import '../services/interstitial_ad_service.dart';
 import '../services/post_service.dart';
+import '../services/rewarded_ad_service.dart';
 import '../services/series_service.dart';
 import '../services/supabase_service.dart';
 import '../services/video_metadata_service.dart';
@@ -243,6 +245,35 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     }
   }
 
+  /// Unlock with ads: the viewer picks how many episodes (from this one on), watches the
+  /// ads back to back, and each pair of Google-verified ads unlocks the next episode.
+  Future<void> _unlockWithAds(Post post) async {
+    if (!await GuestGate.allow(context, action: 'unlock this episode')) return;
+    if (!mounted) return;
+    final start = _posts.indexWhere((p) => p.id == post.id);
+    final viewer = SupabaseService.currentUserId;
+    final locked = [
+      for (final p in _posts.skip(start < 0 ? 0 : start))
+        if (isEpisodeLocked(p, viewerId: viewer)) p,
+    ];
+    if (locked.isEmpty) return;
+    final unlockedIds = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _AdUnlockSheet(episodes: locked),
+    );
+    if (!mounted || unlockedIds == null || unlockedIds.isEmpty) return;
+    setState(() {
+      _posts = _posts.map((p) => unlockedIds.contains(p.id) ? p.copyWith(unlockedByMe: true) : p).toList();
+    });
+    final n = unlockedIds.length;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Unlocked $n episode${n == 1 ? '' : 's'} — enjoy! 🎬')),
+    );
+  }
+
   Future<void> _unlockEpisode(Post post) async {
     if (!await GuestGate.allow(context, action: 'unlock this episode')) return;
     try {
@@ -359,6 +390,7 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
                       onOpenProfile: () => _openProfile(post),
                       onBecameActive: () => _recordView(post),
                       onUnlock: () => _unlockEpisode(post),
+                      onUnlockWithAds: () => _unlockWithAds(post),
                       onDelete: () => _deletePost(post),
                     );
                   },
@@ -387,6 +419,7 @@ class _VideoPage extends StatefulWidget {
   final VoidCallback onOpenProfile;
   final VoidCallback onBecameActive;
   final Future<void> Function() onUnlock;
+  final Future<void> Function() onUnlockWithAds;
   final VoidCallback onDelete;
 
   const _VideoPage({
@@ -404,6 +437,7 @@ class _VideoPage extends StatefulWidget {
     required this.onOpenProfile,
     required this.onBecameActive,
     required this.onUnlock,
+    required this.onUnlockWithAds,
     required this.onDelete,
   });
 
@@ -1198,20 +1232,214 @@ class _VideoPageState extends State<_VideoPage> {
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
                 ),
               ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+              if (!kIsWeb) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _unlocking ? null : widget.onUnlockWithAds,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54),
+                  ),
+                  icon: const Icon(Icons.smart_display_outlined, size: 18),
+                  label: const Text('Watch 2 ads to unlock', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
-                child: const Text(
-                  'or go Premium for unlimited episodes',
-                  style: TextStyle(color: Colors.white70, fontSize: 12.5),
+              ],
+              // Premium can't be bought in the Android app (Google Play), so it isn't offered there.
+              if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) ...[
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+                  ),
+                  child: const Text(
+                    'or go Premium for unlimited episodes',
+                    style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Choose how many episodes to unlock with ads, then watch them back to back.
+/// Pops with the ids of the episodes it unlocked (possibly fewer than chosen if
+/// the viewer stops, no ad is available, or today's limit is reached; tickets
+/// already earned are kept for next time).
+class _AdUnlockSheet extends StatefulWidget {
+  final List<Post> episodes;            // locked episodes, starting with the one on screen
+  const _AdUnlockSheet({required this.episodes});
+
+  @override
+  State<_AdUnlockSheet> createState() => _AdUnlockSheetState();
+}
+
+class _AdUnlockSheetState extends State<_AdUnlockSheet> {
+  int? _tickets;
+  int _perEpisode = 2;
+  int _adsLeftToday = 30;
+  DateTime? _nextFreeAt;
+  String? _error;
+  bool _running = false;
+  bool _stop = false;
+  String _status = '';
+  final Set<String> _unlocked = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final t = await SeriesService.adTickets();
+      if (!mounted) return;
+      setState(() {
+        _tickets = t.tickets;
+        _perEpisode = t.adsPerEpisode;
+        _adsLeftToday = (t.dailyCap - t.adsToday).clamp(0, t.dailyCap);
+        _nextFreeAt = t.nextFreeAt;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyErrorMessage(e));
+    }
+  }
+
+  String _comeBack() {
+    final at = _nextFreeAt;
+    if (at == null) return 'Come back in a few hours to unlock more.';
+    final mins = at.difference(DateTime.now()).inMinutes;
+    if (mins <= 1) return 'You can unlock more now — reopen this.';
+    final hours = (mins / 60).round();
+    return mins >= 90 ? 'Come back in about $hours hours to unlock more.' : 'Come back in about $mins minutes to unlock more.';
+  }
+
+  int _adsFor(int episodes) => (episodes * _perEpisode - (_tickets ?? 0)).clamp(0, 1 << 30);
+
+  Future<void> _run(int count) async {
+    setState(() {
+      _running = true;
+      _stop = false;
+      _error = null;
+    });
+    var tickets = _tickets ?? 0;
+    final targets = widget.episodes.take(count).toList();
+    final totalAds = _adsFor(count);
+    var adsShown = 0;
+    try {
+      for (final ep in targets) {
+        while (tickets < _perEpisode) {
+          if (_stop) {
+            if (mounted) Navigator.of(context).pop(_unlocked);
+            return;
+          }
+          setState(() => _status = 'Ad ${adsShown + 1} of $totalAds');
+          final earned = await RewardedAdService.showForEpisodeTicket();
+          if (earned == null) {
+            if (mounted) {
+              setState(() => _error = 'No ad available right now, or it was closed early. Ads you finished are saved.');
+            }
+            return;
+          }
+          adsShown++;
+          tickets += earned;
+          if (mounted) setState(() => _tickets = tickets);
+        }
+        if (mounted) setState(() => _status = 'Unlocking episode ${ep.episodeNumber ?? ''}...');
+        if (await SeriesService.unlockEpisodeWithAds(ep.id)) {
+          tickets -= _perEpisode;
+          _unlocked.add(ep.id);
+          if (mounted) setState(() => _tickets = tickets);
+        }
+      }
+      if (mounted) Navigator.of(context).pop(_unlocked);
+    } catch (e) {
+      if (mounted) setState(() => _error = friendlyErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final available = widget.episodes.length;
+    final options = <int>{1, 3, 5, 10, 15, if (available <= 15) available}
+        .where((n) => n >= 1 && n <= available)
+        .toList()
+      ..sort();
+    return PopScope(
+      canPop: !_running,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Unlock with ads', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text(
+                '$_perEpisode ads unlock 1 episode. Watch them back to back to unlock several at once.'
+                '${(_tickets ?? 0) > 0 ? ' You have ${_tickets!} saved ad${_tickets == 1 ? '' : 's'}.' : ''}',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              if (_tickets == null && _error == null)
+                const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+              else if (_running) ...[
+                Row(children: [
+                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(_status)),
+                ]),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => setState(() => _stop = true),
+                  child: const Text('Stop after this ad'),
+                ),
+              ] else ...[
+                for (final n in options)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: OutlinedButton(
+                      onPressed: _adsFor(n) > _adsLeftToday ? null : () => _run(n),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                      child: Text(
+                        n == 1
+                            ? 'This episode · ${_adsFor(n)} ad${_adsFor(n) == 1 ? '' : 's'}'
+                            : '$n episodes · ${_adsFor(n)} ads',
+                      ),
+                    ),
+                  ),
+                Text(
+                  _adsLeftToday > 0
+                      ? 'You can unlock up to ${_adsLeftToday ~/ _perEpisode} more episode'
+                          '${_adsLeftToday ~/ _perEpisode == 1 ? '' : 's'} with ads right now. More open up a few hours later.'
+                      : 'You\'ve unlocked the most episodes with ads for now. ${_comeBack()}',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                ),
+              ],
+              if (_unlocked.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Unlocked so far: ${_unlocked.length}', style: const TextStyle(color: AppColors.secondary)),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                if (_unlocked.isNotEmpty)
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(_unlocked),
+                    child: const Text('Done'),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
