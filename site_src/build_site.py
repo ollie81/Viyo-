@@ -158,7 +158,8 @@ def privacy() -> str:
       <h2>How long we keep it</h2>
       <p>We keep your data while your account exists. Videos uploaded to the AI Repurposer are removed from processing
       storage after about a day. When you delete your account, your profile, posts, videos, Studio projects and AI
-      history are deleted. Records we must keep for payments, tax or fraud prevention (for example purchase and payout
+      history are deleted. If you have published dramas, you can choose to keep them on Viyo instead: they stay up as
+      "Former creator", without your name or profile. Records we must keep for payments, tax or fraud prevention (for example purchase and payout
       records) are kept only as long as the law requires.</p>
 
       <h2>Your choices</h2>
@@ -202,6 +203,15 @@ def delete_account() -> str:
       <h2>What is deleted</h2>
       <p>Your profile, posts, photos and videos, Viyo Studio projects and films, AI Coach and Glow Up history, likes,
       comments and sign-in are permanently deleted. Unused coins and Studio credits are lost.</p>
+      <h2>Your dramas: your choice</h2>
+      <p>If you have published dramas (series and their episodes), the app asks what should happen to them:</p>
+      <ul class="plain">
+        <li><strong>Delete them too</strong> (the default): they are deleted with everything else.</li>
+        <li><strong>Keep them on Viyo</strong>: they stay up, shown as "Former creator", without your name, photo or
+        profile. Viewers keep the episodes they unlocked. You no longer earn from them, and this can't be undone.</li>
+      </ul>
+      <p>Viyo never keeps your dramas unless you choose this. Dramas made by Viyo itself (Viyo Originals) are not
+      affected by anyone's account deletion.</p>
       <h2>What we keep</h2>
       <p>Purchase and payout records that the law requires us to keep, for as long as it requires, and nothing else.
       Copies you downloaded or posted on other websites are yours to manage.</p>
@@ -214,7 +224,91 @@ def delete_account() -> str:
                 body, schema=[ORG, schema], crumbs=[("/delete-account", "Delete account")])
 
 
-FOOTER_LINKS = NAV + [("/contact", "Contact"), ("/privacy", "Privacy"), ("/delete-account", "Delete account")]
+def terms() -> str:
+    body = f"""
+    <section class="wrap prose">
+      <p class="eyebrow">Terms</p>
+      <h1>Viyo Terms of Service</h1>
+      <p class="lead">Last updated {POLICY_DATE}. These terms are the agreement between you and Viyo, run by an
+      independent developer in Rwanda. By using Viyo on the web or in the app you agree to them. Questions:
+      <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a>.</p>
+
+      <h2>Who can use Viyo</h2>
+      <p>You must be at least 13 years old. Some features, such as Glow Up, are for adults (18+) only. Keep your sign-in
+      details safe; you are responsible for what happens on your account.</p>
+
+      <h2>Your content is yours</h2>
+      <p>You own the videos, photos, dramas, captions and comments you post, including what you make with Viyo's AI
+      tools and Viyo Studio. To run Viyo we need your permission to host, store, stream, show, resize and promote that
+      content on Viyo and in Viyo's share links, so you give Viyo a worldwide, free licence to do that while it is on
+      Viyo. You can delete your content at any time, and the licence ends when it is deleted.</p>
+
+      <h2>Dramas when you delete your account</h2>
+      <p>When you delete your account, your dramas are deleted with it unless you choose to keep them on Viyo. If you
+      choose to keep them, they stay up under the name "Former creator", without your name or profile, and the licence
+      above continues for those dramas so viewers can keep watching what they unlocked. You will no longer earn from
+      them, and this choice can't be undone. Viyo never keeps your dramas without that choice.</p>
+
+      <h2>Rules for content</h2>
+      <p>Do not post or create anything that:</p>
+      <ul class="plain">
+        <li>you don't have the rights to, such as other people's films, music or videos;</li>
+        <li>sexualises children in any way, or shows sexual content or nudity;</li>
+        <li>threatens, harasses, bullies or encourages violence against anyone, or attacks people for who they are;</li>
+        <li>shows a real person saying or doing something they didn't, without their permission (deepfakes), or
+        pretends to be someone else;</li>
+        <li>is illegal, scams people, spreads malware or spam, or is dangerous misinformation.</li>
+      </ul>
+      <p>You can report content and block users in the app. We may remove content, limit features or close accounts
+      that break these rules, and we report child sexual abuse material to the authorities.</p>
+
+      <h2>AI features</h2>
+      <p>AI tools can make mistakes. Check what they produce before you post it; you are responsible for what you
+      publish. Don't use them to make anything the rules above forbid.</p>
+
+      <h2>Coins, unlocks and creator earnings</h2>
+      <ul class="plain">
+        <li>Viyo Coins are a virtual item for use inside Viyo. They have no cash value, can't be exchanged for money and
+        can't be transferred outside Viyo. One coin balance is shared by your account on the web and in the app.</li>
+        <li>Coins can be bought on the Viyo website. In the Android app you earn them by watching optional ads,
+        completing missions or checking in daily.</li>
+        <li>Coins you spend, for example to unlock an episode, are not refunded, except where the law requires it or a
+        technical fault on our side means you didn't get what you paid for.</li>
+        <li>Creators earn from episodes unlocked with bought coins, as shown in the app, and can request a payout once
+        they reach the minimum. Coins earned from ads, missions or check-ins don't create cash earnings.</li>
+        <li>Unused coins are lost when you delete your account.</li>
+      </ul>
+
+      <h2>Ads</h2>
+      <p>The free Android app shows ads from Google AdMob. Premium subscribers don't see them.</p>
+
+      <h2>Ending your account</h2>
+      <p>You can delete your account at any time: see <a href="/delete-account">how to delete your account</a>. We may
+      suspend or close an account that seriously or repeatedly breaks these terms.</p>
+
+      <h2>No guarantees</h2>
+      <p>We work to keep Viyo running and safe, but it is provided "as is", without guarantees that it will always be
+      available or error-free. As far as the law allows, Viyo is not liable for indirect losses or for content posted
+      by other users. Nothing in these terms takes away rights you have under the law where you live.</p>
+
+      <h2>Law</h2>
+      <p>These terms are governed by the laws of Rwanda, without taking away the protection of consumer laws in your
+      own country.</p>
+
+      <h2>Changes</h2>
+      <p>If we change these terms we will update the date above, and tell you in the app for important changes. Our
+      <a href="/privacy">Privacy Policy</a> explains how we handle your data.</p>
+    </section>
+    {cta()}
+"""
+    schema = {"@type": "WebPage", "url": f"{SITE}/terms", "name": "Viyo Terms of Service"}
+    return page("/terms", "Viyo Terms of Service",
+                "The rules for using Viyo: your content, dramas when you leave, coins, ads and your account.",
+                body, schema=[ORG, schema], crumbs=[("/terms", "Terms")])
+
+
+FOOTER_LINKS = NAV + [("/contact", "Contact"), ("/privacy", "Privacy"), ("/terms", "Terms"),
+                      ("/delete-account", "Delete account")]
 
 
 # ---------------------------------------------------------------- page shell
@@ -804,6 +898,7 @@ PAGES = {
     "/about": ("about.html", about, "0.6", "monthly"),
     "/contact": ("contact.html", contact, "0.4", "yearly"),
     "/privacy": ("privacy.html", privacy, "0.3", "yearly"),
+    "/terms": ("terms.html", terms, "0.3", "yearly"),
     "/delete-account": ("delete-account.html", delete_account, "0.2", "yearly"),
 }
 

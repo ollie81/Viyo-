@@ -204,9 +204,27 @@ class AiService {
 
   /// Permanently deletes the creator's account: coach history, posts,
   /// profile, and the underlying Supabase auth user. Irreversible.
-  static Future<void> deleteAccount() async {
+  /// How many dramas (series) and episodes this account owns — when there
+  /// are any, account deletion offers to keep them on Viyo. Fails soft to 0.
+  static Future<({int dramas, int episodes})> accountDeletionSummary() async {
+    try {
+      final res = await http.get(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/account/deletion-summary'),
+        headers: await _headers(),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return (dramas: (data['dramas'] as num?)?.toInt() ?? 0, episodes: (data['episodes'] as num?)?.toInt() ?? 0);
+      }
+    } catch (_) {}
+    return (dramas: 0, episodes: 0);
+  }
+
+  /// [keepDramas]: the creator chose to keep their dramas on Viyo, shown as
+  /// "Former creator". Everything else is deleted either way.
+  static Future<void> deleteAccount({bool keepDramas = false}) async {
     final res = await http.delete(
-      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/account'),
+      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/account${keepDramas ? '?keep_dramas=true' : ''}'),
       headers: await _headers(),
     );
 
