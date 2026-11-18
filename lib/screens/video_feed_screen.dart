@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -1198,16 +1199,19 @@ class _VideoPageState extends State<_VideoPage> {
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
                 ),
               ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+              // Premium can't be bought in the Android app (Google Play), so it isn't offered there.
+              if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) ...[
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SubscribeScreen()),
+                  ),
+                  child: const Text(
+                    'or go Premium for unlimited episodes',
+                    style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                  ),
                 ),
-                child: const Text(
-                  'or go Premium for unlimited episodes',
-                  style: TextStyle(color: Colors.white70, fontSize: 12.5),
-                ),
-              ),
+              ],
             ],
           ),
         ),

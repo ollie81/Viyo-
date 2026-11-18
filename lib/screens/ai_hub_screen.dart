@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'creator_dashboard_screen.dart';
@@ -50,7 +51,7 @@ class AiHubScreen extends StatelessWidget {
             iconColor: AppColors.primary,
             title: 'Viyo Studio',
             description: 'Turn an idea into a finished AI drama, episode or film: script, cast, scenes, voices and video, in 9:16 or 16:9. Works great on a computer.',
-            costLabel: 'Pay per step with Studio credits',
+            costLabel: kIsWeb ? 'Pay per step with Studio credits' : 'Uses Studio credits',
             onTap: () => _open(context, const StudioHomeScreen()),
           ),
 
