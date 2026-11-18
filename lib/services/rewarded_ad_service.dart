@@ -75,12 +75,20 @@ class RewardedAdService {
   /// Returns null if no ad was available or the viewer closed it early.
   /// Throws [AdRewardException] with a message to show for anything else
   /// (daily limit reached, coins still on their way, backend error).
-  static Future<int?> showAndClaim() async {
+  static Future<int?> showAndClaim() => _show(purpose: 'coins');
+
+  /// Shows one ad that earns an episode ticket (2 tickets unlock an episode).
+  /// Returns 1 once Google's confirmation has arrived, null if no ad was
+  /// available or the viewer closed it early; throws [AdRewardException]
+  /// with a message to show otherwise.
+  static Future<int?> showForEpisodeTicket() => _show(purpose: 'episode');
+
+  static Future<int?> _show({required String purpose}) async {
     if (kIsWeb) return null;
 
     ({String verification, String? session, String? userId}) start;
     try {
-      start = await CoinService.startRewardedAd();
+      start = await CoinService.startRewardedAd(purpose: purpose);
     } catch (e) {
       throw AdRewardException(_clean(e));
     }
@@ -129,12 +137,12 @@ class RewardedAdService {
       await Future.delayed(Duration(milliseconds: i == 0 ? 800 : 1500));
       try {
         final coins = await CoinService.rewardedAdStatus(start.session!);
-        if (coins != null) return coins;
+        if (coins != null) return purpose == 'episode' ? 1 : coins;
       } catch (_) {}
     }
-    throw const AdRewardException(
-      "Your coins are on the way — they'll show in your wallet shortly.",
-    );
+    throw AdRewardException(purpose == 'episode'
+        ? "Google hasn't confirmed that ad yet — it will count in a moment."
+        : "Your coins are on the way — they'll show in your wallet shortly.");
   }
 
   static String _clean(Object e) => '$e'.replaceFirst('Exception: ', '');
