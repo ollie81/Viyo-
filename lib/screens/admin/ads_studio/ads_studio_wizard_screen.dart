@@ -14,7 +14,11 @@ const _kPromoteTargets = {
   'viyo': 'VIYO',
   'ollie_ai': 'Ollie AI',
   'other_app': 'Another app',
-  'website': 'Website / product',
+  'website': 'Website',
+  'physical_product': 'Physical product',
+  'business': 'Business / service',
+  'film': 'Film / show',
+  'creator_project': 'Creator project',
 };
 const _kDurations = [8, 15, 30, 45, 60];
 const _kAspectRatios = ['9:16', '16:9', '1:1'];
