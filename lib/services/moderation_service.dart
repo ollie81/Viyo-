@@ -21,6 +21,7 @@ class ModerationService {
     'Violence or dangerous behavior',
     'Copyright infringement',
     'Misinformation',
+    'Misleading ad or false claims',
     'Other',
   ];
 
