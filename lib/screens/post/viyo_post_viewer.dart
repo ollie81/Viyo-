@@ -6,6 +6,7 @@ import '../../models/post.dart';
 import '../../services/bunny_stream_service.dart';
 import '../../services/post_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/ad_post_extras.dart';
 
 enum ViyoMediaType { photo, video }
 
@@ -30,6 +31,9 @@ class ViyoPostMedia {
   // Needed only to self-heal a stuck "processing" video by polling
   // Bunny directly — see _CreatorMediaPageState._pollBunnyStatus.
   final String? bunnyVideoId;
+  // Ads Maker ads are always labelled; adLink is the advertiser's own "Visit" link.
+  final bool isAd;
+  final String? adLink;
 
   const ViyoPostMedia({
     required this.id,
@@ -46,6 +50,8 @@ class ViyoPostMedia {
     this.isVideoProcessing = false,
     this.isVideoFailed = false,
     this.bunnyVideoId,
+    this.isAd = false,
+    this.adLink,
   });
 
   factory ViyoPostMedia.fromPost(Post post) => ViyoPostMedia(
@@ -65,6 +71,8 @@ class ViyoPostMedia {
         isVideoProcessing: post.isVideoProcessing,
         isVideoFailed: post.isVideoFailed,
         bunnyVideoId: post.bunnyVideoId,
+        isAd: post.isAd,
+        adLink: post.adLink,
       );
 }
 
@@ -354,14 +362,21 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            post.creatorName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 17,
+                          Row(children: [
+                            Flexible(
+                              child: Text(
+                                post.creatorName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 17,
+                                ),
+                              ),
                             ),
-                          ),
+                            if (post.isAd) ...[const SizedBox(width: 8), const AdLabel()],
+                          ]),
                           if (post.caption.trim().isNotEmpty) ...[
                             const SizedBox(height: 5),
                             Text(
@@ -370,6 +385,10 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: Colors.white, height: 1.35),
                             ),
+                          ],
+                          if (post.isAd && (post.adLink ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 9),
+                            AdVisitButton(link: post.adLink!),
                           ],
                         ],
                       ),
