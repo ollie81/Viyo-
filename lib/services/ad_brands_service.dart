@@ -112,18 +112,59 @@ class AdBrandCampaign {
   final String id;
   final String status;
   final String adStyle;
+  final String track; // Campaign Universe track ('' when not set)
   final String? thumbnailUrl;
   final bool published;
   final DateTime? createdAt;
-  AdBrandCampaign({required this.id, required this.status, required this.adStyle, this.thumbnailUrl,
+  AdBrandCampaign({required this.id, required this.status, required this.adStyle, this.track = '', this.thumbnailUrl,
       this.published = false, this.createdAt});
   factory AdBrandCampaign.fromJson(Map<String, dynamic> j) => AdBrandCampaign(
       id: j['id'] as String,
       status: (j['status'] ?? 'draft').toString(),
       adStyle: (j['ad_style'] ?? 'auto').toString(),
+      track: (j['track'] ?? '').toString(),
       thumbnailUrl: j['thumbnail_url'] as String?,
       published: j['published_post_id'] != null,
       createdAt: DateTime.tryParse((j['created_at'] ?? '').toString()));
+}
+
+/// A free, text-only ad idea for a brand.
+class AdIdea {
+  final String id;
+  final String title;
+  final String track;
+  final String trackLabel;
+  final String hook;
+  final String concept;
+  final List<String> beats;
+  final String status; // new | saved | dismissed | used
+  AdIdea({required this.id, required this.title, required this.track, required this.trackLabel, required this.hook,
+      required this.concept, required this.beats, required this.status});
+  factory AdIdea.fromJson(Map<String, dynamic> j) => AdIdea(
+      id: j['id'] as String,
+      title: (j['title'] ?? '').toString(),
+      track: (j['track'] ?? 'new_concept').toString(),
+      trackLabel: (j['track_label'] ?? '').toString(),
+      hook: (j['hook'] ?? '').toString(),
+      concept: (j['concept'] ?? '').toString(),
+      beats: ((j['beats'] as List?) ?? []).map((e) => e.toString()).toList(),
+      status: (j['status'] ?? 'new').toString());
+}
+
+class AdIdeasPage {
+  final List<AdIdea> today;
+  final List<AdIdea> saved;
+  final bool canGetMore;
+  final List<MapEntry<String, String>> tracks; // key -> label, in order
+  AdIdeasPage({required this.today, required this.saved, required this.canGetMore, required this.tracks});
+  factory AdIdeasPage.fromJson(Map<String, dynamic> j) => AdIdeasPage(
+        today: [for (final i in (j['today'] as List? ?? const [])) AdIdea.fromJson(Map<String, dynamic>.from(i as Map))],
+        saved: [for (final i in (j['saved'] as List? ?? const [])) AdIdea.fromJson(Map<String, dynamic>.from(i as Map))],
+        canGetMore: j['can_get_more'] == true,
+        tracks: [
+          for (final t in (j['tracks'] as List? ?? const [])) MapEntry((t as Map)['key'].toString(), t['label'].toString())
+        ],
+      );
 }
 
 /// My Brands (creator Ads Maker only): the creator's own brands, with their own sign-in.
@@ -203,8 +244,37 @@ class AdBrandsService {
   }
 
   /// A new ad campaign filled in from the brand (its details, its own copy of the pictures, its character).
+  // --- Daily ideas (free, text only) ---------------------------------------
+
+  static Future<AdIdeasPage> ideas(String id) async {
+    final res = await http.get(Uri.parse('$_base/$id/ideas'), headers: _headers());
+    if (res.statusCode != 200) throw _failure(res, 'load ideas');
+    return AdIdeasPage.fromJson(jsonDecode(res.body));
+  }
+
+  /// A new batch of ideas (free). Limited per day.
+  static Future<AdIdeasPage> newIdeas(String id) async {
+    final res = await http.post(Uri.parse('$_base/$id/ideas'), headers: _headers());
+    if (res.statusCode != 200) throw _failure(res, 'get new ideas');
+    return AdIdeasPage.fromJson(jsonDecode(res.body));
+  }
+
+  static Future<void> setIdeaStatus(String id, String ideaId, String status) async {
+    final res = await http.put(Uri.parse('$_base/$id/ideas/$ideaId'), headers: _headers(), body: jsonEncode({'status': status}));
+    if (res.statusCode != 200) throw _failure(res, 'update the idea');
+  }
+
+  /// Starts an ad from the idea (nothing is charged until the ad is generated, after seeing the price).
+  static Future<AdCampaign> useIdea(String id, String ideaId, {String aspectRatio = '9:16', bool useCharacter = true}) async {
+    final res = await http.post(Uri.parse('$_base/$id/ideas/$ideaId/use'),
+        headers: _headers(), body: jsonEncode({'aspect_ratio': aspectRatio, 'use_character': useCharacter}));
+    if (res.statusCode != 200) throw _failure(res, 'start the ad');
+    return AdCampaign.fromJson(jsonDecode(res.body));
+  }
+
   static Future<AdCampaign> newAd(String id,
-      {String adStyle = 'auto', String aspectRatio = '9:16', int durationSeconds = 15, bool useCharacter = true}) async {
+      {String adStyle = 'auto', String aspectRatio = '9:16', int durationSeconds = 15, bool useCharacter = true,
+      String track = ''}) async {
     final res = await http.post(Uri.parse('$_base/$id/campaigns'),
         headers: _headers(),
         body: jsonEncode({
@@ -212,6 +282,7 @@ class AdBrandsService {
           'aspect_ratio': aspectRatio,
           'duration_seconds': durationSeconds,
           'use_character': useCharacter,
+          if (track.isNotEmpty) 'track': track,
         }));
     if (res.statusCode != 200) throw _failure(res, 'start the ad');
     return AdCampaign.fromJson(jsonDecode(res.body));
