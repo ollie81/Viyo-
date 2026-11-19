@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../services/ad_brands_service.dart';
 import '../../../services/ads_studio_service.dart';
 import '../../../theme/app_theme.dart';
+import 'ads_insights_screen.dart';
 import 'ads_result_screen.dart';
 import 'ads_studio_wizard_screen.dart';
 
@@ -704,6 +705,18 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
                           onPressed: _newAd,
                           icon: const Icon(Icons.movie_creation_outlined, size: 18),
                           label: const Text('Make a new ad'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await startExperiment(context, b.id, b.name, hasCharacter: b.characterId != null);
+                            if (mounted) _load(b.id);
+                          },
+                          icon: const Icon(Icons.science_outlined, size: 18),
+                          label: const Text('Try versions (experiment)'),
                         ),
                       ),
                     ],

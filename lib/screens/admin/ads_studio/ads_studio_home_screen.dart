@@ -5,6 +5,7 @@ import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
 import 'ads_studio_wizard_screen.dart';
 import 'ads_result_screen.dart';
+import 'ads_insights_screen.dart';
 import 'my_brands_screen.dart';
 
 /// AI Ads Studio's entry point — lists every campaign with its current
@@ -102,6 +103,12 @@ class _AdsStudioHomeScreenState extends State<AdsStudioHomeScreen> {
         backgroundColor: AppColors.background,
         title: Text(widget.creatorMode ? 'Ads Maker' : 'AI Ads Studio'),
         actions: [
+          if (widget.creatorMode && !SupabaseService.isGuest)
+            IconButton(
+              tooltip: 'Ad insights',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdsInsightsScreen())),
+              icon: const Icon(Icons.insights_outlined),
+            ),
           if (widget.creatorMode && !SupabaseService.isGuest)
             TextButton.icon(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyBrandsScreen())),
