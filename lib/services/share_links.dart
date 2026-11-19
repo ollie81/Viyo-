@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:share_plus/share_plus.dart';
 
 import '../models/post.dart';
+import 'post_service.dart';
 
 /// Public links to Viyo posts. www.viyo.site/p/<id> serves a preview page
 /// (thumbnail, caption, creator) that WhatsApp, X, Facebook and search
@@ -17,6 +18,7 @@ class ShareLinks {
     final line = caption.isEmpty
         ? 'Watch this on Viyo'
         : (caption.length > 90 ? '${caption.substring(0, 87)}...' : caption);
+    PostService.recordShare(post.id);
     await Share.share(
       '$line\n${postUrl(post.id)}',
       subject: 'Viyo post by ${post.authorUsername ?? 'a creator'}',

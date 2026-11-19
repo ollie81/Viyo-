@@ -449,6 +449,9 @@ class SeriesService {
     // or null" without excluding them, but Series.effectiveContentType
     // already encodes exactly that fallback.
     String? contentType,
+    // Several types at once (Discover's Movies = movie/short film/AI film; Dramas = short drama/series).
+    // Same null-reads-as-short-drama rule as [contentType].
+    Set<String>? contentTypes,
     DramaSort sort = DramaSort.newest,
     int limit = 60,
     Set<String> boostedSeriesIds = const {},
@@ -474,11 +477,14 @@ class SeriesService {
     // again when filtering by content type, since that filter only
     // happens after this fetch (see above).
     var poolSize = limit * 4;
-    if (contentType != null) poolSize *= 3;
+    if (contentType != null || contentTypes != null) poolSize *= 3;
     final data = await query.order('created_at', ascending: false).limit(poolSize);
     var series = (data as List).map((e) => Series.fromJson(e)).toList();
     if (contentType != null) {
       series = series.where((s) => s.effectiveContentType == contentType).toList();
+    }
+    if (contentTypes != null) {
+      series = series.where((s) => contentTypes.contains(s.effectiveContentType)).toList();
     }
     if (series.isEmpty) return [];
 

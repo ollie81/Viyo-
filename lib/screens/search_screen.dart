@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/post.dart';
 import '../models/series.dart';
@@ -19,6 +18,8 @@ import 'post/viyo_post_viewer.dart';
 import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
 import '../services/share_links.dart';
+import '../services/discover_service.dart';
+import '../widgets/ad_post_extras.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -39,6 +40,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<Post> _discoverPosts = [];
   bool _loadingDiscover = true;
+
+  DiscoverCategory _category = DiscoverCategory.forYou;
 
   List<Post> _trendingDramas = [];
   List<Series> _newSeries = [];
@@ -97,7 +100,8 @@ class _SearchScreenState extends State<SearchScreen> {
       final posts = await PostService.getDiscoverPosts();
       if (!mounted) return;
       setState(() {
-        _discoverPosts = posts;
+        // For You: ads stay a small, spaced-out part of the mix (all of them are in the Ads category).
+        _discoverPosts = DiscoverService.capAds(posts);
         _loadingDiscover = false;
       });
     } catch (_) {
@@ -202,8 +206,17 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ),
               const SizedBox(height: 10),
+              if (!_hasQuery) ...[
+                _CategoryBar(
+                  selected: _category,
+                  onSelect: (c) => setState(() => _category = c),
+                ),
+                const SizedBox(height: 10),
+              ],
               Expanded(
-                child: !_hasQuery
+                child: !_hasQuery && _category != DiscoverCategory.forYou
+                    ? _CategoryFeed(key: ValueKey(_category), category: _category)
+                    : !_hasQuery
                     ? RefreshIndicator(
                         onRefresh: _loadDefaults,
                         color: AppColors.primary,
@@ -700,25 +713,31 @@ class _DiscoverTile extends StatelessWidget {
                   child: Icon(Icons.play_arrow_rounded,
                       color: Colors.white, size: 20),
                 ),
-              if (post.isBoosted)
+              if (post.isAd || post.isBoosted)
                 Positioned(
                   top: 8,
                   left: 8,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary.withOpacity(0.85),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'BOOSTED',
-                      style: TextStyle(
-                          fontSize: 8.5,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (post.isAd) const AdLabel(),
+                    if (post.isAd && post.isBoosted) const SizedBox(width: 4),
+                    // Paid placement is always labelled as such.
+                    if (post.isBoosted)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'PROMOTED',
+                          style: TextStyle(
+                              fontSize: 8.5,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                  ]),
                 ),
               Positioned(
                 left: 8,
@@ -881,4 +900,296 @@ class _DiscoverSkeleton extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// The category chips under the search box. One row, scrolls sideways on narrow phones.
+class _CategoryBar extends StatelessWidget {
+  final DiscoverCategory selected;
+  final ValueChanged<DiscoverCategory> onSelect;
+  const _CategoryBar({required this.selected, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: DiscoverCategory.values.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final c = DiscoverCategory.values[i];
+          final on = c == selected;
+          return ChoiceChip(
+            label: Text(c.label),
+            selected: on,
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            labelStyle: TextStyle(
+              fontSize: 12.5,
+              fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+              color: on ? Colors.black : AppColors.textSecondary,
+            ),
+            selectedColor: AppColors.primary,
+            backgroundColor: AppColors.surface,
+            side: BorderSide(color: on ? AppColors.primary : AppColors.surfaceBorder),
+            onSelected: (_) => onSelect(c),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One category's page: Shorts and Ads as a 2-column grid of video tiles, Photos as a 3-column square grid,
+/// Movies and Dramas as poster grids that open the series page. Loads more as you scroll; pull to refresh.
+class _CategoryFeed extends StatefulWidget {
+  final DiscoverCategory category;
+  const _CategoryFeed({super.key, required this.category});
+
+  @override
+  State<_CategoryFeed> createState() => _CategoryFeedState();
+}
+
+class _CategoryFeedState extends State<_CategoryFeed> {
+  final _scroll = ScrollController();
+  List<Post> _posts = [];
+  List<Series> _series = [];
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  String? _error;
+  String? _adCategory;
+  int _fetched = 0; // rows read so far (some can be filtered out, e.g. blocked creators)
+
+  DiscoverCategory get _cat => widget.category;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 600) _loadMore();
+    });
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _hasMore = true;
+      _fetched = 0;
+    });
+    try {
+      if (_cat.isSeries) {
+        final s = await DiscoverService.series(_cat);
+        if (!mounted) return;
+        setState(() {
+          _series = s;
+          _hasMore = s.length >= DiscoverService.pageSize;
+        });
+      } else {
+        final p = await DiscoverService.posts(_cat, adCategory: _adCategory);
+        if (!mounted) return;
+        setState(() {
+          _posts = p;
+          _fetched = DiscoverService.pageSize;
+          _hasMore = p.isNotEmpty;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = "Couldn't load ${_cat.label.toLowerCase()}. Check your connection.");
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || !_hasMore || _error != null) return;
+    setState(() => _loadingMore = true);
+    try {
+      if (_cat.isSeries) {
+        final more = await DiscoverService.series(_cat, limit: _series.length + DiscoverService.pageSize);
+        if (!mounted) return;
+        setState(() {
+          _hasMore = more.length > _series.length;
+          _series = more;
+        });
+      } else {
+        final more = await DiscoverService.posts(_cat, offset: _fetched, adCategory: _adCategory);
+        if (!mounted) return;
+        final seen = _posts.map((p) => p.id).toSet();
+        setState(() {
+          _fetched += DiscoverService.pageSize;
+          _posts = [..._posts, ...more.where((p) => !seen.contains(p.id))];
+          _hasMore = more.isNotEmpty;
+        });
+      }
+    } catch (_) {
+      // Keep what's shown; scrolling again retries.
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _openPost(int index) async {
+    final media = _posts.map((p) => ViyoPostMedia.fromPost(p)).toList();
+    Post? find(String id) => _posts.where((p) => p.id == id).firstOrNull;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ViyoPostViewer(
+        posts: media,
+        initialIndex: index,
+        onLikePost: (id) async {
+          final p = find(id);
+          if (p != null) {
+            try {
+              await PostService.toggleLike(p);
+            } catch (_) {}
+          }
+        },
+        onCommentPost: (id) async {
+          final p = find(id);
+          if (p != null) await showCommentsSheet(context, p);
+        },
+        onSharePost: (id) async {
+          final p = find(id);
+          if (p != null) await ShareLinks.sharePost(p);
+        },
+      ),
+    ));
+  }
+
+  String get _emptyText => switch (_cat) {
+        DiscoverCategory.shorts => 'No shorts yet',
+        DiscoverCategory.movies => 'No movies yet',
+        DiscoverCategory.dramas => 'No dramas yet',
+        DiscoverCategory.ads => _adCategory == null ? 'No ads published yet' : 'No ads in this category yet',
+        DiscoverCategory.photos => 'No photos yet',
+        DiscoverCategory.forYou => 'Nothing to discover yet',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = 24 + MediaQuery.paddingOf(context).bottom;
+    final filters = _cat == DiscoverCategory.ads ? _adFilters() : null;
+    if (_loading) {
+      return Column(children: [if (filters != null) filters, const Expanded(child: _DiscoverSkeleton())]);
+    }
+    if (_error != null) {
+      return Column(children: [
+        if (filters != null) filters,
+        Expanded(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
+              const SizedBox(height: 10),
+              OutlinedButton(onPressed: _reload, child: const Text('Try again')),
+            ]),
+          ),
+        ),
+      ]);
+    }
+    final empty = _cat.isSeries ? _series.isEmpty : _posts.isEmpty;
+    Widget grid;
+    if (empty) {
+      grid = ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 80),
+          child: Center(child: Text(_emptyText, style: const TextStyle(color: AppColors.textMuted))),
+        ),
+      ]);
+    } else if (_cat.isSeries) {
+      grid = GridView.builder(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: bottom),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 14,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.6,
+        ),
+        itemCount: _series.length,
+        itemBuilder: (_, i) => SeriesPosterCard(
+          series: _series[i],
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: _series[i])),
+          ),
+        ),
+      );
+    } else if (_cat == DiscoverCategory.photos) {
+      grid = GridView.builder(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: bottom),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 3,
+          crossAxisSpacing: 3,
+        ),
+        itemCount: _posts.length,
+        itemBuilder: (_, i) => GestureDetector(
+          onTap: () => _openPost(i),
+          child: (_posts[i].thumbnailUrl ?? _posts[i].mediaUrl) != null
+              ? RetryableNetworkImage(
+                  imageUrl: _posts[i].thumbnailUrl ?? _posts[i].mediaUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(color: AppColors.surfaceBorder),
+                )
+              : Container(color: AppColors.surfaceBorder),
+        ),
+      );
+    } else {
+      grid = MasonryGridView.count(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: bottom),
+        crossAxisCount: 2,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        itemCount: _posts.length,
+        itemBuilder: (_, i) => _DiscoverTile(post: _posts[i], tall: true, onTap: () => _openPost(i)),
+      );
+    }
+    return Column(children: [
+      if (filters != null) filters,
+      Expanded(child: RefreshIndicator(onRefresh: _reload, color: AppColors.primary, child: grid)),
+      if (_loadingMore)
+        const Padding(
+          padding: EdgeInsets.all(8),
+          child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+    ]);
+  }
+
+  Widget _adFilters() => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: SizedBox(
+          height: 30,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final e in [const MapEntry<String?, String>(null, 'All'), ...kAdCategories.entries])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(e.value, style: const TextStyle(fontSize: 11.5)),
+                    selected: _adCategory == e.key,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) {
+                      setState(() => _adCategory = e.key);
+                      _reload();
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
 }

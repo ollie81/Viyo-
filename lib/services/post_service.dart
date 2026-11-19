@@ -71,6 +71,19 @@ class PostService {
   /// disappears after I move to the next video": the like itself may
   /// have saved fine, but every subsequent feed reload re-fetched posts
   /// with likedByMe hard-wired to false, resetting the heart icon.
+  /// Public for Discover's category pages (same liked-state lookup every feed here uses).
+  static Future<List<Post>> withLikedByMe(List<Post> posts) => _withLikedByMe(posts);
+
+  /// Counts one share (fire-and-forget; the backend counts once per person per post every few hours).
+  static Future<void> recordShare(String postId) async {
+    try {
+      await http.post(
+        Uri.parse('${AiBackendConstants.baseUrl}/api/v1/posts/$postId/share'),
+        headers: await _interactionHeaders(),
+      );
+    } catch (_) {}
+  }
+
   static Future<List<Post>> _withLikedByMe(List<Post> posts) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null || posts.isEmpty) return posts;
