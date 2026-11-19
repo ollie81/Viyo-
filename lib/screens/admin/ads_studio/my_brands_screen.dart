@@ -35,6 +35,23 @@ const _kNewAdStyles = {
   'demo': 'Demo / explainer',
   'social': 'Social media',
 };
+// Campaign Universe tracks (same keys as viyo_ai's ads_ideas.TRACKS) and the style each one suggests.
+const _kTracks = {
+  'product_intro': 'Product introduction',
+  'lifestyle': 'Lifestyle',
+  'character_story': 'Character story',
+  'demo': 'Demonstration',
+  'seasonal': 'Seasonal',
+  'new_concept': 'New concept',
+};
+const _kTrackStyle = {
+  'product_intro': 'product_cinematic',
+  'lifestyle': 'lifestyle',
+  'character_story': 'character',
+  'demo': 'demo',
+  'seasonal': 'social',
+  'new_concept': 'auto',
+};
 final _hex = RegExp(r'^#?[0-9a-fA-F]{6}$');
 
 String _msg(Object e) => e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
@@ -213,6 +230,8 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
   bool _saving = false;
   bool _uploading = false;
   String? _error;
+  AdIdeasPage? _ideas;
+  bool _gettingIdeas = false;
 
   final _name = TextEditingController();
   final _description = TextEditingController();
@@ -251,6 +270,9 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     });
     try {
       _fill(await AdBrandsService.get(id));
+      try {
+        _ideas = await AdBrandsService.ideas(id); // reads saved/today's ideas; generates nothing
+      } catch (_) {}
     } catch (e) {
       _error = _msg(e);
     } finally {
@@ -417,10 +439,10 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     }
   }
 
-  Future<void> _newAd() async {
+  Future<void> _newAd({String track = ''}) async {
     final b = _brand;
     if (b == null) return;
-    String style = 'auto', aspect = '9:16';
+    String style = _kTrackStyle[track] ?? 'auto', aspect = '9:16';
     bool useCharacter = b.characterId != null;
     final go = await showModalBottomSheet<bool>(
       context: context,
@@ -437,6 +459,20 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
                   'full price before anything is charged.',
                   style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
               const SizedBox(height: 14),
+              const Text('Campaign', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final e in _kTracks.entries)
+                  ChoiceChip(
+                    label: Text(e.value),
+                    selected: track == e.key,
+                    onSelected: (on) => set(() {
+                      track = on ? e.key : '';
+                      if (on) style = _kTrackStyle[e.key] ?? style;
+                    }),
+                  ),
+              ]),
+              const SizedBox(height: 12),
               const Text('Style', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               Wrap(spacing: 6, runSpacing: 6, children: [
@@ -471,7 +507,8 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     );
     if (go != true) return;
     try {
-      final c = await AdBrandsService.newAd(b.id, adStyle: style, aspectRatio: aspect, useCharacter: useCharacter);
+      final c = await AdBrandsService.newAd(b.id,
+          adStyle: style, aspectRatio: aspect, useCharacter: useCharacter, track: track);
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => AdsStudioWizardScreen(adminKey: AdsStudioService.creator, preselectedCampaignId: c.id),
@@ -480,6 +517,132 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     } catch (e) {
       if (mounted) _snack(_msg(e));
     }
+  }
+
+  Future<void> _getIdeas() async {
+    final b = _brand;
+    if (b == null) return;
+    setState(() => _gettingIdeas = true);
+    try {
+      final page = await AdBrandsService.newIdeas(b.id);
+      if (mounted) setState(() => _ideas = page);
+    } catch (e) {
+      if (mounted) _snack(_msg(e));
+    } finally {
+      if (mounted) setState(() => _gettingIdeas = false);
+    }
+  }
+
+  Future<void> _ideaStatus(AdIdea idea, String status) async {
+    final b = _brand;
+    if (b == null) return;
+    try {
+      await AdBrandsService.setIdeaStatus(b.id, idea.id, status);
+      final page = await AdBrandsService.ideas(b.id);
+      if (mounted) setState(() => _ideas = page);
+    } catch (e) {
+      if (mounted) _snack(_msg(e));
+    }
+  }
+
+  Future<void> _useIdea(AdIdea idea) async {
+    final b = _brand;
+    if (b == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Make "${idea.title}"?'),
+        content: const Text('This starts an ad from your brand with this idea. Nothing is charged now: you see the '
+            'full price before generating.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Start the ad')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final c = await AdBrandsService.useIdea(b.id, idea.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => AdsStudioWizardScreen(adminKey: AdsStudioService.creator, preselectedCampaignId: c.id),
+      ));
+      if (mounted) _load(b.id);
+    } catch (e) {
+      if (mounted) _snack(_msg(e));
+    }
+  }
+
+  Widget _ideaCard(AdIdea i) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: AppTheme.card(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(i.trackLabel.isEmpty ? (_kTracks[i.track] ?? i.track) : i.trackLabel,
+                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700)),
+            ),
+            const Spacer(),
+            if (i.status == 'saved') const Icon(Icons.bookmark, size: 16, color: AppColors.coin),
+          ]),
+          const SizedBox(height: 8),
+          Text(i.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+          const SizedBox(height: 4),
+          Text('“${i.hook}”', style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13)),
+          if (i.concept.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(i.concept, style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.35)),
+          ],
+          if (i.beats.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (var n = 0; n < i.beats.length; n++)
+              Text('${n + 1}. ${i.beats[n]}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ],
+          const SizedBox(height: 8),
+          Row(children: [
+            ElevatedButton(onPressed: () => _useIdea(i), child: const Text('Make this ad')),
+            const SizedBox(width: 6),
+            if (i.status != 'saved')
+              TextButton(onPressed: () => _ideaStatus(i, 'saved'), child: const Text('Save'))
+            else
+              TextButton(onPressed: () => _ideaStatus(i, 'new'), child: const Text('Unsave')),
+            TextButton(onPressed: () => _ideaStatus(i, 'dismissed'), child: const Text('Dismiss')),
+          ]),
+        ]),
+      );
+
+  List<Widget> _ideasSection(AdBrand b) {
+    final page = _ideas;
+    return [
+      _label('Ideas for today'),
+      const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: Text('Free ideas from your brand and its real facts. Making one into an ad shows the price first.',
+            style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+      ),
+      if (page != null) ...page.today.map(_ideaCard),
+      if (page == null || page.canGetMore)
+        OutlinedButton.icon(
+          onPressed: _gettingIdeas || b.archived ? null : _getIdeas,
+          icon: _gettingIdeas
+              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.lightbulb_outline, size: 16),
+          label: Text(page != null && page.today.isNotEmpty ? 'More ideas' : "Get today's ideas (free)"),
+        )
+      else
+        const Text('New ideas tomorrow.', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      if (page != null && page.saved.isNotEmpty) ...[
+        _label('Saved ideas'),
+        ...page.saved.map(_ideaCard),
+      ],
+    ];
   }
 
   void _openAd(AdBrandCampaign c) {
@@ -670,11 +833,38 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
                   IconButton(onPressed: _clearCharacter, icon: const Icon(Icons.close, size: 18), tooltip: 'Remove'),
                 ]),
         ),
-        _label('Ads from this brand'),
+        ..._ideasSection(b),
+        _label('Campaign universe'),
         if (b.campaigns.isEmpty)
-          const Text('No ads yet.', style: TextStyle(color: AppColors.textMuted, fontSize: 12.5))
-        else
-          for (final c in b.campaigns)
+          const Text('No ads yet.', style: TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+        if (!b.archived) ...[
+          Builder(builder: (_) {
+            final untried = _kTracks.keys.where((t) => !b.campaigns.any((c) => c.track == t)).toList();
+            if (untried.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 6),
+              child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                const Text('Not tried yet:', style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                for (final t in untried)
+                  ActionChip(
+                    label: Text(_kTracks[t]!, style: const TextStyle(fontSize: 11.5)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _newAd(track: t),
+                  ),
+              ]),
+            );
+          }),
+        ],
+        for (final group in [..._kTracks.keys, ''])
+          if (b.campaigns.any((c) => c.track == group)) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 2),
+              child: Text(
+                '${group.isEmpty ? 'Other ads' : _kTracks[group]} · ${b.campaigns.where((c) => c.track == group).length}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+              ),
+            ),
+            for (final c in b.campaigns.where((c) => c.track == group))
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: ClipRRect(
@@ -692,5 +882,6 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openAd(c),
             ),
+          ],
       ];
 }

@@ -41,4 +41,21 @@ void main() {
     expect(AdCampaign.fromJson({'id': 'c', 'user_id': 'u', 'brand_id': 'b1'}).brandId, 'b1');
     expect(AdCampaign.fromJson({'id': 'c', 'user_id': 'u'}).brandId, isNull);
   });
+
+  test('daily ideas and campaign tracks', () {
+    final page = AdIdeasPage.fromJson({
+      'today': [
+        {'id': 'i1', 'title': 'Sunset sips', 'track': 'lifestyle', 'track_label': 'Lifestyle', 'hook': 'Hi',
+         'concept': 'Friends', 'beats': ['a', 'b'], 'status': 'new'}
+      ],
+      'saved': [],
+      'can_get_more': false,
+      'tracks': [{'key': 'product_intro', 'label': 'Product introduction'}],
+    });
+    expect(page.today.single.beats, ['a', 'b']);
+    expect(page.canGetMore, isFalse);
+    expect(page.tracks.single.key, 'product_intro');
+    expect(AdBrandCampaign.fromJson({'id': 'c', 'track': 'seasonal'}).track, 'seasonal');
+    expect(AdBrandCampaign.fromJson({'id': 'c'}).track, '');
+  });
 }
