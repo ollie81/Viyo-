@@ -36,6 +36,17 @@ class AdCampaign {
   /// A video that needs correction (never offered as a finished ad).
   final String? previewVideoUrl;
 
+  // The product profile (universal Ads Maker). Facts are the advertiser's own word: the only claims an ad makes.
+  final String brandName;
+  final String productSubtype;
+  final Map<String, List<String>> facts; // features | benefits | prices | selling_points | specs
+  final List<String> brandColors; // #RRGGBB
+  final List<String> socialLinks;
+  final Map<String, String> contact; // phone | email | address
+  final String adStyle; // auto | product_cinematic | character | lifestyle | demo | social
+  final String characterMode; // auto | custom | reuse | none
+  final Map<String, dynamic> character;
+
   /// What the check found wrong, in plain words.
   List<String> get qualityProblems => [
         for (final i in (qualityReport?['items'] as List? ?? const []))
@@ -74,6 +85,15 @@ class AdCampaign {
     this.qualityReport,
     this.previewVideoUrl,
     required this.createdAt,
+    this.brandName = '',
+    this.productSubtype = '',
+    this.facts = const {},
+    this.brandColors = const [],
+    this.socialLinks = const [],
+    this.contact = const {},
+    this.adStyle = 'auto',
+    this.characterMode = 'auto',
+    this.character = const {},
   });
 
   bool get hasScript => script != null && script!.isNotEmpty;
@@ -110,5 +130,22 @@ class AdCampaign {
         createdAt: json['created_at'] ?? '',
         qualityReport: json['quality_report'] is Map ? Map<String, dynamic>.from(json['quality_report'] as Map) : null,
         previewVideoUrl: json['preview_video_url'] as String?,
+        brandName: json['brand_name'] ?? '',
+        productSubtype: json['product_subtype'] ?? '',
+        facts: {
+          if (json['facts'] is Map)
+            for (final e in (json['facts'] as Map).entries)
+              e.key.toString(): ((e.value as List?) ?? []).map((v) => v.toString()).toList(),
+        },
+        brandColors: ((json['brand_colors'] as List?) ?? []).map((e) => e.toString()).toList(),
+        socialLinks: ((json['social_links'] as List?) ?? []).map((e) => e.toString()).toList(),
+        contact: {
+          if (json['contact'] is Map)
+            for (final e in (json['contact'] as Map).entries)
+              if (e.value != null) e.key.toString(): e.value.toString(),
+        },
+        adStyle: json['ad_style'] ?? 'auto',
+        characterMode: json['character_mode'] ?? 'auto',
+        character: json['character'] is Map ? Map<String, dynamic>.from(json['character'] as Map) : const {},
       );
 }

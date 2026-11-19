@@ -52,6 +52,24 @@ class VeoTierInfo {
   VeoTierInfo({required this.key, required this.label, required this.pricePerSecCents});
 }
 
+/// A fictional ad character a creator saved from an earlier ad, to reuse (same look, same voice).
+class AdCharacter {
+  final String id;
+  final String name;
+  final Map<String, dynamic> spec;
+  final String? portraitUrl;
+  final String? voiceName;
+  AdCharacter({required this.id, required this.name, required this.spec, this.portraitUrl, this.voiceName});
+
+  factory AdCharacter.fromJson(Map<String, dynamic> j) => AdCharacter(
+        id: j['id'] as String,
+        name: j['name'] ?? '',
+        spec: j['spec'] is Map ? Map<String, dynamic>.from(j['spec'] as Map) : {},
+        portraitUrl: j['portrait_url'] as String?,
+        voiceName: j['voice_name'] as String?,
+      );
+}
+
 /// Talks to viyo_ai's ads_studio.py — same X-Admin-Key gate every other
 /// admin surface in this app uses (see StudioService), and the exact
 /// same request/response/error-handling shape as that file so the two
@@ -182,6 +200,22 @@ class AdsStudioService {
       body: jsonEncode(patch),
     );
     if (res.statusCode != 200) throw _failure(res, 'update campaign');
+    return AdCampaign.fromJson(jsonDecode(res.body));
+  }
+
+  // --- Characters (creator Ads Maker only) --------------------------------
+
+  static Future<List<AdCharacter>> listCharacters() async {
+    final res = await http.get(Uri.parse('$_creatorBase/characters'), headers: _headers(creator));
+    if (res.statusCode != 200) throw _failure(res, 'load characters');
+    return (jsonDecode(res.body) as List).map((e) => AdCharacter.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Reuse a saved character in this campaign: same description, portrait and voice.
+  static Future<AdCampaign> reuseCharacter(String campaignId, String characterId) async {
+    final res = await http.post(Uri.parse('$_creatorBase/campaigns/$campaignId/character/reuse/$characterId'),
+        headers: _headers(creator));
+    if (res.statusCode != 200) throw _failure(res, 'use that character');
     return AdCampaign.fromJson(jsonDecode(res.body));
   }
 
