@@ -38,6 +38,7 @@ class AdCampaign {
 
   // The product profile (universal Ads Maker). Facts are the advertiser's own word: the only claims an ad makes.
   final String brandName;
+  final String? brandId; // My Brands: the saved brand this ad belongs to
   final String productSubtype;
   final Map<String, List<String>> facts; // features | benefits | prices | selling_points | specs
   final List<String> brandColors; // #RRGGBB
@@ -86,6 +87,7 @@ class AdCampaign {
     this.previewVideoUrl,
     required this.createdAt,
     this.brandName = '',
+    this.brandId,
     this.productSubtype = '',
     this.facts = const {},
     this.brandColors = const [],
@@ -131,6 +133,7 @@ class AdCampaign {
         qualityReport: json['quality_report'] is Map ? Map<String, dynamic>.from(json['quality_report'] as Map) : null,
         previewVideoUrl: json['preview_video_url'] as String?,
         brandName: json['brand_name'] ?? '',
+        brandId: json['brand_id'] as String?,
         productSubtype: json['product_subtype'] ?? '',
         facts: {
           if (json['facts'] is Map)
