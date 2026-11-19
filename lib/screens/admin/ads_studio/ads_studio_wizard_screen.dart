@@ -66,7 +66,12 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
   final _destinationController = TextEditingController();
   final _ctaController = TextEditingController();
 
-  String _promoteTarget = 'viyo';
+  late String _promoteTarget = AdsStudioService.isCreator(widget.adminKey) ? 'other_app' : 'viyo';
+
+  /// Creators advertise their own things; "Promote VIYO" and the VIYO screenshot library are admin-only.
+  Map<String, String> get _targets => AdsStudioService.isCreator(widget.adminKey)
+      ? {for (final e in _kPromoteTargets.entries) if (e.key != 'viyo' && e.key != 'ollie_ai') e.key: e.key == 'other_app' ? 'App' : e.value}
+      : _kPromoteTargets;
   String? _format;
   int _duration = 15;
   String _aspectRatio = '9:16';
@@ -259,7 +264,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
 
   Future<void> _removeAsset(AdAsset asset) async {
     try {
-      await AdsStudioService.deleteAsset(widget.adminKey, asset.id);
+      await AdsStudioService.deleteAsset(widget.adminKey, asset.id, campaignId: _campaign?.id);
       if (!mounted) return;
       setState(() => _assets = _assets.where((a) => a.id != asset.id).toList());
     } catch (e) {
@@ -436,7 +441,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _kPromoteTargets.entries
+            children: _targets.entries
                 .map((e) => ChoiceChip(
                       label: Text(e.value),
                       selected: _promoteTarget == e.key,
@@ -444,7 +449,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
                     ))
                 .toList(),
           ),
-          if (_promoteTarget == 'viyo') ...[
+          if (_promoteTarget == 'viyo' && !AdsStudioService.isCreator(widget.adminKey)) ...[
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _fillPromoteViyoDefaults,
@@ -501,7 +506,7 @@ class _AdsStudioWizardScreenState extends State<AdsStudioWizardScreen> {
         children: [
           ..._assets.map((a) => Padding(padding: const EdgeInsets.only(right: 8), child: _assetTile(a))),
           if (_assets.length < 8) _uploadTile(),
-          if (_assets.length < 8 && _promoteTarget == 'viyo') _libraryTile(),
+          if (_assets.length < 8 && _promoteTarget == 'viyo' && !AdsStudioService.isCreator(widget.adminKey)) _libraryTile(),
         ],
       ),
     );

@@ -348,6 +348,7 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         ),
                       ],
                     ),
+                    if (!AdsStudioService.isCreator(widget.adminKey)) ...[
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
@@ -357,6 +358,7 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         label: const Text('Record performance (manual)'),
                       ),
                     ),
+                    ],
                   ],
                 ),
     );

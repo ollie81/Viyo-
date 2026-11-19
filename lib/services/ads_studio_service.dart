@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http_parser/http_parser.dart';
 import '../constants/supabase_constants.dart';
 import '../models/ad_asset.dart';
@@ -57,16 +58,27 @@ class VeoTierInfo {
 /// services stay easy to maintain side by side.
 class AdsStudioService {
   static const _base = '${AiBackendConstants.baseUrl}/api/v1/admin/ads-studio';
+  static const _creatorBase = '${AiBackendConstants.baseUrl}/api/v1/ads-maker';
 
-  static Map<String, String> _headers(String adminKey) => {
-        'Content-Type': 'application/json',
-        'X-Admin-Key': adminKey,
-      };
+  /// Pass this as `adminKey` for a signed-in creator: the same screens then use the creator API
+  /// (their own campaigns only, paid with Studio credits) with the user's own sign-in, never an admin key.
+  static const creator = '';
+  static bool isCreator(String adminKey) => adminKey.isEmpty;
+
+  static String _b(String adminKey) => isCreator(adminKey) ? _creatorBase : _base;
+  static String _c(String adminKey) => isCreator(adminKey) ? 'campaigns' : 'campaign';
+
+  static Map<String, String> _headers(String adminKey) {
+    if (!isCreator(adminKey)) return {'Content-Type': 'application/json', 'X-Admin-Key': adminKey};
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
+  }
 
   static String? _errorDetail(http.Response res) {
     try {
       final data = jsonDecode(res.body);
       final detail = data is Map ? data['detail'] : null;
+      if (detail is Map && detail['message'] is String) return detail['message'] as String;
       return detail is String ? detail : null;
     } catch (_) {
       return null;
@@ -130,7 +142,7 @@ class AdsStudioService {
     String? voiceGenderPreference,
   }) async {
     final res = await http.post(
-      Uri.parse('$_base/campaign'),
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}'),
       headers: _headers(adminKey),
       body: jsonEncode({
         'user_id': userId,
@@ -156,7 +168,7 @@ class AdsStudioService {
   }
 
   static Future<List<VeoTierInfo>> listVeoTiers(String adminKey) async {
-    final res = await http.get(Uri.parse('$_base/veo-tiers'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/veo-tiers'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load Veo tiers');
     return (jsonDecode(res.body) as List)
         .map((e) => VeoTierInfo(key: e['key'] as String, label: e['label'] as String, pricePerSecCents: (e['price_per_sec_cents'] as num).toInt()))
@@ -165,7 +177,7 @@ class AdsStudioService {
 
   static Future<AdCampaign> updateCampaign(String adminKey, String campaignId, Map<String, dynamic> patch) async {
     final res = await http.put(
-      Uri.parse('$_base/campaign/$campaignId'),
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId'),
       headers: _headers(adminKey),
       body: jsonEncode(patch),
     );
@@ -174,19 +186,19 @@ class AdsStudioService {
   }
 
   static Future<List<AdCampaign>> listCampaigns(String adminKey) async {
-    final res = await http.get(Uri.parse('$_base/campaigns'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/campaigns'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load campaigns');
     return (jsonDecode(res.body) as List).map((e) => AdCampaign.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   static Future<AdCampaign> getCampaign(String adminKey, String campaignId) async {
-    final res = await http.get(Uri.parse('$_base/campaign/$campaignId'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load campaign');
     return AdCampaign.fromJson(jsonDecode(res.body));
   }
 
   static Future<void> deleteCampaign(String adminKey, String campaignId) async {
-    final res = await http.delete(Uri.parse('$_base/campaign/$campaignId'), headers: _headers(adminKey));
+    final res = await http.delete(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'delete campaign');
   }
 
@@ -203,7 +215,7 @@ class AdsStudioService {
   }
 
   static Future<List<AdFormatInfo>> listFormats(String adminKey) async {
-    final res = await http.get(Uri.parse('$_base/formats'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/formats'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load ad formats');
     return (jsonDecode(res.body) as List)
         .map((e) => AdFormatInfo(key: e['key'] as String, label: e['label'] as String))
@@ -219,9 +231,9 @@ class AdsStudioService {
     String filename, {
     String assetType = 'other',
   }) async {
-    final uri = Uri.parse('$_base/campaign/$campaignId/assets?asset_type=$assetType');
+    final uri = Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/assets?asset_type=$assetType');
     final request = http.MultipartRequest('POST', uri)
-      ..headers['X-Admin-Key'] = adminKey
+      ..headers.addAll(Map.of(_headers(adminKey))..remove('Content-Type'))
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _imageMediaType(filename)));
     final res = await http.Response.fromStream(await request.send());
     if (res.statusCode != 200) throw _failure(res, 'upload asset');
@@ -229,13 +241,16 @@ class AdsStudioService {
   }
 
   static Future<List<AdAsset>> listAssets(String adminKey, String campaignId) async {
-    final res = await http.get(Uri.parse('$_base/campaign/$campaignId/assets'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/assets'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load assets');
     return (jsonDecode(res.body) as List).map((e) => AdAsset.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<void> deleteAsset(String adminKey, String assetId) async {
-    final res = await http.delete(Uri.parse('$_base/asset/$assetId'), headers: _headers(adminKey));
+  static Future<void> deleteAsset(String adminKey, String assetId, {String? campaignId}) async {
+    final url = isCreator(adminKey)
+        ? '$_creatorBase/campaigns/$campaignId/assets/$assetId'
+        : '$_base/asset/$assetId';
+    final res = await http.delete(Uri.parse(url), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'delete asset');
   }
 
@@ -257,7 +272,7 @@ class AdsStudioService {
 
   static Future<AdAsset> attachLibraryAsset(String adminKey, String campaignId, String libraryId) async {
     final res = await http.post(
-      Uri.parse('$_base/campaign/$campaignId/assets/from-library/$libraryId'),
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/assets/from-library/$libraryId'),
       headers: _headers(adminKey),
     );
     if (res.statusCode != 200) throw _failure(res, 'attach library asset');
@@ -267,7 +282,7 @@ class AdsStudioService {
   // --- Hook-First Engine -----------------------------------------------
 
   static Future<AdHookGenerationResult> generateHooks(String adminKey, String campaignId) async {
-    final res = await http.post(Uri.parse('$_base/campaign/$campaignId/hooks'), headers: _headers(adminKey));
+    final res = await http.post(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/hooks'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'generate hooks');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return AdHookGenerationResult(
@@ -278,7 +293,7 @@ class AdsStudioService {
   }
 
   static Future<List<AdHook>> listHooks(String adminKey, String campaignId) async {
-    final res = await http.get(Uri.parse('$_base/campaign/$campaignId/hooks'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/hooks'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load hooks');
     return (jsonDecode(res.body) as List).map((e) => AdHook.fromJson(e as Map<String, dynamic>)).toList();
   }
@@ -287,7 +302,7 @@ class AdsStudioService {
   /// #1 — the "or let the system recommend one" path.
   static Future<AdCampaign> selectHook(String adminKey, String campaignId, String hookId) async {
     final res = await http.post(
-      Uri.parse('$_base/campaign/$campaignId/hooks/$hookId/select'),
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/hooks/$hookId/select'),
       headers: _headers(adminKey),
     );
     if (res.statusCode != 200) throw _failure(res, 'select hook');
@@ -297,7 +312,7 @@ class AdsStudioService {
   // --- Script --------------------------------------------------------------
 
   static Future<AdScriptResult> generateScript(String adminKey, String campaignId) async {
-    final res = await http.post(Uri.parse('$_base/campaign/$campaignId/script'), headers: _headers(adminKey));
+    final res = await http.post(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/script'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'generate script');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return AdScriptResult(
@@ -308,7 +323,7 @@ class AdsStudioService {
 
   static Future<AdCampaign> saveScript(String adminKey, String campaignId, List<Map<String, dynamic>> scenes) async {
     final res = await http.put(
-      Uri.parse('$_base/campaign/$campaignId/script'),
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/script'),
       headers: _headers(adminKey),
       body: jsonEncode({'scenes': scenes}),
     );
@@ -319,13 +334,13 @@ class AdsStudioService {
   // --- Generation ------------------------------------------------------
 
   static Future<AdJob> generateVideo(String adminKey, String campaignId) async {
-    final res = await http.post(Uri.parse('$_base/campaign/$campaignId/generate'), headers: _headers(adminKey));
+    final res = await http.post(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/generate'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'start generation');
     return AdJob.fromJson(jsonDecode(res.body));
   }
 
   static Future<AdJob?> getLatestJob(String adminKey, String campaignId) async {
-    final res = await http.get(Uri.parse('$_base/campaign/$campaignId/job'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/job'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'check generation status');
     if (res.body == 'null' || res.body.isEmpty) return null;
     return AdJob.fromJson(jsonDecode(res.body));
@@ -347,7 +362,7 @@ class AdsStudioService {
     String notes = '',
   }) async {
     final res = await http.post(
-      Uri.parse('$_base/campaign/$campaignId/performance'),
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/performance'),
       headers: _headers(adminKey),
       body: jsonEncode({
         if (hookId != null) 'hook_id': hookId,
@@ -365,7 +380,7 @@ class AdsStudioService {
   }
 
   static Future<List<Map<String, dynamic>>> listPerformance(String adminKey, String campaignId) async {
-    final res = await http.get(Uri.parse('$_base/campaign/$campaignId/performance'), headers: _headers(adminKey));
+    final res = await http.get(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/performance'), headers: _headers(adminKey));
     if (res.statusCode != 200) throw _failure(res, 'load performance records');
     return (jsonDecode(res.body) as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
