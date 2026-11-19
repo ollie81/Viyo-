@@ -21,6 +21,7 @@ import '../services/video_metadata_service.dart';
 import '../services/watch_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ad_post_extras.dart';
+import '../services/activity_service.dart';
 import '../utils/episode_lock.dart';
 import '../utils/friendly_error.dart';
 import '../widgets/comments_sheet.dart';
@@ -657,6 +658,7 @@ class _VideoPageState extends State<_VideoPage> {
         final remaining = c.value.duration - c.value.position;
         if (remaining <= const Duration(milliseconds: 200)) {
           _ended = true;
+          ActivityService.complete(widget.post.id);
           unawaited(WatchProgressService.clearPosition(widget.post.id));
           if (widget.nextPost != null) {
             _showUpNext = true;
@@ -733,6 +735,8 @@ class _VideoPageState extends State<_VideoPage> {
         widget.post, c.value.position, c.value.duration,
         forceServerSync: true,
       ));
+      ActivityService.progress(
+          widget.post.id, c.value.position.inMilliseconds / c.value.duration.inMilliseconds);
     }
     _controller?.dispose();
     super.dispose();

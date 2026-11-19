@@ -5,6 +5,8 @@ import '../models/post.dart';
 import '../services/post_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../services/activity_service.dart';
+import '../widgets/ad_post_extras.dart';
 import '../utils/friendly_error.dart';
 import '../widgets/guest_gate.dart';
 import '../widgets/home_header_section.dart';
@@ -153,6 +155,10 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildCard(Post post) {
+    return SeenOnScreen(onSeen: () => ActivityService.impression(post.id), child: _card(post));
+  }
+
+  Widget _card(Post post) {
     return PostCard(
       post: post,
       // Passing the logged-in userId lets PostCard show

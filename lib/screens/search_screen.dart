@@ -32,6 +32,8 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final _query = TextEditingController();
   List<Map<String, dynamic>> _results = [];
+  List<Post> _titles = [];
+  List<String> _understood = [];
   bool _loading = false;
   bool _hasQuery = false;
   Timer? _debounce;
@@ -63,10 +65,15 @@ class _SearchScreenState extends State<SearchScreen> {
       final results = await Future.wait([
         SeriesService.getTrendingAiDramas(),
         SeriesService.getNewAiSeries(),
+        ServerDiscovery.trending(),
       ]);
       if (!mounted) return;
+      // Trending from the server (distinct viewers, quality, fairness to smaller creators) when it has enough
+      // activity to say; otherwise the original list.
+      final server = results[2] as TrendingSections?;
+      final serverDramas = server?.trending.where((p) => p.seriesId != null).toList() ?? const <Post>[];
       setState(() {
-        _trendingDramas = results[0] as List<Post>;
+        _trendingDramas = serverDramas.isNotEmpty ? serverDramas : results[0] as List<Post>;
         _newSeries = results[1] as List<Series>;
         _loadingDramas = false;
       });
@@ -126,12 +133,31 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     setState(() => _loading = true);
-    final results = await ProfileService.searchCreators(value.trim());
-    if (!mounted) return;
+    // Dramas, movies, videos and creators from the server's search (typos, partial words, described stories);
+    // the original creator search if it can't be reached.
+    final server = await ServerDiscovery.search(value.trim());
+    final results = server?.creators ?? await ProfileService.searchCreators(value.trim());
+    if (!mounted || _query.text.trim() != value.trim()) return;
     setState(() {
       _results = results;
+      _titles = server?.titles ?? [];
+      _understood = server?.understoodGenres ?? [];
       _loading = false;
     });
+  }
+
+  Future<void> _openResult(Post p) async {
+    if (p.seriesId != null) {
+      final series = await SeriesService.getSeries(p.seriesId!);
+      if (series != null && mounted) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: series)));
+      }
+      return;
+    }
+    if (p.mediaUrl == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ViyoPostViewer(posts: [ViyoPostMedia.fromPost(p)], initialIndex: 0),
+    ));
   }
 
   Future<void> _openPost(int index) async {
@@ -196,7 +222,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   textAlignVertical: TextAlignVertical.center,
                   decoration: const InputDecoration(
                     isDense: true,
-                    hintText: 'Search creators',
+                    hintText: 'Search dramas, movies, creators',
                     hintStyle:
                         TextStyle(color: AppColors.textMuted, fontSize: 14),
                     prefixIcon: Icon(Icons.search,
@@ -251,12 +277,25 @@ class _SearchScreenState extends State<SearchScreen> {
                         ? const Center(
                             child: CircularProgressIndicator(
                                 color: AppColors.primary))
-                        : _results.isEmpty
+                        : _results.isEmpty && _titles.isEmpty
                             ? const _NoResultsState()
-                            : ListView.builder(
-                                itemCount: _results.length,
-                                itemBuilder: (ctx, i) =>
-                                    _CreatorTile(creator: _results[i]),
+                            : ListView(
+                                padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+                                children: [
+                                  if (_understood.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Text('Showing ${_understood.join(', ')} stories',
+                                          style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                                    ),
+                                  if (_titles.isNotEmpty) const _SectionLabel('DRAMAS, MOVIES & VIDEOS'),
+                                  for (final t in _titles) _TitleResult(post: t, onTap: () => _openResult(t)),
+                                  if (_results.isNotEmpty) ...[
+                                    const SizedBox(height: 10),
+                                    const _SectionLabel('CREATORS'),
+                                    for (final c in _results) _CreatorTile(creator: c),
+                                  ],
+                                ],
                               ),
               ),
             ],
@@ -1202,4 +1241,38 @@ class _CategoryFeedState extends State<_CategoryFeed> {
           ),
         ),
       );
+}
+
+
+/// A drama, movie or video in search results.
+class _TitleResult extends StatelessWidget {
+  final Post post;
+  final VoidCallback onTap;
+  const _TitleResult({required this.post, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = post.seriesTitle ?? (post.caption.trim().isEmpty ? 'Video' : post.caption.split('\n').first);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: post.thumbnailUrl != null
+            ? SizedBox(
+                width: 48,
+                height: 64,
+                child: RetryableNetworkImage(imageUrl: post.thumbnailUrl!, fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(color: AppColors.surfaceBorder)),
+              )
+            : Container(width: 48, height: 64, color: AppColors.surfaceBorder,
+                child: const Icon(Icons.movie_outlined, color: AppColors.textMuted, size: 18)),
+      ),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+        [if (post.seriesId != null) 'Series', '@${post.authorUsername ?? ''}'].join(' · '),
+        style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+      ),
+    );
+  }
 }

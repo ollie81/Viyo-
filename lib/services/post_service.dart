@@ -113,6 +113,31 @@ class PostService {
   /// _feedRankingPoolSize) and avoids needing a new Postgres function or
   /// materialized ranking column for a first pass.
   static Future<List<Post>> getFeed({int limit = 20, int offset = 0}) async {
+    // The server's personal ranking (recommend.py) first; the original in-app ranking below if it can't be reached.
+    try {
+      final ranked = await _serverForYou(limit: limit, offset: offset);
+      if (ranked != null && (ranked.isNotEmpty || offset > 0)) return ranked;
+    } catch (_) {}
+    return _localFeed(limit: limit, offset: offset);
+  }
+
+  /// For You from the backend: ids in ranked order, loaded with the usual post query. Null when unavailable.
+  static Future<List<Post>?> _serverForYou({required int limit, required int offset}) async {
+    final token = _client.auth.currentSession?.accessToken;
+    if (token == null) return null;
+    final res = await http
+        .get(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/feed/for-you?cursor=$offset&limit=$limit'),
+            headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 8));
+    if (res.statusCode != 200) return null;
+    final items = ((jsonDecode(res.body) as Map)['items'] as List? ?? const []).cast<Map>();
+    final ids = [for (final i in items) i['post_id'].toString()];
+    if (ids.isEmpty) return [];
+    final byId = {for (final p in await getPostsByIds(ids)) p.id: p};
+    return [for (final id in ids) if (byId[id] != null) byId[id]!];
+  }
+
+  static Future<List<Post>> _localFeed({int limit = 20, int offset = 0}) async {
     final data = await _client
         .from('posts')
         .select('*, profiles(username, display_name, avatar_url), series(title, coin_price_per_episode, orientation)')

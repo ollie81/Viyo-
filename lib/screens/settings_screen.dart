@@ -13,6 +13,7 @@ import 'auth/login_screen.dart';
 import 'copyright_screen.dart';
 import 'invite_screen.dart';
 import 'privacy_screen.dart';
+import 'recommendations_settings_screen.dart';
 import 'admin/creator_payouts_screen.dart';
 import 'admin/studio_credits_admin_screen.dart';
 import 'admin/studio_voices_admin_screen.dart';
@@ -285,6 +286,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Privacy',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+              ),
+            ),
+            _divider(),
+            _tile(
+              context,
+              icon: Icons.tune,
+              title: 'Recommendations & history',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RecommendationsSettingsScreen()),
               ),
             ),
             _divider(),
