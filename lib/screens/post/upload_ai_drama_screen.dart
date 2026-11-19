@@ -31,7 +31,9 @@ import '../../widgets/xfile_preview_image.dart';
 /// series"/multi-episode framing, which is why kSingleAssetContentTypes
 /// branches the form below rather than needing a second screen.
 class UploadAiDramaScreen extends StatefulWidget {
-  const UploadAiDramaScreen({super.key});
+  /// Opens with this series already chosen (the series page's "Add episode").
+  final String? initialSeriesId;
+  const UploadAiDramaScreen({super.key, this.initialSeriesId});
 
   @override
   State<UploadAiDramaScreen> createState() => _UploadAiDramaScreenState();
@@ -121,7 +123,13 @@ class _UploadAiDramaScreenState extends State<UploadAiDramaScreen> {
         _creatingNewSeries = series.isEmpty;
         _loadingSeries = false;
       });
-      if (series.isNotEmpty) _selectSeries(series.first);
+      if (series.isNotEmpty) {
+        final wanted = series.where((s) => s.id == widget.initialSeriesId).firstOrNull;
+        if (wanted != null && !wanted.isSingleAsset) {
+          setState(() => _contentType = wanted.effectiveContentType);
+        }
+        _selectSeries(wanted ?? series.first);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

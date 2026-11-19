@@ -73,6 +73,22 @@ class SeriesService {
     await _client.from('series').update({'status': status}).eq('id', seriesId);
   }
 
+  /// Owner-only edit of a series' details (same direct, RLS-scoped write as updateStatus: the policy only
+  /// lets the owner update their own row). Only the fields passed are changed.
+  static Future<void> updateDetails(String seriesId,
+      {String? title, String? description, String? genre, int? coinPricePerEpisode, String? coverImageUrl}) async {
+    final patch = <String, dynamic>{
+      if (title != null) 'title': title.trim(),
+      if (description != null) 'description': description.trim(),
+      if (genre != null) 'genre': genre,
+      if (coinPricePerEpisode != null) 'coin_price_per_episode': coinPricePerEpisode.clamp(1, 100000),
+      if (coverImageUrl != null) 'cover_image_url': coverImageUrl,
+    };
+    if (patch.isEmpty) return;
+    final rows = await _client.from('series').update(patch).eq('id', seriesId).select('id');
+    if ((rows as List).isEmpty) throw Exception("You can only edit your own series.");
+  }
+
   /// True per-series follow (`series_follows`) — distinct from the
   /// creator-level `follows` table used elsewhere in the app. A viewer
   /// can follow a specific series without following everything else

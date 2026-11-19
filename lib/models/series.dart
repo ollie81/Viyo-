@@ -98,6 +98,7 @@ class Series {
       );
 
   Series copyWith({
+    int? coinPricePerEpisode,
     int? episodeCount,
     String? coverImageUrl,
     String? status,
@@ -112,7 +113,7 @@ class Series {
         title: title ?? this.title,
         description: description ?? this.description,
         coverImageUrl: coverImageUrl ?? this.coverImageUrl,
-        coinPricePerEpisode: coinPricePerEpisode,
+        coinPricePerEpisode: coinPricePerEpisode ?? this.coinPricePerEpisode,
         genre: genre ?? this.genre,
         createdAt: createdAt,
         authorUsername: authorUsername,
