@@ -954,6 +954,10 @@ class _VideoPageState extends State<_VideoPage> {
                         const SizedBox(width: 8),
                         const AdLabel(),
                       ],
+                      if (post.isAd && post.isPromoted) ...[
+                        const SizedBox(width: 4),
+                        const PromotedLabel(),
+                      ],
                     ],
                   ),
                   if (post.caption.trim().isNotEmpty) ...[
@@ -979,7 +983,7 @@ class _VideoPageState extends State<_VideoPage> {
                   ],
                   if (post.isAd && (post.adLink ?? '').isNotEmpty) ...[
                     const SizedBox(height: 9),
-                    AdVisitButton(link: post.adLink!),
+                    AdVisitButton(link: post.adLink!, promotionId: post.promotionId),
                   ],
                 ],
               ),

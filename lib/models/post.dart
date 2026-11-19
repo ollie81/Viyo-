@@ -116,6 +116,10 @@ class Post {
   final String? adLink;
   final String? adInfo;
   bool get isAd => postKind == 'ad';
+  // Set client-side when Discover shows this post as a paid promotion (never stored on the post).
+  final String? promotionId;
+  // Paid placement of any kind: a coin boost or a paid promotion. Always labelled "Promoted".
+  bool get isPromoted => isBoosted || promotionId != null;
 
   bool get isEpisode => seriesId != null;
   bool get isVideoProcessing => videoStatus == 'processing';
@@ -187,6 +191,7 @@ class Post {
     this.adCategory,
     this.adLink,
     this.adInfo,
+    this.promotionId,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -235,6 +240,7 @@ class Post {
         adInfo: json['ad_info'] as String?,
       );
   Post copyWith({
+    String? promotionId,
     String? id,
     String? userId,
     PostType? postType,
@@ -299,6 +305,7 @@ class Post {
       adCategory: adCategory,
       adLink: adLink,
       adInfo: adInfo,
+      promotionId: promotionId ?? this.promotionId,
     );
   }
 }

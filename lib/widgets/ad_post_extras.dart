@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/promotion_service.dart';
 
 /// The label every ad post carries, so an ad is never mistaken for an ordinary post. Paid promotion (a later
 /// stage) will say "Promoted" separately; this one only says it is an ad.
@@ -15,10 +16,24 @@ class AdLabel extends StatelessWidget {
       );
 }
 
+/// Paid placement (a paid promotion or a coin boost) is always labelled as such, next to the Ad label.
+class PromotedLabel extends StatelessWidget {
+  const PromotedLabel({super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: const Color(0xFFA855F7), borderRadius: BorderRadius.circular(4)),
+        child: const Text('Promoted',
+            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+      );
+}
+
 /// The advertiser's own link ("Visit"): a website, a phone number (tel:) or an email (mailto:).
 class AdVisitButton extends StatelessWidget {
   final String link;
-  const AdVisitButton({super.key, required this.link});
+  final String? promotionId; // set on a promoted post: a tap is counted for the advertiser's report
+  const AdVisitButton({super.key, required this.link, this.promotionId});
 
   static Uri? uriFor(String link) {
     final l = link.trim();
@@ -45,7 +60,10 @@ class AdVisitButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => launchUrl(uri, mode: LaunchMode.externalApplication),
+        onTap: () {
+          if (promotionId != null) PromotionService.recordClick(promotionId!);
+          launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -62,4 +80,53 @@ class AdVisitButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Calls [onSeen] once, the first time at least half of [child] is on screen (checked on layout and on every
+/// scroll of the nearest scrollable). Used so a promoted ad only counts as an impression when it was really seen.
+class SeenOnScreen extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onSeen;
+  const SeenOnScreen({super.key, required this.child, required this.onSeen});
+
+  @override
+  State<SeenOnScreen> createState() => _SeenOnScreenState();
+}
+
+class _SeenOnScreenState extends State<SeenOnScreen> {
+  bool _done = false;
+  ScrollPosition? _position;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _position?.removeListener(_check);
+    _position = Scrollable.maybeOf(context)?.position;
+    _position?.addListener(_check);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  @override
+  void dispose() {
+    _position?.removeListener(_check);
+    super.dispose();
+  }
+
+  void _check() {
+    if (_done || !mounted) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final h = box.size.height;
+    final screen = MediaQuery.sizeOf(context).height;
+    final visible = (top + h).clamp(0.0, screen) - top.clamp(0.0, screen);
+    if (h > 0 && visible >= h / 2) {
+      _done = true;
+      _position?.removeListener(_check);
+      widget.onSeen();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
