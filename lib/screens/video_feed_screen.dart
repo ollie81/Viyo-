@@ -20,6 +20,7 @@ import '../services/supabase_service.dart';
 import '../services/video_metadata_service.dart';
 import '../services/watch_progress_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ad_post_extras.dart';
 import '../utils/episode_lock.dart';
 import '../utils/friendly_error.dart';
 import '../widgets/comments_sheet.dart';
@@ -938,15 +939,21 @@ class _VideoPageState extends State<_VideoPage> {
                             : null,
                       ),
                       const SizedBox(width: 9),
-                      Expanded(
+                      Flexible(
                         child: Text(
                           '@${post.authorUsername ?? 'unknown'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
+                      if (post.isAd) ...[
+                        const SizedBox(width: 8),
+                        const AdLabel(),
+                      ],
                     ],
                   ),
                   if (post.caption.trim().isNotEmpty) ...[
@@ -960,6 +967,19 @@ class _VideoPageState extends State<_VideoPage> {
                         height: 1.3,
                       ),
                     ),
+                  ],
+                  if (post.isAd && (post.adInfo ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      post.adInfo!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                    ),
+                  ],
+                  if (post.isAd && (post.adLink ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 9),
+                    AdVisitButton(link: post.adLink!),
                   ],
                 ],
               ),

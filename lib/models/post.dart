@@ -109,6 +109,14 @@ class Post {
   // videoProvider/width/height above.
   final String? setupNote;
 
+  // An ad published from Ads Maker ('ad'), or a normal post ('post', also every post before the column
+  // existed). An ad is always labelled as one; adLink is the advertiser's own website/contact ("Visit").
+  final String postKind;
+  final String? adCategory;
+  final String? adLink;
+  final String? adInfo;
+  bool get isAd => postKind == 'ad';
+
   bool get isEpisode => seriesId != null;
   bool get isVideoProcessing => videoStatus == 'processing';
   bool get isVideoFailed => videoStatus == 'failed';
@@ -175,6 +183,10 @@ class Post {
     this.width,
     this.height,
     this.setupNote,
+    this.postKind = 'post',
+    this.adCategory,
+    this.adLink,
+    this.adInfo,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
@@ -217,6 +229,10 @@ class Post {
         bunnyVideoId: json['bunny_video_id'],
         videoStatus: json['video_status'],
         setupNote: json['setup_note'] as String?,
+        postKind: json['post_kind'] as String? ?? 'post',
+        adCategory: json['ad_category'] as String?,
+        adLink: json['ad_link'] as String?,
+        adInfo: json['ad_info'] as String?,
       );
   Post copyWith({
     String? id,
@@ -279,6 +295,10 @@ class Post {
       width: width ?? this.width,
       height: height ?? this.height,
       setupNote: setupNote ?? this.setupNote,
+      postKind: postKind,
+      adCategory: adCategory,
+      adLink: adLink,
+      adInfo: adInfo,
     );
   }
 }

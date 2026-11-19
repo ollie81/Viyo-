@@ -12,6 +12,7 @@ import '../../../services/bunny_stream_service.dart';
 import '../../../services/web_download_stub.dart'
     if (dart.library.html) '../../../services/web_download_html.dart' as web_download;
 import '../../../theme/app_theme.dart';
+import 'ads_publish_screen.dart';
 import 'ads_studio_wizard_screen.dart';
 
 /// Final step — preview, download, regenerate, or record real
@@ -348,6 +349,28 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         ),
                       ],
                     ),
+                    if (campaign.status == 'ready' && campaign.videoUrl != null) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _processingVideo
+                              ? null
+                              : () => Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => AdsPublishScreen(adminKey: widget.adminKey, campaign: campaign),
+                                  )),
+                          icon: const Icon(Icons.public, size: 16),
+                          label: const Text('Publish to VIYO'),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Your ad stays yours: you can still download it and post it anywhere.',
+                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        ),
+                      ),
+                    ],
                     if (!AdsStudioService.isCreator(widget.adminKey)) ...[
                     const SizedBox(height: 10),
                     SizedBox(

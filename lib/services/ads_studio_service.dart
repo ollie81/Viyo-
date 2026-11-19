@@ -52,6 +52,73 @@ class VeoTierInfo {
   VeoTierInfo({required this.key, required this.label, required this.pricePerSecCents});
 }
 
+/// What the publish screen needs: categories, suggestions from the campaign, thumbnail choices, and the
+/// current post when the ad was published before.
+class AdPublishOptions {
+  final bool canPublish;
+  final List<MapEntry<String, String>> categories; // key -> label
+  final Map<String, String> suggested; // caption, category, link, product_info
+  final List<Map<String, String>> thumbnails; // key, label, url
+  final AdPublished? published;
+  AdPublishOptions({
+    required this.canPublish,
+    required this.categories,
+    required this.suggested,
+    required this.thumbnails,
+    this.published,
+  });
+
+  factory AdPublishOptions.fromJson(Map<String, dynamic> j) => AdPublishOptions(
+        canPublish: j['can_publish'] == true,
+        categories: [
+          for (final c in (j['categories'] as List? ?? const []))
+            MapEntry((c as Map)['key'].toString(), c['label'].toString()),
+        ],
+        suggested: {
+          for (final e in ((j['suggested'] as Map?) ?? const {}).entries) e.key.toString(): (e.value ?? '').toString(),
+        },
+        thumbnails: [
+          for (final t in (j['thumbnails'] as List? ?? const []))
+            if ((t as Map)['url'] != null)
+              {'key': t['key'].toString(), 'label': (t['label'] ?? '').toString(), 'url': t['url'].toString()},
+        ],
+        published: j['published'] is Map ? AdPublished.fromJson(Map<String, dynamic>.from(j['published'] as Map)) : null,
+      );
+}
+
+/// The ad's post on VIYO.
+class AdPublished {
+  final String postId;
+  final bool public;
+  final bool archived;
+  final String caption;
+  final String category;
+  final String link;
+  final String productInfo;
+  final String? thumbnailUrl;
+  AdPublished({
+    required this.postId,
+    required this.public,
+    required this.archived,
+    required this.caption,
+    required this.category,
+    required this.link,
+    required this.productInfo,
+    this.thumbnailUrl,
+  });
+
+  factory AdPublished.fromJson(Map<String, dynamic> j) => AdPublished(
+        postId: j['post_id'].toString(),
+        public: j['public'] == true,
+        archived: j['archived'] == true,
+        caption: (j['caption'] ?? '').toString(),
+        category: (j['category'] ?? 'other').toString(),
+        link: (j['link'] ?? '').toString(),
+        productInfo: (j['product_info'] ?? '').toString(),
+        thumbnailUrl: j['thumbnail_url'] as String?,
+      );
+}
+
 /// A fictional ad character a creator saved from an earlier ad, to reuse (same look, same voice).
 class AdCharacter {
   final String id;
@@ -201,6 +268,50 @@ class AdsStudioService {
     );
     if (res.statusCode != 200) throw _failure(res, 'update campaign');
     return AdCampaign.fromJson(jsonDecode(res.body));
+  }
+
+  // --- Publish to VIYO ----------------------------------------------------
+
+  static Future<AdPublishOptions> publishOptions(String adminKey, String campaignId) async {
+    final res = await http.get(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/publish'),
+        headers: _headers(adminKey));
+    if (res.statusCode != 200) throw _failure(res, 'load publishing options');
+    return AdPublishOptions.fromJson(jsonDecode(res.body));
+  }
+
+  /// Posts the finished ad on VIYO (or updates its post). Same video, never a copy; the creator keeps it.
+  static Future<AdPublished> publish(
+    String adminKey,
+    String campaignId, {
+    required String caption,
+    required String category,
+    required String link,
+    required String productInfo,
+    required String thumbnail,
+    required bool public,
+  }) async {
+    final res = await http.post(
+      Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/publish'),
+      headers: _headers(adminKey),
+      body: jsonEncode({
+        'caption': caption,
+        'category': category,
+        'link': link,
+        'product_info': productInfo,
+        'thumbnail': thumbnail,
+        'public': public,
+      }),
+    );
+    if (res.statusCode != 200) throw _failure(res, 'publish');
+    return AdPublished.fromJson(jsonDecode(res.body));
+  }
+
+  /// Takes the post off VIYO (archived, never deleted).
+  static Future<AdPublished> unpublish(String adminKey, String campaignId) async {
+    final res = await http.post(Uri.parse('${_b(adminKey)}/${_c(adminKey)}/$campaignId/unpublish'),
+        headers: _headers(adminKey));
+    if (res.statusCode != 200) throw _failure(res, 'take it down');
+    return AdPublished.fromJson(jsonDecode(res.body));
   }
 
   // --- Characters (creator Ads Maker only) --------------------------------
