@@ -34,6 +34,8 @@ class ViyoPostMedia {
   // Ads Maker ads are always labelled; adLink is the advertiser's own "Visit" link.
   final bool isAd;
   final String? adLink;
+  final bool isPromoted;
+  final String? promotionId;
 
   const ViyoPostMedia({
     required this.id,
@@ -52,6 +54,8 @@ class ViyoPostMedia {
     this.bunnyVideoId,
     this.isAd = false,
     this.adLink,
+    this.isPromoted = false,
+    this.promotionId,
   });
 
   factory ViyoPostMedia.fromPost(Post post) => ViyoPostMedia(
@@ -73,6 +77,8 @@ class ViyoPostMedia {
         bunnyVideoId: post.bunnyVideoId,
         isAd: post.isAd,
         adLink: post.adLink,
+        isPromoted: post.isPromoted,
+        promotionId: post.promotionId,
       );
 }
 
@@ -376,6 +382,7 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
                               ),
                             ),
                             if (post.isAd) ...[const SizedBox(width: 8), const AdLabel()],
+                            if (post.isAd && post.isPromoted) ...[const SizedBox(width: 4), const PromotedLabel()],
                           ]),
                           if (post.caption.trim().isNotEmpty) ...[
                             const SizedBox(height: 5),
@@ -388,7 +395,7 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
                           ],
                           if (post.isAd && (post.adLink ?? '').isNotEmpty) ...[
                             const SizedBox(height: 9),
-                            AdVisitButton(link: post.adLink!),
+                            AdVisitButton(link: post.adLink!, promotionId: post.promotionId),
                           ],
                         ],
                       ),

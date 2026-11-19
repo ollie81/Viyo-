@@ -2,6 +2,7 @@ import '../models/post.dart';
 import '../models/series.dart';
 import 'moderation_service.dart';
 import 'post_service.dart';
+import 'promotion_service.dart';
 import 'series_service.dart';
 import 'supabase_service.dart';
 
@@ -114,6 +115,40 @@ class DiscoverService {
         out.add(ordinary[oi++]);
         sinceAd++;
       }
+    }
+    return out;
+  }
+
+  /// Adds up to two paid promotions (labelled "Promoted") for this placement: For You at the 5th and 12th
+  /// places, the Ads category first. A promoted post replaces its own unpaid copy, never shows twice.
+  /// On any error the list comes back unchanged.
+  static Future<List<Post>> withPromotions(List<Post> posts, String placement, {String? adCategory}) async {
+    final picks = await PromotionService.serve(placement);
+    if (picks.isEmpty) return posts;
+    List<Post> promoted;
+    try {
+      final byId = {for (final p in await PostService.getPostsByIds([for (final x in picks) x.postId])) p.id: p};
+      final me = SupabaseService.currentUserId;
+      final hidden = me == null ? <String>{} : await ModerationService.getHiddenUserIds(me);
+      promoted = [
+        for (final x in picks)
+          if (byId[x.postId] != null &&
+              byId[x.postId]!.isAd &&
+              !byId[x.postId]!.isPrivate &&
+              !byId[x.postId]!.isArchived &&
+              !hidden.contains(byId[x.postId]!.userId) &&
+              (adCategory == null || byId[x.postId]!.adCategory == adCategory))
+            byId[x.postId]!.copyWith(promotionId: x.promotionId),
+      ];
+    } catch (_) {
+      return posts;
+    }
+    if (promoted.isEmpty) return posts;
+    final ids = promoted.map((p) => p.id).toSet();
+    final out = posts.where((p) => !ids.contains(p.id)).toList();
+    if (placement == 'ads') return [...promoted, ...out];
+    for (var i = 0; i < promoted.length; i++) {
+      out.insert((i == 0 ? 4 : 11).clamp(0, out.length), promoted[i]);
     }
     return out;
   }

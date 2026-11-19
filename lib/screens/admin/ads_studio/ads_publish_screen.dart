@@ -3,6 +3,7 @@ import '../../../models/ad_campaign.dart';
 import '../../../services/ads_studio_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/ad_post_extras.dart';
+import 'promote_sheet.dart';
 
 /// Publish a finished ad on VIYO: caption, category, product information, link, thumbnail, a preview of
 /// the post, then public or private. The post plays the same video (nothing is uploaded again), is always
@@ -292,6 +293,23 @@ class _AdsPublishScreenState extends State<AdsPublishScreen> {
                     : 'Save changes'),
           ),
         ),
+        if (_published != null && _published!.public) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      if (await showPromoteSheet(context, _published!.postId) && mounted) {
+                        _snack('Promotion started. It is labelled "Promoted" and you can stop it any time.');
+                      }
+                    },
+              icon: const Icon(Icons.campaign_outlined, size: 16),
+              label: const Text('Promote with coins'),
+            ),
+          ),
+        ],
         if (_published != null && !_published!.archived) ...[
           const SizedBox(height: 10),
           SizedBox(

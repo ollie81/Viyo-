@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/ad_insights_service.dart';
 import '../../../services/ads_studio_service.dart';
+import '../../../services/promotion_service.dart';
 import '../../../theme/app_theme.dart';
 import 'ads_result_screen.dart';
 import 'ads_studio_wizard_screen.dart';
@@ -91,11 +92,35 @@ class _AdsInsightsScreenState extends State<AdsInsightsScreen> {
   String? _error;
   AdInsights? _data;
   List<AdExperiment> _experiments = [];
+  List<AdPromotion> _promotions = [];
+  String _promoNote = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _stopPromotion(AdPromotion p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Stop this promotion?'),
+        content: Text('It stops now and the ${p.budgetCoins - p.coinsSpent} unused coins go back to your wallet.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep it')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Stop')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await PromotionService.stop(p.id);
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_msg(e))));
+    }
   }
 
   Future<void> _load() async {
@@ -107,6 +132,13 @@ class _AdsInsightsScreenState extends State<AdsInsightsScreen> {
       final r = await Future.wait([AdInsightsService.insights(days: _days), AdInsightsService.experiments()]);
       _data = r[0] as AdInsights;
       _experiments = r[1] as List<AdExperiment>;
+      try {
+        final m = await PromotionService.mine();
+        _promotions = m.promotions;
+        _promoNote = m.note;
+      } catch (_) {
+        _promotions = [];
+      }
     } catch (e) {
       _error = _msg(e);
     } finally {
@@ -193,6 +225,43 @@ class _AdsInsightsScreenState extends State<AdsInsightsScreen> {
               style: TextStyle(color: AppColors.textMuted, fontSize: 12.5))
         else
           for (final p in d.posts) _postRow(p),
+        if (_promotions.isNotEmpty) ...[
+          _label('My promotions'),
+          for (final p in _promotions)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: AppTheme.card(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(p.caption.isEmpty ? 'Ad' : p.caption, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  ),
+                  Text(
+                    p.active ? 'Running' : _endedLabel(p.endedReason),
+                    style: TextStyle(fontSize: 11.5, color: p.active ? AppColors.success : AppColors.textMuted,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                Text('${_n(p.impressions)} people reached · ${_n(p.clicks)} visits',
+                    style: const TextStyle(fontSize: 12.5)),
+                Text(
+                  '${p.coinsSpent} of ${p.budgetCoins} coins used'
+                  '${p.coinsRefunded != null ? ' · ${p.coinsRefunded} returned' : ''}',
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                ),
+                if (p.active)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(onPressed: () => _stopPromotion(p), child: const Text('Stop and get unused coins back')),
+                  ),
+              ]),
+            ),
+          if (_promoNote.isNotEmpty)
+            Text(_promoNote, style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35)),
+        ],
         _label('Experiments'),
         if (_experiments.isEmpty)
           const Text('No experiments yet. Start one from a brand: "Try versions".',
@@ -260,6 +329,13 @@ class _AdsInsightsScreenState extends State<AdsInsightsScreen> {
                 )),
       );
 }
+
+String _endedLabel(String? reason) => switch (reason) {
+      'budget_used' => 'Budget used',
+      'stopped' => 'Stopped',
+      'ad_not_public' => 'Ended: ad not public',
+      _ => 'Finished',
+    };
 
 String _verdictShort(String v) => switch (v) {
       'leader' => 'a version is ahead',

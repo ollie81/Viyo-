@@ -19,6 +19,7 @@ import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
 import '../services/share_links.dart';
 import '../services/discover_service.dart';
+import '../services/promotion_service.dart';
 import '../widgets/ad_post_extras.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -98,10 +99,12 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _loadDiscover() async {
     try {
       final posts = await PostService.getDiscoverPosts();
+      final mixed = await DiscoverService.withPromotions(DiscoverService.capAds(posts), 'for_you');
       if (!mounted) return;
       setState(() {
-        // For You: ads stay a small, spaced-out part of the mix (all of them are in the Ads category).
-        _discoverPosts = DiscoverService.capAds(posts);
+        // For You: ads stay a small, spaced-out part of the mix (all of them are in the Ads category); paid
+        // promotions take at most two labelled places.
+        _discoverPosts = mixed;
         _loadingDiscover = false;
       });
     } catch (_) {
@@ -659,6 +662,12 @@ class _DiscoverTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tile = _tile();
+    final promo = post.promotionId;
+    return promo == null ? tile : SeenOnScreen(onSeen: () => PromotionService.recordImpression(promo), child: tile);
+  }
+
+  Widget _tile() {
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
@@ -713,15 +722,15 @@ class _DiscoverTile extends StatelessWidget {
                   child: Icon(Icons.play_arrow_rounded,
                       color: Colors.white, size: 20),
                 ),
-              if (post.isAd || post.isBoosted)
+              if (post.isAd || post.isPromoted)
                 Positioned(
                   top: 8,
                   left: 8,
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (post.isAd) const AdLabel(),
-                    if (post.isAd && post.isBoosted) const SizedBox(width: 4),
+                    if (post.isAd && post.isPromoted) const SizedBox(width: 4),
                     // Paid placement is always labelled as such.
-                    if (post.isBoosted)
+                    if (post.isPromoted)
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 3),
@@ -995,7 +1004,8 @@ class _CategoryFeedState extends State<_CategoryFeed> {
           _hasMore = s.length >= DiscoverService.pageSize;
         });
       } else {
-        final p = await DiscoverService.posts(_cat, adCategory: _adCategory);
+        var p = await DiscoverService.posts(_cat, adCategory: _adCategory);
+        if (_cat == DiscoverCategory.ads) p = await DiscoverService.withPromotions(p, 'ads', adCategory: _adCategory);
         if (!mounted) return;
         setState(() {
           _posts = p;
