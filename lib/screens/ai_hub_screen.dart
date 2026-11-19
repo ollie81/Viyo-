@@ -5,6 +5,7 @@ import 'creator_dashboard_screen.dart';
 import 'glow_up/glow_up_screen.dart';
 import 'post/ai_repurpose_screen.dart';
 import 'studio/studio_home_screen.dart';
+import 'admin/ads_studio/ads_studio_home_screen.dart';
 import 'post/create_post_screen.dart';
 import 'profile/profile_screen.dart';
 
@@ -53,6 +54,15 @@ class AiHubScreen extends StatelessWidget {
             description: 'Turn an idea into a finished AI drama, episode or film: script, cast, scenes, voices and video, in 9:16 or 16:9. Works great on a computer.',
             costLabel: kIsWeb ? 'Pay per step with Studio credits' : 'Uses Studio credits',
             onTap: () => _open(context, const StudioHomeScreen()),
+          ),
+          _FeatureCard(
+            icon: Icons.campaign_outlined,
+            iconColor: AppColors.secondary,
+            title: 'Ads Maker',
+            description: 'Make a short video ad for your app, website, product, business, film or project. '
+                'Your exact name, website and logo, checked before it\'s delivered.',
+            costLabel: kIsWeb ? 'Pay per step with Studio credits' : 'Uses Studio credits',
+            onTap: () => _open(context, const AdsStudioHomeScreen(creatorMode: true)),
           ),
 
           const SizedBox(height: 22),

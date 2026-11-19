@@ -10,7 +10,10 @@ import 'ads_result_screen.dart';
 /// stage, same list-then-drill-in shape as ViyoStudioHomeScreen. Reached
 /// from Settings' "Admin Tools" sheet.
 class AdsStudioHomeScreen extends StatefulWidget {
-  const AdsStudioHomeScreen({super.key});
+  /// true: Ads Maker for the signed-in creator (their own campaigns, paid with Studio credits).
+  /// false: the admin Ads Studio, unlocked with the admin key.
+  final bool creatorMode;
+  const AdsStudioHomeScreen({super.key, this.creatorMode = false});
 
   @override
   State<AdsStudioHomeScreen> createState() => _AdsStudioHomeScreenState();
@@ -24,6 +27,15 @@ class _AdsStudioHomeScreenState extends State<AdsStudioHomeScreen> {
   bool _loading = false;
   String? _error;
   List<AdCampaign> _campaigns = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.creatorMode && !SupabaseService.isGuest) {
+      _adminKey = AdsStudioService.creator;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    }
+  }
 
   @override
   void dispose() {
@@ -85,7 +97,10 @@ class _AdsStudioHomeScreenState extends State<AdsStudioHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.background, title: const Text('AI Ads Studio')),
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: Text(widget.creatorMode ? 'Ads Maker' : 'AI Ads Studio'),
+      ),
       body: SupabaseService.isGuest ? _guestBlock() : (_adminKey == null ? _keyPrompt() : _content()),
     );
   }

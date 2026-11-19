@@ -68,6 +68,9 @@ class _AdsGenerationScreenState extends State<AdsGenerationScreen> {
         ));
       } else if (job.status == 'failed') {
         _timer?.cancel();
+      } else if (job.status == 'needs_correction') {
+        // The video was made but failed the final quality check: show why, never as a finished ad.
+        _timer?.cancel();
       }
     } catch (_) {
       // A transient poll failure isn't worth surfacing — the next tick retries.
@@ -99,6 +102,26 @@ class _AdsGenerationScreenState extends State<AdsGenerationScreen> {
                 Text(job.error ?? 'Generation failed.', style: const TextStyle(color: AppColors.danger), textAlign: TextAlign.center),
                 const SizedBox(height: 16),
                 ElevatedButton(onPressed: _start, child: const Text('Retry')),
+              ] else if (job != null && job.status == 'needs_correction') ...[
+                const Icon(Icons.rule_rounded, color: AppColors.coin, size: 40),
+                const SizedBox(height: 12),
+                const Text('Needs correction', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 8),
+                Text(
+                  (job.error ?? 'The finished video didn\'t pass the quality check.').replaceFirst('Needs correction: ', ''),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Wrap(spacing: 10, alignment: WrapAlignment.center, children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(
+                      builder: (_) => AdsResultScreen(adminKey: widget.adminKey, campaignId: widget.campaignId),
+                    )),
+                    child: const Text('See preview'),
+                  ),
+                  ElevatedButton(onPressed: _start, child: const Text('Try again')),
+                ]),
               ] else if (job != null) ...[
                 SizedBox(
                   width: 72,

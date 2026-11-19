@@ -31,6 +31,16 @@ class AdCampaign {
   final int costUsdCents;
   final String? error;
   final String createdAt;
+  /// The post-render check of the finished file: {"passed", "items": [{label, status, note}], ...}.
+  final Map<String, dynamic>? qualityReport;
+  /// A video that needs correction (never offered as a finished ad).
+  final String? previewVideoUrl;
+
+  /// What the check found wrong, in plain words.
+  List<String> get qualityProblems => [
+        for (final i in (qualityReport?['items'] as List? ?? const []))
+          if (i is Map && i['status'] == 'failed') '${i['label']}${(i['note'] ?? '').toString().isEmpty ? '' : ': ${i['note']}'}',
+      ];
 
   const AdCampaign({
     required this.id,
@@ -61,6 +71,8 @@ class AdCampaign {
     this.durationActualSeconds,
     required this.costUsdCents,
     this.error,
+    this.qualityReport,
+    this.previewVideoUrl,
     required this.createdAt,
   });
 
@@ -96,5 +108,7 @@ class AdCampaign {
         costUsdCents: (json['cost_usd_cents'] as num?)?.toInt() ?? 0,
         error: json['error'] as String?,
         createdAt: json['created_at'] ?? '',
+        qualityReport: json['quality_report'] is Map ? Map<String, dynamic>.from(json['quality_report'] as Map) : null,
+        previewVideoUrl: json['preview_video_url'] as String?,
       );
 }

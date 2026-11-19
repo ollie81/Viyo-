@@ -219,7 +219,34 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                   children: [
-                    if (campaign.status == 'failed') ...[
+                    if (campaign.status == 'needs_correction') ...[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: AppTheme.card(borderColor: AppColors.coin),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Needs correction: preview only',
+                                style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.coin)),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'The finished video didn\'t pass the quality check, so it isn\'t offered as a finished ad. '
+                              'Fix the items below (campaign details, assets or script) and generate again.',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                            ),
+                            const SizedBox(height: 8),
+                            for (final p in (campaign.qualityProblems.isNotEmpty
+                                ? campaign.qualityProblems
+                                : [campaign.error ?? 'Unknown problem.']))
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text('• $p', style: const TextStyle(fontSize: 13)),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ] else if (campaign.status == 'failed') ...[
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: AppTheme.card(borderColor: AppColors.danger),
@@ -321,6 +348,7 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         ),
                       ],
                     ),
+                    if (!AdsStudioService.isCreator(widget.adminKey)) ...[
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
@@ -330,6 +358,7 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         label: const Text('Record performance (manual)'),
                       ),
                     ),
+                    ],
                   ],
                 ),
     );
