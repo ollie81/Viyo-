@@ -12,7 +12,9 @@ import '../../../services/bunny_stream_service.dart';
 import '../../../services/web_download_stub.dart'
     if (dart.library.html) '../../../services/web_download_html.dart' as web_download;
 import '../../../theme/app_theme.dart';
+import '../../../services/ad_brands_service.dart';
 import 'ads_publish_screen.dart';
+import 'my_brands_screen.dart';
 import 'ads_studio_wizard_screen.dart';
 
 /// Final step — preview, download, regenerate, or record real
@@ -45,6 +47,20 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// Saves this ad's details, pictures and character as a brand (or opens its brand), so the next ad starts there.
+  Future<void> _openBrand(AdCampaign campaign) async {
+    try {
+      final brandId = campaign.brandId ?? (await AdBrandsService.saveCampaignAsBrand(campaign.id)).id;
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => BrandEditScreen(brandId: brandId)));
+      if (mounted) _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))));
+    }
   }
 
   @override
@@ -368,6 +384,17 @@ class _AdsResultScreenState extends State<AdsResultScreen> {
                         child: Text(
                           'Your ad stays yours: you can still download it and post it anywhere.',
                           style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        ),
+                      ),
+                    ],
+                    if (AdsStudioService.isCreator(widget.adminKey)) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openBrand(campaign),
+                          icon: const Icon(Icons.storefront_outlined, size: 16),
+                          label: Text(campaign.brandId == null ? 'Save as a brand' : 'Open brand'),
                         ),
                       ),
                     ],

@@ -5,6 +5,7 @@ import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
 import 'ads_studio_wizard_screen.dart';
 import 'ads_result_screen.dart';
+import 'my_brands_screen.dart';
 
 /// AI Ads Studio's entry point — lists every campaign with its current
 /// stage, same list-then-drill-in shape as ViyoStudioHomeScreen. Reached
@@ -100,6 +101,14 @@ class _AdsStudioHomeScreenState extends State<AdsStudioHomeScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         title: Text(widget.creatorMode ? 'Ads Maker' : 'AI Ads Studio'),
+        actions: [
+          if (widget.creatorMode && !SupabaseService.isGuest)
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyBrandsScreen())),
+              icon: const Icon(Icons.storefront_outlined, size: 18),
+              label: const Text('My Brands'),
+            ),
+        ],
       ),
       body: SupabaseService.isGuest ? _guestBlock() : (_adminKey == null ? _keyPrompt() : _content()),
     );
