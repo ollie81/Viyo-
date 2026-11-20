@@ -4,6 +4,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:share_plus/share_plus.dart';
 import '../models/post.dart';
+import '../services/activity_service.dart';
 import '../services/moderation_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -156,6 +157,16 @@ class PostCard extends StatelessWidget {
                           onDelete?.call();
                         } else if (value == 'report') {
                           await showReportSheet(context, targetType: 'post', targetId: post.id);
+                        } else if (value == 'not_interested') {
+                          ActivityService.notInterested(post.id);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text("Got it. You'll see fewer posts like this."),
+                          ));
+                        } else if (value == 'not_interested_creator') {
+                          ActivityService.notInterestedCreator(post.userId);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text("You won't see @${post.authorUsername ?? 'this creator'} in For You for 30 days."),
+                          ));
                         } else if (value == 'block') {
                           await ModerationService.blockUser(myId, post.userId);
                           if (!context.mounted) return;
@@ -180,6 +191,26 @@ class PostCard extends StatelessWidget {
                               ),
                             ]
                           : const [
+                              PopupMenuItem(
+                                value: 'not_interested',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.not_interested, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Not interested'),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'not_interested_creator',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.person_off_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Fewer from this creator'),
+                                  ],
+                                ),
+                              ),
                               PopupMenuItem(
                                 value: 'report',
                                 child: Row(

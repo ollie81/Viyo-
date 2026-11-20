@@ -23,6 +23,7 @@ class CreatorHubScreen extends StatefulWidget {
 
 class _CreatorHubScreenState extends State<CreatorHubScreen> {
   CreatorHub? _hub;
+  CreatorAnalytics? _analytics;
   String? _error;
   bool _loading = true;
 
@@ -39,6 +40,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
     });
     try {
       _hub = await CreatorHubService.load();
+      _analytics = await CreatorAnalytics.load();
     } catch (e) {
       _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
     } finally {
@@ -108,6 +110,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
             if (h.followers != null) _stat('Followers', h.followers!),
           ]),
         ),
+        if (_analytics != null) ..._audienceDetail(_analytics!),
         _label('Earnings'),
         Container(
           padding: const EdgeInsets.all(14),
@@ -192,6 +195,48 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
           ),
       ],
     );
+  }
+
+  List<Widget> _audienceDetail(CreatorAnalytics a) {
+    final completion = a.uniqueViewers > 0 ? a.completers / a.uniqueViewers : null;
+    return [
+      _label('Last 30 days'),
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: AppTheme.card(),
+        child: Row(children: [
+          _stat('People', a.uniqueViewers),
+          _stat('Finished', a.completers),
+          _stat('Watch min', a.watchMinutes.round()),
+          _stat('New followers', a.newFollowers),
+        ]),
+      ),
+      if (completion != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('${(completion * 100).round()}% of the people who started your work finished something.',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ),
+      if (a.advice.isNotEmpty) ...[
+        _label('What your numbers say'),
+        for (final x in a.advice)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: AppTheme.card(),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(x.text, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+              const SizedBox(height: 4),
+              Text('Based on ${x.basedOn}', style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            ]),
+          ),
+      ],
+      if (a.note.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(a.note, style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35)),
+        ),
+    ];
   }
 
   Widget _action(IconData icon, String title, String sub, VoidCallback onTap) => Material(

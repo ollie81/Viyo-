@@ -86,3 +86,43 @@ class CreatorHubService {
     return CreatorHub.fromJson(jsonDecode(res.body));
   }
 }
+
+/// Audience analytics from the server (creator_analytics.py): every number counts each person once.
+class CreatorAnalytics {
+  final int uniqueViewers, completers, engagedViewers, followers, newFollowers, earnedCoins;
+  final double watchMinutes;
+  final List<Map<String, dynamic>> productions;
+  final List<({String text, String basedOn})> advice;
+  final String note;
+  CreatorAnalytics({required this.uniqueViewers, required this.completers, required this.engagedViewers,
+      required this.followers, required this.newFollowers, required this.earnedCoins, required this.watchMinutes,
+      required this.productions, required this.advice, required this.note});
+
+  factory CreatorAnalytics.fromJson(Map<String, dynamic> j) {
+    final t = (j['totals'] as Map?) ?? const {};
+    int i(String k) => (t[k] as num?)?.toInt() ?? 0;
+    return CreatorAnalytics(
+      uniqueViewers: i('unique_viewers'), completers: i('completers'), engagedViewers: i('engaged_viewers'),
+      followers: i('followers'), newFollowers: i('new_followers'), earnedCoins: i('earned_coins'),
+      watchMinutes: (t['watch_minutes'] as num?)?.toDouble() ?? 0,
+      productions: [for (final p in (j['productions'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)],
+      advice: [
+        for (final a in (j['advice'] as List? ?? const []))
+          (text: ((a as Map)['text'] ?? '').toString(), basedOn: (a['based_on'] ?? '').toString()),
+      ],
+      note: (j['note'] ?? '').toString(),
+    );
+  }
+
+  static Future<CreatorAnalytics?> load({int days = 30}) async {
+    try {
+      final token = Supabase.instance.client.auth.currentSession?.accessToken;
+      final res = await http.get(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/creator/analytics?days=$days'),
+          headers: {if (token != null) 'Authorization': 'Bearer $token'});
+      if (res.statusCode != 200) return null;
+      return CreatorAnalytics.fromJson(jsonDecode(res.body));
+    } catch (_) {
+      return null;
+    }
+  }
+}

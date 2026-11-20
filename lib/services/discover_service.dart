@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../constants/supabase_constants.dart';
 import '../models/post.dart';
 import '../models/series.dart';
 import 'moderation_service.dart';
@@ -151,5 +154,73 @@ class DiscoverService {
       out.insert((i == 0 ? 4 : 11).clamp(0, out.length), promoted[i]);
     }
     return out;
+  }
+}
+
+/// Trending, fast-growing, new releases and rising creators from the server (trending.py).
+class TrendingSections {
+  final List<Post> trending, fastGrowing, newReleases, risingCreators;
+  final List<String> genres;
+  TrendingSections(this.trending, this.fastGrowing, this.newReleases, this.risingCreators, this.genres);
+}
+
+/// One search result row: a title (drama/movie/short film/video) or a creator.
+class SearchResults {
+  final List<Post> titles;          // each the post to open (a series' first/next episode)
+  final List<Map<String, dynamic>> creators;
+  final List<String> understoodGenres;
+  SearchResults(this.titles, this.creators, this.understoodGenres);
+}
+
+class ServerDiscovery {
+  static Map<String, String> get _headers {
+    final token = SupabaseService.client.auth.currentSession?.accessToken;
+    return {if (token != null) 'Authorization': 'Bearer $token'};
+  }
+
+  static Future<List<Post>> _posts(List ids) async {
+    final list = [for (final i in ids) (i as Map)['post_id'].toString()];
+    if (list.isEmpty) return [];
+    final byId = {for (final p in await PostService.getPostsByIds(list)) p.id: p};
+    return [for (final id in list) if (byId[id] != null) byId[id]!];
+  }
+
+  /// Null when the server can't be reached (callers keep their existing sections).
+  static Future<TrendingSections?> trending() async {
+    try {
+      final res = await http
+          .get(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/discover/trending'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      return TrendingSections(
+        await _posts(j['trending'] as List? ?? const []),
+        await _posts(j['fast_growing'] as List? ?? const []),
+        await _posts(j['new_releases'] as List? ?? const []),
+        await _posts(j['rising_creators'] as List? ?? const []),
+        [for (final g in (j['genres'] as List? ?? const [])) (g as Map)['genre'].toString()],
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Titles and creators matching [query] (partial words, typos, or a described story). Null on failure.
+  static Future<SearchResults?> search(String query) async {
+    try {
+      final res = await http
+          .get(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/search?q=${Uri.encodeQueryComponent(query)}'),
+              headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      return SearchResults(
+        await _posts(j['results'] as List? ?? const []),
+        [for (final c in (j['creators'] as List? ?? const [])) Map<String, dynamic>.from(c as Map)],
+        [for (final g in (j['understood_genres'] as List? ?? const [])) g.toString()],
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }
