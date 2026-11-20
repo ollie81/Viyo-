@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
 import '../../models/series.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/scheduled_release_service.dart';
 import '../../services/series_boost_service.dart';
@@ -21,6 +23,7 @@ import '../../widgets/watchlist_button.dart';
 import '../dramas/series_analytics_screen.dart';
 import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
+import 'upload_ai_drama_screen.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
 /// showing its lock state at a glance. Tapping an episode opens it in
@@ -118,6 +121,135 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     setState(() => _resumePositions = positions);
   }
 
+  void _snack(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  /// Owner: edit the title, description, genre, price per episode and poster.
+  Future<void> _editSeries() async {
+    final s = _series;
+    final title = TextEditingController(text: s.title);
+    final description = TextEditingController(text: s.description);
+    final price = TextEditingController(text: '${s.coinPricePerEpisode}');
+    final genres = s.effectiveContentType == kContentTypeShortDrama ? kDramaGenres : kGeneralGenres;
+    String genre = genres.contains(s.genre) ? s.genre : genres.first;
+    XFile? cover;
+    final save = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Edit series', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 12),
+              TextField(controller: title, maxLength: 120, decoration: const InputDecoration(labelText: 'Title')),
+              TextField(controller: description, maxLines: 3, maxLength: 2000,
+                  decoration: const InputDecoration(labelText: 'Description')),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: genre,
+                decoration: const InputDecoration(labelText: 'Genre'),
+                items: [for (final g in genres) DropdownMenuItem(value: g, child: Text(g))],
+                onChanged: (v) => set(() => genre = v ?? genre),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: price,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Coins per episode',
+                  helperText: s.isSingleAsset
+                      ? 'Viewers pay this to watch. You earn 65% of the bought coins they pay.'
+                      : 'The first 3 episodes stay free. You earn 65% of the bought coins viewers pay.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1440, imageQuality: 88);
+                  if (picked != null) set(() => cover = picked);
+                },
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: Text(cover == null ? 'Change poster' : 'New poster picked'),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (save != true) return;
+    final newTitle = title.text.trim();
+    final newPrice = int.tryParse(price.text.trim());
+    if (newTitle.isEmpty) return _snack('Give the series a title.');
+    if (newPrice == null || newPrice < 1) return _snack('Set a price of at least 1 coin.');
+    try {
+      String? coverUrl;
+      if (cover != null) {
+        final me = SupabaseService.currentUserId;
+        if (me == null) return;
+        coverUrl = await PostService.uploadMediaWithProgress(cover!, me);
+      }
+      await SeriesService.updateDetails(s.id,
+          title: newTitle, description: description.text, genre: genre, coinPricePerEpisode: newPrice,
+          coverImageUrl: coverUrl);
+      if (!mounted) return;
+      setState(() => _series = s.copyWith(
+          title: newTitle, description: description.text.trim(), genre: genre,
+          coinPricePerEpisode: newPrice.clamp(1, 100000), coverImageUrl: coverUrl));
+      _snack('Series updated.');
+    } catch (e) {
+      if (mounted) _snack(friendlyErrorMessage(e));
+    }
+  }
+
+  /// Owner: hide an episode, make it private or public, or make it free / paid again.
+  Future<void> _manageEpisode(Post ep) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            title: Text('Episode ${ep.episodeNumber ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text([if (ep.isPrivate) 'Private', if (ep.isArchived) 'Hidden', if (ep.isFree == true) 'Free']
+                .join(' · ')),
+          ),
+          ListTile(
+            leading: Icon(ep.isPrivate ? Icons.public : Icons.lock_outline),
+            title: Text(ep.isPrivate ? 'Make public' : 'Make private (only you)'),
+            onTap: () => Navigator.pop(ctx, 'private'),
+          ),
+          ListTile(
+            leading: Icon(ep.isArchived ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+            title: Text(ep.isArchived ? 'Show again' : 'Hide from viewers'),
+            subtitle: const Text('Kept for you; nothing is deleted.', style: TextStyle(fontSize: 11.5)),
+            onTap: () => Navigator.pop(ctx, 'archive'),
+          ),
+          ListTile(
+            leading: Icon(ep.isFree == true ? Icons.paid_outlined : Icons.card_giftcard_outlined),
+            title: Text(ep.isFree == true ? 'Use the normal price' : 'Make this episode free'),
+            onTap: () => Navigator.pop(ctx, 'free'),
+          ),
+        ]),
+      ),
+    );
+    if (action == null) return;
+    try {
+      if (action == 'private') await PostService.setPrivate(ep.id, !ep.isPrivate);
+      if (action == 'archive') await PostService.setArchived(ep.id, !ep.isArchived);
+      if (action == 'free') await PostService.setFreeOverride(ep.id, ep.isFree == true ? null : true);
+      if (mounted) _load();
+    } catch (e) {
+      if (mounted) _snack(friendlyErrorMessage(e));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final series = _series;
@@ -128,6 +260,12 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         backgroundColor: AppColors.background,
         title: Text(series.title, overflow: TextOverflow.ellipsis),
         actions: [
+          if (viewerId == series.userId)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit series',
+              onPressed: _editSeries,
+            ),
           if (viewerId == series.userId)
             IconButton(
               icon: const Icon(Icons.insights_outlined),
@@ -173,6 +311,27 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     onStatusChanged: (status) => setState(() => _series = _series.copyWith(status: status)),
                   ),
                   if (viewerId == series.userId) ...[
+                    if (!series.isSingleAsset) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            await Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => UploadAiDramaScreen(initialSeriesId: series.id),
+                            ));
+                            if (mounted) _load();
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add episode'),
+                        ),
+                      ),
+                    ],
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('Tip: press and hold an episode to hide it, make it private or make it free.',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                    ),
                     const SizedBox(height: 10),
                     _SeriesBoostSection(seriesId: series.id),
                   ] else ...[
@@ -204,7 +363,9 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                       ),
                     )
                   else
-                    ..._episodes.map((ep) => _EpisodeTile(
+                    ..._episodes.map((ep) => GestureDetector(
+                        onLongPress: viewerId == series.userId ? () => _manageEpisode(ep) : null,
+                        child: _EpisodeTile(
                           episode: ep,
                           locked: isEpisodeLocked(ep, viewerId: viewerId),
                           resumePosition: _resumePositions[ep.id],
@@ -229,7 +390,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                               });
                             },
                           ),
-                        )),
+                        ))),
                   if (_similarSeries.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     const Text('SIMILAR DRAMAS', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),

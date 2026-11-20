@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'creator/creator_hub_screen.dart';
 import 'creator_dashboard_screen.dart';
 import 'glow_up/glow_up_screen.dart';
 import 'post/ai_repurpose_screen.dart';
@@ -143,6 +144,18 @@ class AiHubScreen extends StatelessWidget {
             description: 'Upload a selfie and get hairstyle, grooming, style and colour ideas picked for you. Your photo is only saved if you choose to. 18+.',
             costLabel: '10 coins',
             onTap: () => _open(context, const GlowUpScreen()),
+          ),
+
+          const SizedBox(height: 22),
+          _SectionHeader('Creator Hub'),
+          _FeatureCard(
+            icon: Icons.account_balance_wallet_outlined,
+            iconColor: AppColors.coin,
+            title: 'Your productions, audience & earnings',
+            description: 'See how each production does, what you have earned and how earning works on VIYO, '
+                'get paid, and download your work to post anywhere.',
+            costLabel: 'Free',
+            onTap: () => _open(context, const CreatorHubScreen()),
           ),
 
           const SizedBox(height: 22),
