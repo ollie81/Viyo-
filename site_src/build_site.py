@@ -99,6 +99,7 @@ NAV = [
 
 
 POLICY_DATE = "5 November 2026"
+REFUND_DATE = "20 November 2026"
 
 
 def privacy() -> str:
@@ -273,7 +274,8 @@ def terms() -> str:
         <li>Coins can be bought on the Viyo website. In the Android app you earn them by watching optional ads,
         completing missions or checking in daily.</li>
         <li>Coins you spend, for example to unlock an episode, are not refunded, except where the law requires it or a
-        technical fault on our side means you didn't get what you paid for.</li>
+        technical fault on our side means you didn't get what you paid for. Unused bought coins can be refunded within
+        14 days: see the <a href="/refunds">Refund Policy</a>.</li>
         <li>Creators earn from episodes unlocked with bought coins, as shown in the app, and can request a payout once
         they reach the minimum. Coins earned from ads, missions or check-ins don't create cash earnings.</li>
         <li>Unused coins are lost when you delete your account.</li>
@@ -307,8 +309,79 @@ def terms() -> str:
                 body, schema=[ORG, schema], crumbs=[("/terms", "Terms")])
 
 
-FOOTER_LINKS = NAV + [("/contact", "Contact"), ("/privacy", "Privacy"), ("/terms", "Terms"),
-                      ("/delete-account", "Delete account")]
+def pricing() -> str:
+    packs = [("100 coins", "$0.99"), ("550 coins", "$4.99"), ("1,200 coins", "$9.99"), ("3,000 coins", "$19.99")]
+    rows = "".join(f"<tr><td>{c}</td><td>{p}</td></tr>" for c, p in packs)
+    body = f"""
+    <section class="wrap prose">
+      <p class="eyebrow">Pricing</p>
+      <h1>Viyo Pricing</h1>
+      <p class="lead">Viyo is free to join and free to watch. Many episodes are free. You only pay if you want to
+      unlock paid episodes and movies, using Viyo Coins.</p>
+
+      <h2>Coin packs</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Pack</th><th>Price (USD)</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table></div>
+      <p>Coins are a one-time purchase, not a subscription. Prices are in US dollars; tax may be added at checkout
+      depending on where you live.</p>
+
+      <h2>What coins are for</h2>
+      <ul class="plain">
+        <li>Unlocking paid episodes and movies. The creator sets the price, shown before you unlock.</li>
+        <li>The first episodes of a series are always free.</li>
+        <li>Creators earn {CREATOR_SHARE} of the bought coins spent on their work.</li>
+      </ul>
+
+      <h2>Viyo Studio credits</h2>
+      <p>Credits for Viyo Studio, our AI tool for making dramas and ads, are coming soon.</p>
+
+      <p>See our <a href="/refunds">Refund Policy</a> and <a href="/terms">Terms of Service</a>.</p>
+    </section>
+    {cta()}
+"""
+    schema = {"@type": "WebPage", "url": f"{SITE}/pricing", "name": "Viyo Pricing"}
+    return page("/pricing", "Viyo Pricing",
+                "Viyo is free to join and watch. Coin packs from $0.99 unlock paid episodes and movies.",
+                body, schema=[ORG, schema], crumbs=[("/pricing", "Pricing")])
+
+
+def refunds() -> str:
+    body = f"""
+    <section class="wrap prose">
+      <p class="eyebrow">Refunds</p>
+      <h1>Viyo Refund Policy</h1>
+      <p class="lead">Last updated {REFUND_DATE}. This policy covers coins bought on the Viyo website.</p>
+
+      <h2>Unused coins: 14 days</h2>
+      <p>If you change your mind, you can ask for a full refund within 14 days of buying coins, as long as you
+      haven't spent any of the coins from that purchase.</p>
+
+      <h2>Spent coins</h2>
+      <p>Coins already spent, for example to unlock an episode, are not refunded, except when a technical fault on our
+      side means you didn't get what you paid for. In that case we refund the coins or the money.</p>
+
+      <h2>How to ask</h2>
+      <p>Email <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a> with your Viyo account email and the date of the
+      purchase. We reply within 5 working days. Approved refunds go back to the payment method you used, and the
+      coins are removed from your account.</p>
+
+      <h2>Your rights</h2>
+      <p>This policy doesn't take away any rights you have under the consumer law where you live.</p>
+
+      <p>See also our <a href="/pricing">Pricing</a> and <a href="/terms">Terms of Service</a>.</p>
+    </section>
+    {cta()}
+"""
+    schema = {"@type": "WebPage", "url": f"{SITE}/refunds", "name": "Viyo Refund Policy"}
+    return page("/refunds", "Viyo Refund Policy",
+                "Refunds for Viyo Coins: unused coins within 14 days, and spent coins when something went wrong.",
+                body, schema=[ORG, schema], crumbs=[("/refunds", "Refunds")])
+
+
+FOOTER_LINKS = NAV + [("/contact", "Contact"), ("/pricing", "Pricing"), ("/privacy", "Privacy"),
+                      ("/terms", "Terms"), ("/refunds", "Refunds"), ("/delete-account", "Delete account")]
 
 
 # ---------------------------------------------------------------- page shell
@@ -899,6 +972,8 @@ PAGES = {
     "/contact": ("contact.html", contact, "0.4", "yearly"),
     "/privacy": ("privacy.html", privacy, "0.3", "yearly"),
     "/terms": ("terms.html", terms, "0.3", "yearly"),
+    "/pricing": ("pricing.html", pricing, "0.5", "monthly"),
+    "/refunds": ("refunds.html", refunds, "0.3", "yearly"),
     "/delete-account": ("delete-account.html", delete_account, "0.2", "yearly"),
 }
 
