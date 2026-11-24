@@ -6,6 +6,7 @@ import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/coin_purchase_service.dart';
+import '../../services/nardopay_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/rewarded_ad_service.dart';
 import '../../services/supabase_service.dart';
@@ -13,7 +14,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/viyo_toast.dart';
 import '../mission_screen.dart';
 
-enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy }
+enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy, nardopay }
 
 /// Real-money coin purchases. Coins are only ever credited by the
 /// backend once the payment provider confirms the charge — this screen
@@ -52,6 +53,12 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
 
   bool _watchingAd = false;
 
+  // NardoPay (web only): offered when the server says checkout is available. The order is created and priced on the
+  // server; its status is checked until the server has credited it after NardoPay's signed confirmation.
+  static const _nardopay = NardopayApi();
+  bool _nardopayAvailable = false;
+  bool _waitingForNardopay = false;
+
   @override
   void initState() {
     super.initState();
@@ -89,9 +96,12 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     });
     try {
       final packages = await CoinPurchaseService.getPackages();
+      // Web only: the Android app keeps Google Play's rules (see the class comment) and never offers NardoPay.
+      final nardopay = kIsWeb && await _nardopay.available();
       if (!mounted) return;
       setState(() {
         _packages = packages;
+        _nardopayAvailable = nardopay;
         _loading = false;
       });
     } catch (e) {
@@ -130,6 +140,9 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
         break;
       case _PaymentProvider.lemonsqueezy:
         await _buyWithHostedCheckout(package, provider: 'lemonsqueezy');
+        break;
+      case _PaymentProvider.nardopay:
+        await _buyWithNardopay(package);
         break;
     }
   }
@@ -171,6 +184,12 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
                 icon: Icons.storefront_outlined,
                 onTap: () => Navigator.of(ctx).pop(_PaymentProvider.lemonsqueezy),
               ),
+              if (kIsWeb && _nardopayAvailable)
+                _ProviderTile(
+                  label: 'Mobile money or card (NardoPay, RWF)',
+                  icon: Icons.phone_android_outlined,
+                  onTap: () => Navigator.of(ctx).pop(_PaymentProvider.nardopay),
+                ),
             ],
           ),
         ),
@@ -248,6 +267,47 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       _showToast('Purchase failed: $e');
     } finally {
       if (mounted) setState(() => _purchasingPackageId = null);
+    }
+  }
+
+  /// NardoPay (web only): the server creates and prices the order, NardoPay's page opens in a new tab, and this
+  /// screen checks the order until the server has credited it. Nothing here marks a purchase paid.
+  Future<void> _buyWithNardopay(CoinPackage package) async {
+    if (!kIsWeb || _waitingForNardopay) return;
+    setState(() => _purchasingPackageId = package.id);
+    NardopayOrder order;
+    try {
+      order = await _nardopay.create(package.id);
+      final link = order.paymentLink;
+      if (link == null || !await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication)) {
+        _showToast('Could not open the NardoPay page.');
+        return;
+      }
+    } catch (e) {
+      _showToast('$e'.replaceFirst('Exception: ', ''));
+      return;
+    } finally {
+      if (mounted) setState(() => _purchasingPackageId = null);
+    }
+    if (!mounted) return;
+    setState(() => _waitingForNardopay = true);
+    _showToast('Pay ${order.rwfAmount} RWF in the NardoPay tab. Your coins appear here once it\'s confirmed.');
+    final status = await waitForNardopayOrder(_nardopay, order.orderId, cancelled: () => !mounted);
+    if (!mounted) return;
+    setState(() => _waitingForNardopay = false);
+    switch (status) {
+      case 'credited':
+        _showToast('+${order.coins} coins added! 🪙');
+        Navigator.of(context).pop(true);
+        break;
+      case 'failed':
+        _showToast('The payment didn\'t go through. You weren\'t charged for coins.');
+        break;
+      case 'mismatch':
+        _showToast('NardoPay reported a different amount, so no coins were added. Contact support.');
+        break;
+      default:
+        _showToast('Still waiting for NardoPay. If you paid, your coins will appear soon.');
     }
   }
 
