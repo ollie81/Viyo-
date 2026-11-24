@@ -578,6 +578,32 @@ class CreatorStudioService {
     throw StudioException(message, res.statusCode)..code = code;
   }
 
+  // ---- Story Intelligence: the novel (idea -> interview -> outline -> approval)
+
+  static Future<Map<String, dynamic>?> projectStory(String projectId) async {
+    final j = await _send('GET', '/projects/$projectId/story');
+    return j['story'] == null ? null : Map<String, dynamic>.from(j['story'] as Map);
+  }
+
+  static Future<Map<String, dynamic>> startStory(String projectId, String idea, String length, int episodes) async =>
+      Map<String, dynamic>.from((await _send('POST', '/stories',
+          {'project_id': projectId, 'idea': idea, 'length': length, 'episodes': episodes}))['story'] as Map);
+
+  static Future<Map<String, dynamic>> storyInterview(String storyId,
+          {String? answer, bool skip = false, bool finish = false}) async =>
+      Map<String, dynamic>.from((await _send('POST', '/stories/$storyId/interview', {
+        'request_id': newRequestId(),
+        if (answer != null) 'answer': answer,
+        'skip': skip,
+        'finish': finish,
+      }))['story'] as Map);
+
+  static Future<Map<String, dynamic>> planOutline(String storyId, String note) async => Map<String, dynamic>.from(
+      (await _send('POST', '/stories/$storyId/outline', {'request_id': newRequestId(), 'note': note}))['story'] as Map);
+
+  static Future<Map<String, dynamic>> approveOutline(String storyId, int version) async =>
+      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/outline/approve', {'version': version}) as Map);
+
   static Future<StudioAccount> account() async {
     final j = await _send('GET', '/me');
     return StudioAccount(

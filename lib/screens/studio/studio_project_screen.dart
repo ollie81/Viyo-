@@ -11,6 +11,7 @@ import '../../theme/app_theme.dart';
 import 'studio_chat_screen.dart';
 import 'studio_elements_section.dart';
 import 'studio_identity_section.dart';
+import 'studio_novel_card.dart';
 import 'studio_production_panel.dart';
 import 'studio_widgets.dart';
 import 'studio_world_card.dart';
@@ -622,6 +623,8 @@ class _StoryPanelState extends State<_StoryPanel> {
         decoration: studioPanel(),
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          StudioNovelCard(projectId: widget.d.project.id, logline: widget.d.project.logline),
+          const SizedBox(height: 14),
           StudioWorldCard(projectId: widget.d.project.id, reload: widget.reload),
           const SizedBox(height: 14),
           if (widget.d.project.storyBible != null &&
