@@ -6,6 +6,15 @@ import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
 import 'studio_widgets.dart';
 
+/// A short label for a chapter's review in the chapter list.
+String reviewLabel(String status, bool revised) => switch (status) {
+      'passed' => revised ? 'review passed after a revision' : 'review passed',
+      'needs_work' => 'review: needs work',
+      'incomplete' => 'review incomplete',
+      'unavailable' => 'not reviewed',
+      _ => '',
+    };
+
 /// The server calls the chapter screens make (a fake in tests).
 class ChaptersApi {
   const ChaptersApi();
@@ -134,6 +143,7 @@ class _NovelChaptersSectionState extends State<NovelChaptersSection> {
     final n = (c['number'] as num).toInt();
     final status = '${c['status']}';
     final issues = (c['issues'] as num?)?.toInt() ?? 0;
+    final review = reviewLabel('${c['review'] ?? ''}', c['revised'] == true);
     final icon = switch (status) {
       'approved' => const Icon(Icons.check_circle, color: AppColors.success, size: 18),
       'draft' => const Icon(Icons.rate_review_outlined, color: AppColors.coin, size: 18),
@@ -148,7 +158,8 @@ class _NovelChaptersSectionState extends State<NovelChaptersSection> {
           ? null
           : Text(
               '${status == 'draft' ? 'Waiting for your review' : 'Approved'} · ${c['words']} words'
-              '${issues > 0 ? ' · $issues continuity ${issues == 1 ? 'problem' : 'problems'}' : ''}',
+              '${issues > 0 ? ' · $issues continuity ${issues == 1 ? 'problem' : 'problems'}' : ''}'
+              '${review.isNotEmpty ? ' · $review' : ''}',
               style: TextStyle(fontSize: 12, color: issues > 0 ? AppColors.danger : AppColors.textSecondary)),
       onTap: status == 'planned' ? null : () => _open(n),
     );
@@ -256,6 +267,7 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
       Text('Version ${c['version']} · ${c['words']} words · ${approved ? 'approved' : 'waiting for your review'}',
           style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
       const SizedBox(height: 12),
+      ..._review(Map<String, dynamic>.from((c['review_report'] as Map?) ?? const {})),
       if (issues.isNotEmpty) ...[
         const Text('Continuity problems', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.danger)),
         for (final i in issues.map((x) => Map<String, dynamic>.from(x as Map)))
@@ -307,6 +319,86 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
         ),
       ],
     ];
+  }
+
+  static const _areaLabels = {
+    'originality': 'Originality',
+    'character': 'Character development',
+    'emotion': 'Emotional depth',
+    'plot': 'Plot coherence',
+    'dialogue': 'Dialogue',
+    'prose': 'Literary quality',
+    'cinematic': 'Cinematic potential',
+    'opening': 'Opening',
+    'ending': 'Ending',
+  };
+
+  /// VIYO's own review: every score with the words it's based on, what's weak and why, and what happened to the
+  /// one targeted revision.
+  List<Widget> _review(Map<String, dynamic> r) {
+    if (r.isEmpty) return const [];
+    final cats = Map<String, dynamic>.from((r['categories'] as Map?) ?? const {});
+    final rev = r['revision'] is Map ? Map<String, dynamic>.from(r['revision'] as Map) : null;
+    final weak = (r['weak'] as List?) ?? const [];
+    final color = switch ('${r['status']}') {
+      'passed' => AppColors.success,
+      'needs_work' => AppColors.coin,
+      _ => AppColors.textSecondary,
+    };
+    return [
+      Container(
+        decoration: studioPanel(border: color.withValues(alpha: 0.5)),
+        child: Material(
+          type: MaterialType.transparency,
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            leading: Icon(Icons.fact_check_outlined, color: color),
+            title: Text("VIYO's review", style: TextStyle(fontWeight: FontWeight.w700, color: color)),
+            subtitle: Text('${r['summary'] ?? ''}', style: const TextStyle(fontSize: 12)),
+            children: [
+              if (rev != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                      rev['kept'] == true
+                          ? 'VIYO rewrote passage ${(rev['passages'] as List).join(', ')} and kept it: ${rev['why']}.'
+                          : 'Not rewritten: ${rev['why']}.',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                ),
+              for (final e in cats.entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: _area(e.key, Map<String, dynamic>.from(e.value as Map)),
+                ),
+              if (weak.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                const Text('What could be stronger', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                for (final w in weak.map((x) => Map<String, dynamic>.from(x as Map)))
+                  Text('• ${_areaLabels[w['area']] ?? w['area']}: ${w['why']} Fix: ${w['fix']}',
+                      style: const TextStyle(fontSize: 12)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+    ];
+  }
+
+  Widget _area(String key, Map<String, dynamic> a) {
+    final verified = a['status'] == 'verified';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(
+          verified
+              ? '${_areaLabels[key] ?? key}: ${a['score']}/10 — ${a['reason'] ?? ''}'
+              : '${_areaLabels[key] ?? key}: not counted (${a['why'] ?? ''})',
+          style: TextStyle(fontSize: 12, color: verified ? null : AppColors.textSecondary)),
+      if (verified && '${a['quote'] ?? ''}'.isNotEmpty)
+        Text('“${a['quote']}”',
+            style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.textSecondary)),
+    ]);
   }
 
   Widget _suggestion(String kind, Map<String, dynamic> x) {
