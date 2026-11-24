@@ -30,6 +30,27 @@ class FakeChaptersApi extends ChaptersApi {
           'version': 2,
           'words': 2900,
           'text': 'Eric came back the next morning.',
+          'review': 'passed',
+          'revised': true,
+          'review_report': {
+            'status': 'passed',
+            'summary': "VIYO's review passed every area, each backed by words from the chapter.",
+            'categories': {
+              'emotion': {
+                'status': 'verified',
+                'score': 8,
+                'reason': 'Earned through gesture.',
+                'quote': 'her hands would not stop shaking'
+              },
+              'originality': {'status': 'unverified', 'score': 9, 'why': "Its quote isn't in the chapter."},
+            },
+            'weak': [],
+            'revision': {
+              'kept': true,
+              'passages': [2],
+              'why': 'every targeted area improved and nothing else got worse'
+            },
+          },
           'extraction': {
             'issues': [
               {
@@ -117,6 +138,8 @@ void main() {
     await t.tap(find.byTooltip('Reject').last);
     await t.pumpAndSettle();
     expect(api.calls.last, 'decide:|f2');
+    await t.scrollUntilVisible(find.text('Approve chapter and suggestions'), 300,
+        scrollable: find.byType(Scrollable).first);
     await t.ensureVisible(find.text('Approve chapter and suggestions'));
     await t.pumpAndSettle();
     await t.tap(find.text('Approve chapter and suggestions'));
@@ -129,11 +152,31 @@ void main() {
     final api = FakeChaptersApi();
     await t.pumpWidget(MaterialApp(home: NovelChapterScreen(storyId: 's1', number: 2, api: api)));
     await t.pumpAndSettle();
+    await t.scrollUntilVisible(find.byType(TextField), 300, scrollable: find.byType(Scrollable).first);
     await t.enterText(find.byType(TextField), 'More tension at the end');
     await t.ensureVisible(find.text('Write a new version'));
     await t.pumpAndSettle();
     await t.tap(find.text('Write a new version'));
     await t.pumpAndSettle();
     expect(api.calls.last, 'write:2:More tension at the end');
+  });
+
+  testWidgets("shows VIYO's review with verified scores, quotes and the revision outcome", (t) async {
+    final api = FakeChaptersApi();
+    await t.pumpWidget(MaterialApp(home: NovelChapterScreen(storyId: 's1', number: 2, api: api)));
+    await t.pumpAndSettle();
+    expect(find.text("VIYO's review"), findsOneWidget);
+    await t.tap(find.text("VIYO's review"));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Emotional depth: 8/10 — Earned through gesture.'), findsOneWidget);
+    expect(find.textContaining('her hands would not stop shaking'), findsOneWidget);
+    expect(find.textContaining("Originality: not counted (Its quote isn't in the chapter.)"), findsOneWidget);
+    expect(find.textContaining('VIYO rewrote passage 2 and kept it'), findsOneWidget);
+  });
+
+  test('review labels for the chapter list', () {
+    expect(reviewLabel('passed', true), 'review passed after a revision');
+    expect(reviewLabel('needs_work', false), 'review: needs work');
+    expect(reviewLabel('', false), '');
   });
 }
