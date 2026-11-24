@@ -23,6 +23,7 @@ class StudioBalance {
 
 class StudioVoice {
   final String name, gender, style;
+
   /// A short sample to listen to, when Viyo has made one for this voice.
   final String? sampleUrl;
   StudioVoice(this.name, this.gender, this.style, {this.sampleUrl});
@@ -47,6 +48,7 @@ class StudioAccount {
   final List<StudioPack> packs;
   final bool checkoutAvailable;
   final List<StudioEffect> effects;
+
   /// Saved voice + matching lips (sync.so), once Viyo switches it on.
   final bool lipsyncAvailable;
   StudioAccount(this.balance, this.voices, this.packs, this.checkoutAvailable,
@@ -79,6 +81,7 @@ class StudioProject {
   bool captions;
   bool hasMusic;
   bool autoMusic;
+
   /// Check every new scene picture with the vision model (included in its price).
   bool autoInspect;
   String? musicName;
@@ -110,17 +113,23 @@ class StudioProject {
         storyBible = j['story_bible'] is Map && (j['story_bible'] as Map).isNotEmpty
             ? Map<String, dynamic>.from(j['story_bible'])
             : null;
+
   /// The script changed since its story check: the check describes an older version.
   final bool storyCheckOutdated;
+
   /// What Viyo's writers' room planned: premise, characters, beats, ending,
   /// and what the script doctor fixed. Null until a script is written.
   final Map<String, dynamic>? storyBible;
+
   /// 'video' (characters talk in moving clips) or 'pictures'.
   final String productionStyle;
+
   /// Set once a next episode has been made from this project (or this is one).
   final String? seriesId;
+
   /// The AI-made poster (title in the art, small Viyo mark in the corner).
   final String? coverUrl;
+
   /// Every cover made for this production: {id, url, is_main}, newest first.
   final List<Map<String, dynamic>> covers;
   bool get vertical => aspectRatio == '9:16';
@@ -162,6 +171,7 @@ class StudioElement {
 /// One picture on a character's reference sheet.
 class StudioView {
   final String view, label;
+
   /// missing / draft / approved / outdated (made from an older front view)
   final String status;
   final String? url;
@@ -177,7 +187,12 @@ class StudioView {
 /// and makeup change on their own; the face and body never do.
 class StudioOutfit {
   static const parts = ['clothing', 'shoes', 'accessories', 'makeup'];
-  static const partLabels = {'clothing': 'Clothing', 'shoes': 'Shoes', 'accessories': 'Accessories', 'makeup': 'Makeup'};
+  static const partLabels = {
+    'clothing': 'Clothing',
+    'shoes': 'Shoes',
+    'accessories': 'Accessories',
+    'makeup': 'Makeup'
+  };
 
   final String id, characterId, name, description, status, reason;
   final Map<String, String> partValues;
@@ -201,7 +216,10 @@ class StudioOutfit {
 
   /// "Clothing: …; Shoes: …" for a one-line summary.
   String get summary {
-    final bits = [for (final k in parts) if ((partValues[k] ?? '').isNotEmpty) '${partLabels[k]}: ${partValues[k]}'];
+    final bits = [
+      for (final k in parts)
+        if ((partValues[k] ?? '').isNotEmpty) '${partLabels[k]}: ${partValues[k]}'
+    ];
     if (description.isNotEmpty) bits.insert(0, description);
     return bits.join(' · ');
   }
@@ -211,11 +229,14 @@ class StudioCharacter {
   final String id;
   String name, description, voice, voiceStyle;
   final String? portraitUrl;
+
   /// True once a line has been recorded with this voice.
   final bool voiceLocked;
+
   /// Worked out by Viyo from the story, e.g. "young child".
   final String? ageLabel;
   final int? ageYears;
+
   /// cast / approximate / needs_voice / unsupported_language / manual
   final String voiceStatus;
   StudioCharacter.fromJson(Map j)
@@ -236,7 +257,8 @@ class StudioCharacter {
         lockProblem = j['lock_problem'],
         guessedFields = ((j['guessed_fields'] as List?) ?? []).map((e) => e.toString()).toList(),
         outfits = ((j['outfits'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
-        outfitSuggestions = ((j['outfit_suggestions'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
+        outfitSuggestions =
+            ((j['outfit_suggestions'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList(),
         outfitLibrary = ((j['outfit_library'] as List?) ?? []).map((e) => StudioOutfit.fromJson(e as Map)).toList();
 
   /// The permanent look: {"basic": {...}, "face": {...}, "body": {...}, "default_outfit": "..."}.
@@ -244,17 +266,24 @@ class StudioCharacter {
   final bool identityLocked;
   final int identityVersion;
   final List<StudioView> referenceViews;
+
   /// Why the identity can't be approved and locked yet (null = it can).
   final String? lockProblem;
+
   /// Details the AI chose itself ("face.eyes"), not yet checked by the creator.
   final List<String> guessedFields;
   final List<StudioOutfit> outfits;
+
   /// Suggested by the AI from the screenplay; nothing is used until accepted.
   final List<StudioOutfit> outfitSuggestions;
+
   /// Saved outfits from the series' other episodes, ready to reuse.
   final List<StudioOutfit> outfitLibrary;
   bool get hasSheet => referenceViews.any((v) => v.view == 'front_full' && v.exists);
-  List<String> get missingViews => [for (final v in referenceViews) if (!v.exists) v.view];
+  List<String> get missingViews => [
+        for (final v in referenceViews)
+          if (!v.exists) v.view
+      ];
 }
 
 class StudioLine {
@@ -318,42 +347,57 @@ class StudioScene {
         voiceCheck = j['voice_check'] is Map ? Map<String, dynamic>.from(j['voice_check']) : null,
         shots = ((j['shots'] as List?) ?? []).map((e) => StudioShot.fromJson(e as Map)).toList(),
         shotPlanApproved = j['shot_plan_approved'] == true;
+
   /// The director's camera shots for this scene, in order (empty = one picture/clip for the scene).
   final List<StudioShot> shots;
+
   /// The creator approved the shot plan: shots can be made and the film uses them.
   final bool shotPlanApproved;
+
   /// The creator approved this exact picture: it is never replaced until unapproved.
   final bool imageApproved;
+
   /// The latest picture check: {scores, problems, summary, needs_attention, correction, outdated}.
   final Map<String, dynamic>? inspection;
+
   /// The talking clip's voice record: which model spoke it, its limits, and the sound check.
   final Map<String, dynamic>? voiceCheck;
+
   /// The continuity director's record: how the scene starts and ends, who is
   /// where, and how it follows the scene before (`transition`).
   final Map<String, dynamic> continuity;
   String get startState => '${continuity['start_state'] ?? ''}';
   String get endState => '${continuity['end_state'] ?? ''}';
   String get transition => '${continuity['transition'] ?? ''}';
+
   /// Characters whose identity or outfit changed after this scene was made.
   final List<String> consistency;
+
   /// The chosen place (null = worked out from the heading) and objects (null = worked out from the text).
   final String? locationId;
   final List<String>? propIds;
+
   /// The place and objects this scene actually uses.
   final String? locationUsed;
   final List<String> propsUsed;
+
   /// The reference pictures the scene's picture or video was actually made with.
   final List<String> madeWithReferences;
+
   /// {character id: outfit id}; a character not listed keeps the outfit from the scene before.
   final Map<String, String> outfits;
+
   /// This scene only: {character id: {part: text}} on top of the chosen outfit.
   final Map<String, Map<String, String>> outfitOverrides;
+
   /// auto / close_up / front / side / back / full_body / wide, and what 'auto' worked out.
   final String camera, cameraUsed;
   final bool hasLipsync;
+
   /// Who speaks the lines: 'video_model' (in the clip) or 'saved_voice'.
   final String speech;
   bool get spokenInVideo => speech == 'video_model';
+
   /// Characters whose voice was changed after this scene was recorded.
   final List<String> voiceOutdated;
   bool get ready => hasImage || (mode == 'video' && hasVideo);
@@ -394,6 +438,7 @@ class StudioRender {
         durationSeconds = (j['duration_seconds'] as num?)?.toDouble() ?? 0,
         createdAt = DateTime.tryParse(j['created_at'] ?? ''),
         postId = j['post_id'];
+
   /// The Viyo post this version became, once published.
   final String? postId;
   bool get published => postId != null;
@@ -494,11 +539,15 @@ class StudioProjectDetail {
         balance = StudioBalance.fromJson(j['balance']),
         production = j['production'] is Map ? Map<String, dynamic>.from(j['production']) : null,
         elements = ((j['elements'] as List?) ?? []).map((e) => StudioElement.fromJson(e as Map)).toList(),
-        continuityIssues = ((j['continuity_issues'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        continuityIssues =
+            ((j['continuity_issues'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
   /// Problems between consecutive scenes: {scene, previous, scene_id, kind, severity, message, fix}.
   final List<Map<String, dynamic>> continuityIssues;
+
   /// The production's places and objects.
   final List<StudioElement> elements;
+
   /// The latest one-click production run with its progress, if any.
   final Map<String, dynamic>? production;
   bool get producing => production?['status'] == 'running';
@@ -517,8 +566,7 @@ class StudioEstimate {
         items = ((j['items'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
         balance = StudioBalance.fromJson(j['balance']),
         note = j['note'];
-  List<String> get blockedReasons =>
-      items.map((i) => i['blocked']).whereType<String>().toSet().toList();
+  List<String> get blockedReasons => items.map((i) => i['blocked']).whereType<String>().toSet().toList();
 }
 
 class StudioException implements Exception {
@@ -526,8 +574,10 @@ class StudioException implements Exception {
   final int status;
   StudioException(this.message, this.status);
   bool get notEnoughCredits => status == 402;
+
   /// The server wants the creator to confirm replacing existing scenes.
   bool get needsReplaceConfirm => status == 409 && code == 'confirm_replace';
+
   /// The character already speaks in recorded scenes: the change must be confirmed.
   bool get needsVoiceChangeConfirm => status == 409 && code == 'confirm_voice_change';
   String? code;
@@ -544,8 +594,7 @@ class CreatorStudioService {
     return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
   }
 
-  static String newRequestId() =>
-      List.generate(16, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  static String newRequestId() => List.generate(16, (_) => _rnd.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
 
   static Future<dynamic> _send(String method, String path, [Object? body]) async {
     final uri = Uri.parse('$_base$path');
@@ -604,18 +653,38 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> approveOutline(String storyId, int version) async =>
       Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/outline/approve', {'version': version}) as Map);
 
+  static Future<Map<String, dynamic>> storyChapters(String storyId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/stories/$storyId/chapters') as Map);
+
+  static Future<Map<String, dynamic>> storyChapter(String storyId, int number) async =>
+      Map<String, dynamic>.from(await _send('GET', '/stories/$storyId/chapters/$number') as Map);
+
+  static Future<Map<String, dynamic>> writeChapter(String storyId, int number, String note) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/stories/$storyId/chapters/$number/write', {'request_id': newRequestId(), 'note': note})
+              as Map);
+
+  static Future<Map<String, dynamic>> approveChapter(
+          String storyId, int number, int version, bool withSuggestions) async =>
+      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/chapters/$number/approve',
+          {'version': version, 'with_suggestions': withSuggestions}) as Map);
+
+  static Future<Map<String, dynamic>> decideMemory(
+          String storyId, Map<String, List<String>> approve, Map<String, List<String>> reject) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/stories/$storyId/memory/decide', {'approve': approve, 'reject': reject}) as Map);
+
   static Future<StudioAccount> account() async {
     final j = await _send('GET', '/me');
     return StudioAccount(
       StudioBalance.fromJson(j['balance']),
       ((j['voices'] as List?) ?? []).map((v) => StudioVoice(v['name'], v['gender'], v['style'])).toList(),
       ((j['packs'] as List?) ?? [])
-          .map((p) => StudioPack(p['id'], p['label'], (p['credits'] as num).toInt(), (p['price_usd'] as num).toDouble()))
+          .map(
+              (p) => StudioPack(p['id'], p['label'], (p['credits'] as num).toInt(), (p['price_usd'] as num).toDouble()))
           .toList(),
       j['checkout_available'] == true,
-      ((j['sound_effects'] as List?) ?? [])
-          .map((e) => StudioEffect(e['id'], e['label'], e['loops'] == true))
-          .toList(),
+      ((j['sound_effects'] as List?) ?? []).map((e) => StudioEffect(e['id'], e['label'], e['loops'] == true)).toList(),
       j['lipsync_available'] == true,
     );
   }
@@ -721,8 +790,8 @@ class CreatorStudioService {
 
   static Future<void> deleteCharacter(String id) => _send('DELETE', '/characters/$id');
 
-  static Future<void> addScene(String projectId, {int? position}) =>
-      _send('POST', '/projects/$projectId/scenes', {'heading': '', 'visual': '', if (position != null) 'position': position});
+  static Future<void> addScene(String projectId, {int? position}) => _send(
+      'POST', '/projects/$projectId/scenes', {'heading': '', 'visual': '', if (position != null) 'position': position});
 
   static Future<void> updateScene(String id, Map<String, dynamic> fields) => _send('PATCH', '/scenes/$id', fields);
 
@@ -732,14 +801,20 @@ class CreatorStudioService {
       _send('POST', '/projects/$projectId/scenes/order', {'scene_ids': ids});
 
   /// `extra`: portrait jobs only, {'views': [...]} or {'outfit_id': ...}.
-  static Future<StudioEstimate> estimate(String projectId, String kind, [List<String> targets = const [],
-      Map<String, dynamic> extra = const {}]) async =>
-      StudioEstimate.fromJson(await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets, ...extra}));
+  static Future<StudioEstimate> estimate(String projectId, String kind,
+          [List<String> targets = const [], Map<String, dynamic> extra = const {}]) async =>
+      StudioEstimate.fromJson(
+          await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets, ...extra}));
 
   static Future<StudioBalance> startJobs(String projectId, String kind, List<String> targets, String requestId,
       {bool confirmReplace = false, Map<String, dynamic> extra = const {}}) async {
-    final j = await _send('POST', '/projects/$projectId/jobs',
-        {'kind': kind, 'target_ids': targets, 'request_id': requestId, if (confirmReplace) 'confirm_replace': true, ...extra});
+    final j = await _send('POST', '/projects/$projectId/jobs', {
+      'kind': kind,
+      'target_ids': targets,
+      'request_id': requestId,
+      if (confirmReplace) 'confirm_replace': true,
+      ...extra
+    });
     return StudioBalance.fromJson(j['balance']);
   }
 
@@ -766,20 +841,23 @@ class CreatorStudioService {
   static Future<void> importOutfit(String characterId, String outfitId) =>
       _send('POST', '/characters/$characterId/outfits/import', {'outfit_id': outfitId});
 
-  static Future<void> updateOutfit(String outfitId, Map<String, dynamic> fields) => _send('PATCH', '/outfits/$outfitId', fields);
+  static Future<void> updateOutfit(String outfitId, Map<String, dynamic> fields) =>
+      _send('PATCH', '/outfits/$outfitId', fields);
 
   static Future<void> deleteOutfit(String outfitId) => _send('DELETE', '/outfits/$outfitId');
 
   /// Posts a finished film to Viyo: an episode of the creator's drama, live now.
   /// coinPrice 0 = free to watch.
-  static Future<Map<String, dynamic>> publishRender(String renderId, {required int coinPrice, String caption = ''}) async =>
-      Map<String, dynamic>.from(await _send('POST', '/renders/$renderId/publish',
-          {'coin_price': coinPrice, 'caption': caption, 'confirm': true}));
+  static Future<Map<String, dynamic>> publishRender(String renderId,
+          {required int coinPrice, String caption = ''}) async =>
+      Map<String, dynamic>.from(await _send(
+          'POST', '/renders/$renderId/publish', {'coin_price': coinPrice, 'caption': caption, 'confirm': true}));
 
   // ------------------------------------------------ one-click production
 
   /// direct: the AI director plans every unmade scene's camera shots first (the default).
-  static Future<Map<String, dynamic>> productionQuote(String projectId, {bool sheets = true, bool direct = true}) async =>
+  static Future<Map<String, dynamic>> productionQuote(String projectId,
+          {bool sheets = true, bool direct = true}) async =>
       Map<String, dynamic>.from(
           await _send('POST', '/projects/$projectId/production/quote', {'sheets': sheets, 'direct': direct}));
 
@@ -802,9 +880,13 @@ class CreatorStudioService {
       Map<String, dynamic>.from(await _send('GET',
           '/projects/$projectId/assistant/chat${conversationId == null ? '' : '?conversation_id=$conversationId'}'));
 
-  static Future<Map<String, dynamic>> chatSend(String projectId, String message, String requestId, {String? conversationId}) async =>
-      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/chat',
-          {'message': message, 'request_id': requestId, if (conversationId != null) 'conversation_id': conversationId}));
+  static Future<Map<String, dynamic>> chatSend(String projectId, String message, String requestId,
+          {String? conversationId}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/chat', {
+        'message': message,
+        'request_id': requestId,
+        if (conversationId != null) 'conversation_id': conversationId
+      }));
 
   static Future<Map<String, dynamic>> chatNew(String projectId) async =>
       Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/chat/new'));
@@ -817,9 +899,11 @@ class CreatorStudioService {
       Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/assistant/memory'));
 
   static Future<Map<String, dynamic>> rememberFact(String projectId, String category, String text) async =>
-      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/assistant/memory', {'category': category, 'text': text}));
+      Map<String, dynamic>.from(
+          await _send('POST', '/projects/$projectId/assistant/memory', {'category': category, 'text': text}));
 
-  static Future<Map<String, dynamic>> correctMemory(String projectId, String itemId, {String? text, String? category}) async =>
+  static Future<Map<String, dynamic>> correctMemory(String projectId, String itemId,
+          {String? text, String? category}) async =>
       Map<String, dynamic>.from(await _send('PATCH', '/projects/$projectId/assistant/memory/$itemId',
           {if (text != null) 'text': text, if (category != null) 'category': category}));
 
@@ -845,7 +929,8 @@ class CreatorStudioService {
 
   // ------------------------------------------------ camera shots
 
-  static Future<void> updateShot(String shotId, Map<String, dynamic> fields) => _send('PATCH', '/shots/$shotId', fields);
+  static Future<void> updateShot(String shotId, Map<String, dynamic> fields) =>
+      _send('PATCH', '/shots/$shotId', fields);
 
   static Future<void> approveShotPlan(String sceneId, bool approved) =>
       _send('POST', '/scenes/$sceneId/shots/approve', {'approved': approved});
@@ -877,7 +962,10 @@ class CreatorStudioService {
 
   static Future<(List<StudioJob>, StudioBalance)> jobs(String projectId) async {
     final j = await _send('GET', '/projects/$projectId/jobs');
-    return (((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(), StudioBalance.fromJson(j['balance']));
+    return (
+      ((j['jobs'] as List?) ?? []).map((e) => StudioJob.fromJson(e)).toList(),
+      StudioBalance.fromJson(j['balance'])
+    );
   }
 
   static Future<void> cancelJob(String id) => _send('POST', '/jobs/$id/cancel');
@@ -929,8 +1017,13 @@ class CreatorStudioService {
         .post(Uri.parse('$_base/admin/credits/grant'),
             headers: {'Content-Type': 'application/json', 'X-Admin-Key': adminKey},
             body: jsonEncode({
-              'user': user, 'credits': credits, 'kind': kind, 'note': note, 'amount_usd': amountUsd,
-              'reference': reference, if (expiresDays != null) 'expires_days': expiresDays,
+              'user': user,
+              'credits': credits,
+              'kind': kind,
+              'note': note,
+              'amount_usd': amountUsd,
+              'reference': reference,
+              if (expiresDays != null) 'expires_days': expiresDays,
             }))
         .timeout(const Duration(seconds: 30));
     final body = res.body.isEmpty ? {} : jsonDecode(res.body);
@@ -988,7 +1081,9 @@ class CreatorStudioService {
 
   static Future<(StudioBalance, List<Map<String, dynamic>>)> credits() async {
     final j = await _send('GET', '/credits');
-    return (StudioBalance.fromJson(j['balance']),
-        ((j['history'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e)).toList());
+    return (
+      StudioBalance.fromJson(j['balance']),
+      ((j['history'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e)).toList()
+    );
   }
 }

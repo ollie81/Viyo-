@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viyo/screens/studio/studio_novel_card.dart';
 
+import 'novel_chapters_test.dart' show FakeChaptersApi;
+
 /// A fake server: records what the card asks for and returns the next story state.
 class FakeNovelApi extends NovelApi {
   FakeNovelApi(this.story);
@@ -91,7 +93,10 @@ Future<void> _pump(WidgetTester t, FakeNovelApi api) async {
       home: Scaffold(
           body: SingleChildScrollView(
               child: StudioNovelCard(
-                  projectId: 'p1', logline: 'A seamstress finds a letter in a wedding dress.', api: api)))));
+                  projectId: 'p1',
+                  logline: 'A seamstress finds a letter in a wedding dress.',
+                  api: api,
+                  chaptersApi: FakeChaptersApi())))));
   await t.pumpAndSettle();
 }
 
