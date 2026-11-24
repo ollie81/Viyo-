@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../constants/supabase_constants.dart';
 import '../../models/user_profile.dart';
+import '../../services/file_upload_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
@@ -87,6 +88,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final ext = picked.name.contains('.') ? picked.name.split('.').last : 'jpg';
     final bytes = await picked.readAsBytes();
     final token = client.auth.currentSession?.accessToken;
+
+    if (await FileUploadService.usesServer()) {
+      try {
+        return await FileUploadService.upload(bytes,
+            kind: 'avatar', fileName: picked.name, contentType: _mimeTypeFor(ext));
+      } catch (e) {
+        setState(() => _error = 'Could not upload photo: $e');
+        return null;
+      } finally {
+        if (mounted) setState(() => _uploadingAvatar = false);
+      }
+    }
 
     // Cache-busting name: the same URL with new bytes behind it would
     // keep showing the old photo out of Flutter's image cache.

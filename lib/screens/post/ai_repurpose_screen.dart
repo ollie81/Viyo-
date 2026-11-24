@@ -10,6 +10,7 @@ import '../../constants/supabase_constants.dart';
 import '../../models/coach_video_context.dart';
 import '../../models/insufficient_coins_exception.dart';
 import '../../models/post.dart';
+import '../../services/file_upload_service.dart';
 import '../../services/post_service.dart';
 import '../../services/bunny_stream_service.dart';
 import '../../services/repurpose_service.dart';
@@ -215,7 +216,9 @@ class _AiRepurposeScreenState extends State<AiRepurposeScreen> {
       _uploadTotalBytes = await _selectedVideo!.length();
       String sourcePath;
       var viaBunny = false;
-      if (_uploadTotalBytes > RepurposeService.supabaseUploadCapBytes) {
+      // Bunny Stream when the video is over the storage plan's upload cap, or when VIYO's files live on
+      // Bunny (no direct Supabase upload then).
+      if (_uploadTotalBytes > RepurposeService.supabaseUploadCapBytes || await FileUploadService.usesServer()) {
         // Too big for the storage plan's upload cap: send it to Bunny
         // Stream, wait for Bunny to prepare it, and let the server pull
         // it from there.

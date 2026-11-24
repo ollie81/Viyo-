@@ -12,6 +12,7 @@ import '../models/post.dart';
 import '../models/post_feedback.dart';
 import 'analytics_service.dart';
 import 'discover_spotlight_service.dart';
+import 'file_upload_service.dart';
 import 'moderation_service.dart';
 import 'supabase_service.dart';
 import 'web_thumbnail_stub.dart' if (dart.library.html) 'web_thumbnail_html.dart' as web_thumbnail;
@@ -292,6 +293,12 @@ class PostService {
   static Future<String> updateThumbnail(String postId, XFile image, String userId) async {
     final path = '$userId/${const Uuid().v4()}.jpg';
     final bytes = await image.readAsBytes();
+    if (await FileUploadService.usesServer()) {
+      final url = await FileUploadService.upload(bytes,
+          kind: 'post_media', fileName: 'thumbnail.jpg', contentType: 'image/jpeg');
+      await _client.from('posts').update({'thumbnail_url': url}).eq('id', postId);
+      return url;
+    }
     final token = _client.auth.currentSession?.accessToken;
     final url = '${SupabaseConstants.url}/storage/v1/object/${SupabaseConstants.postsBucket}/$path';
 
@@ -414,6 +421,10 @@ class PostService {
     final ext = file.name.contains('.') ? file.name.split('.').last : 'jpg';
     final path = storagePath ?? '$userId/${const Uuid().v4()}.$ext';
     final bytes = await file.readAsBytes();
+    if (await FileUploadService.usesServer()) {
+      return FileUploadService.upload(bytes,
+          kind: 'post_media', fileName: file.name, contentType: _mimeTypeFor(ext), onProgress: onProgress);
+    }
     final token = _client.auth.currentSession?.accessToken;
 
     final url =
@@ -599,6 +610,15 @@ class PostService {
   /// storage RLS policy and a `posts` RLS delete policy enforce that
   /// server-side too, so this can't be bypassed by editing the client.
   static Future<void> deletePost(Post post) async {
+    if (await FileUploadService.usesServer()) {
+      try {
+        await FileUploadService.delete([post.mediaUrl, post.thumbnailUrl].whereType<String>().toList());
+      } catch (_) {
+        // A stray file left in storage is not worth failing the deletion over.
+      }
+      await _client.from('posts').delete().eq('id', post.id);
+      return;
+    }
     final pathsToRemove = <String>[];
     for (final url in [post.mediaUrl, post.thumbnailUrl]) {
       if (url == null) continue;
