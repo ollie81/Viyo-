@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
+import 'novel_chapters.dart';
 import 'studio_widgets.dart';
 
 /// The server calls the novel card makes (a fake in tests).
@@ -24,7 +25,13 @@ class StudioNovelCard extends StatefulWidget {
   final String projectId;
   final String logline;
   final NovelApi api;
-  const StudioNovelCard({super.key, required this.projectId, this.logline = '', this.api = const NovelApi()});
+  final ChaptersApi chaptersApi;
+  const StudioNovelCard(
+      {super.key,
+      required this.projectId,
+      this.logline = '',
+      this.api = const NovelApi(),
+      this.chaptersApi = const ChaptersApi()});
   @override
   State<StudioNovelCard> createState() => _StudioNovelCardState();
 }
@@ -333,6 +340,7 @@ class _StudioNovelCardState extends State<StudioNovelCard> {
               'Added: ${_memory!['entities']} characters, places and secrets; ${_memory!['facts']} facts; '
               '${_memory!['threads']} threads.',
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        NovelChaptersSection(storyId: _s(s['id']), api: widget.chaptersApi),
       ] else ...[
         TextField(
           controller: _note,
