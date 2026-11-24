@@ -22,7 +22,6 @@ import '../../widgets/insufficient_coins_sheet.dart';
 import '../../widgets/report_sheet.dart';
 import '../../widgets/retryable_network_image.dart';
 import '../settings_screen.dart';
-import '../store_screen.dart';
 import '../post/series_detail_screen.dart';
 import '../wallet_screen.dart';
 import 'edit_profile.dart';
@@ -431,13 +430,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         actions: [
           if (_isOwnProfile) ...[
-            IconButton(
-              icon: const Icon(Icons.storefront_outlined),
-              tooltip: 'Store',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const StoreScreen()),
-              ),
-            ),
+            // The coin Store is hidden while it's reworked: it sold a "verified" check and achievement badges for
+            // coins, and its purchase functions take the price from the app (see store_screen.dart).
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               onPressed: () => Navigator.of(context).push(
@@ -560,12 +554,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ),
                           ),
+                          // Bought with coins, so it marks a supporter, not a verified identity.
                           if (p.isPremium) ...[
                             const SizedBox(width: 6),
-                            const Icon(
-                              Icons.verified,
-                              color: AppColors.secondary,
-                              size: 18,
+                            const Tooltip(
+                              message: 'Supporter',
+                              child: Icon(Icons.favorite, color: AppColors.secondary, size: 16),
                             ),
                           ],
                         ],
