@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viyo/screens/studio/novel_chapters.dart';
+import 'package:viyo/services/creator_studio_service.dart';
 
 /// A fake server for the chapter screens: chapter 1 approved, chapter 2 waiting for review, chapter 3 next.
 class FakeChaptersApi extends ChaptersApi {
@@ -61,6 +62,21 @@ class FakeChaptersApi extends ChaptersApi {
             ]
           },
         },
+        'problems': [
+          {
+            'id': 'p1',
+            'source': 'claim',
+            'rule': 'dead_character_active',
+            'reason': 'Mama Grace is dead from chapter 1 but speaks here.',
+            'quote': 'Mama Grace laughed',
+            'memory_statement': 'Mama Grace is dead.',
+            'memory_locked': false,
+            'judgement': {'verdict': 'error', 'why': 'Nothing marks it as a memory.', 'quote': ''},
+            'actions': ['fix_chapter', 'chapter_right', 'intended'],
+            if (resolution != null) 'resolution': resolution,
+          }
+        ],
+        'fix_note': resolution?['action'] == 'fix_chapter' ? 'Fix these continuity problems: Mama Grace is dead.' : '',
         'suggestions': {
           'facts': [
             {'id': 'f1', 'statement': 'Eric turns his gold watch.', 'quote': 'turning his gold watch', 'conflicts': []},
@@ -82,9 +98,16 @@ class FakeChaptersApi extends ChaptersApi {
     return {'job_id': 'j1'};
   }
 
+  bool openProblems = false;
+  Map<String, dynamic>? resolution;
+
   @override
-  Future<Map<String, dynamic>> approve(String storyId, int n, int version, bool withSuggestions) async {
-    calls.add('approve:$n:$version:$withSuggestions');
+  Future<Map<String, dynamic>> approve(String storyId, int n, int version, bool withSuggestions,
+      {bool acceptProblems = false}) async {
+    calls.add('approve:$n:$version:$withSuggestions${acceptProblems ? ':accept' : ''}');
+    if (openProblems && !acceptProblems) {
+      throw StudioException('1 continuity problem(s) need a decision first.', 409)..code = 'open_problems';
+    }
     approved2 = true;
     return {
       'approved_suggestions': 1,
@@ -95,11 +118,25 @@ class FakeChaptersApi extends ChaptersApi {
   }
 
   @override
+  Future<Map<String, dynamic>> decideProblem(String storyId, int n, int version, String problemId, String action,
+      {String reason = '', bool untilEnd = false, bool unlock = false}) async {
+    calls.add('problem:$problemId:$action:$reason:$untilEnd');
+    resolution = {'action': action};
+    return {'summary': {}, 'fix_note': ''};
+  }
+
+  @override
   Future<Map<String, dynamic>> decide(
       String storyId, Map<String, List<String>> approve, Map<String, List<String>> reject) async {
     calls.add('decide:${approve.values.expand((x) => x).join()}|${reject.values.expand((x) => x).join()}');
     return {'done': [], 'refused': []};
   }
+}
+
+void tall(WidgetTester t) {
+  t.view.physicalSize = const Size(1200, 6000);
+  t.view.devicePixelRatio = 1;
+  addTearDown(t.view.reset);
 }
 
 Widget _wrap(Widget w) => MaterialApp(home: Scaffold(body: SingleChildScrollView(child: w)));
@@ -125,6 +162,7 @@ void main() {
   });
 
   testWidgets('a chapter shows its problems and suggestions, and the creator decides', (t) async {
+    tall(t);
     final api = FakeChaptersApi();
     await t.pumpWidget(MaterialApp(home: NovelChapterScreen(storyId: 's1', number: 2, api: api)));
     await t.pumpAndSettle();
@@ -178,5 +216,53 @@ void main() {
     expect(reviewLabel('passed', true), 'review passed after a revision');
     expect(reviewLabel('needs_work', false), 'review: needs work');
     expect(reviewLabel('', false), '');
+  });
+
+  testWidgets("each continuity problem shows VIYO's opinion and the creator's choices", (t) async {
+    tall(t);
+    final api = FakeChaptersApi();
+    await t.pumpWidget(MaterialApp(home: NovelChapterScreen(storyId: 's1', number: 2, api: api)));
+    await t.pumpAndSettle();
+    expect(find.text('VIYO thinks this is a mistake'), findsOneWidget);
+    expect(find.text('The memory: Mama Grace is dead.'), findsOneWidget);
+    expect(find.text('Fix the chapter'), findsOneWidget);
+    expect(find.text('The chapter is right'), findsOneWidget);
+    expect(find.text("It's intentional"), findsOneWidget);
+    await t.tap(find.text('Fix the chapter'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'problem:p1:fix_chapter::false');
+    expect(find.text('✓ To fix in a new version'), findsOneWidget);
+    // The fix note is ready for the next version.
+    final field = t.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, contains('Mama Grace is dead'));
+  });
+
+  testWidgets('marking a problem intentional asks why', (t) async {
+    tall(t);
+    final api = FakeChaptersApi();
+    await t.pumpWidget(MaterialApp(home: NovelChapterScreen(storyId: 's1', number: 2, api: api)));
+    await t.pumpAndSettle();
+    await t.tap(find.text("It's intentional"));
+    await t.pumpAndSettle();
+    await t.enterText(find.widgetWithText(TextField, 'Why? (e.g. her ghost visits Amani)'), 'Her ghost');
+    await t.tap(find.byType(CheckboxListTile));
+    await t.tap(find.text('Save'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'problem:p1:intended:Her ghost:true');
+  });
+
+  testWidgets('approving with open problems asks before approving anyway', (t) async {
+    final api = FakeChaptersApi()..openProblems = true;
+    await t.pumpWidget(MaterialApp(home: NovelChapterScreen(storyId: 's1', number: 2, api: api)));
+    await t.pumpAndSettle();
+    await t.scrollUntilVisible(find.text('Approve chapter only'), 300, scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(find.text('Approve chapter only'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Approve chapter only'));
+    await t.pumpAndSettle();
+    expect(find.text('Approve anyway?'), findsOneWidget);
+    await t.tap(find.text('Yes'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'approve:2:2:false:accept');
   });
 }

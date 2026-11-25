@@ -664,10 +664,21 @@ class CreatorStudioService {
           await _send('POST', '/stories/$storyId/chapters/$number/write', {'request_id': newRequestId(), 'note': note})
               as Map);
 
-  static Future<Map<String, dynamic>> approveChapter(
-          String storyId, int number, int version, bool withSuggestions) async =>
+  static Future<Map<String, dynamic>> approveChapter(String storyId, int number, int version, bool withSuggestions,
+          {bool acceptProblems = false}) async =>
       Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/chapters/$number/approve',
-          {'version': version, 'with_suggestions': withSuggestions}) as Map);
+          {'version': version, 'with_suggestions': withSuggestions, 'accept_problems': acceptProblems}) as Map);
+
+  /// The creator settles one continuity problem: fix_chapter, chapter_right or intended.
+  static Future<Map<String, dynamic>> decideProblem(String storyId, int number, int version, String problemId,
+          String action, {String reason = '', bool untilEnd = false, bool unlock = false}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/chapters/$number/problems/$problemId/decide', {
+        'version': version,
+        'action': action,
+        'reason': reason,
+        'until_end': untilEnd,
+        'unlock': unlock,
+      }) as Map);
 
   static Future<Map<String, dynamic>> decideMemory(
           String storyId, Map<String, List<String>> approve, Map<String, List<String>> reject) async =>
