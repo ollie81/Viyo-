@@ -6,6 +6,22 @@ import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
 import 'studio_widgets.dart';
 
+/// VIYO's opinion of a continuity problem, in plain words (it never decides).
+String verdictLabel(String verdict) => switch (verdict) {
+      'error' => 'VIYO thinks this is a mistake',
+      'intended' => 'VIYO thinks this is deliberate',
+      'unclear' => "VIYO isn't sure",
+      _ => '',
+    };
+
+/// What the creator decided about a continuity problem.
+String resolutionLabel(String action) => switch (action) {
+      'fix_chapter' => 'To fix in a new version',
+      'chapter_right' => 'The chapter is right: the memory was updated',
+      'intended' => 'Marked as intentional',
+      _ => '',
+    };
+
 /// A short label for a chapter's review in the chapter list.
 String reviewLabel(String status, bool revised) => switch (status) {
       'passed' => revised ? 'review passed after a revision' : 'review passed',
@@ -22,8 +38,13 @@ class ChaptersApi {
   Future<Map<String, dynamic>> chapter(String storyId, int n) => CreatorStudioService.storyChapter(storyId, n);
   Future<Map<String, dynamic>> write(String storyId, int n, String note) =>
       CreatorStudioService.writeChapter(storyId, n, note);
-  Future<Map<String, dynamic>> approve(String storyId, int n, int version, bool withSuggestions) =>
-      CreatorStudioService.approveChapter(storyId, n, version, withSuggestions);
+  Future<Map<String, dynamic>> approve(String storyId, int n, int version, bool withSuggestions,
+          {bool acceptProblems = false}) =>
+      CreatorStudioService.approveChapter(storyId, n, version, withSuggestions, acceptProblems: acceptProblems);
+  Future<Map<String, dynamic>> decideProblem(String storyId, int n, int version, String problemId, String action,
+          {String reason = '', bool untilEnd = false, bool unlock = false}) =>
+      CreatorStudioService.decideProblem(storyId, n, version, problemId, action,
+          reason: reason, untilEnd: untilEnd, unlock: unlock);
   Future<Map<String, dynamic>> decide(
           String storyId, Map<String, List<String>> approve, Map<String, List<String>> reject) =>
       CreatorStudioService.decideMemory(storyId, approve, reject);
@@ -181,6 +202,7 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
   Map<String, dynamic>? _d;
   bool _busy = false;
   final _note = TextEditingController();
+  String _lastFix = '';
 
   @override
   void initState() {
@@ -197,6 +219,9 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
   Future<void> _load() async {
     try {
       final d = await widget.api.chapter(widget.storyId, widget.number);
+      final fix = '${d['fix_note'] ?? ''}';
+      if (fix.isNotEmpty && (_note.text.isEmpty || _note.text == _lastFix)) _note.text = fix;
+      _lastFix = fix;
       if (mounted) setState(() => _d = d);
     } on StudioException catch (e) {
       if (mounted) showStudioError(context, e.message);
@@ -217,18 +242,125 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
     }
   }
 
-  Future<void> _approve(bool withSuggestions) => _do(() async {
-        final c = Map<String, dynamic>.from(_d!['chapter'] as Map);
-        final r =
-            await widget.api.approve(widget.storyId, widget.number, (c['version'] as num).toInt(), withSuggestions);
+  int get _version => ((Map<String, dynamic>.from(_d!['chapter'] as Map))['version'] as num).toInt();
+
+  Future<void> _approve(bool withSuggestions, {bool acceptProblems = false}) async {
+    Map<String, dynamic>? r;
+    String? needsConfirm;
+    await _do(() async {
+      try {
+        r = await widget.api
+            .approve(widget.storyId, widget.number, _version, withSuggestions, acceptProblems: acceptProblems);
+      } on StudioException catch (e) {
+        if (e.code != 'open_problems' || acceptProblems) rethrow;
+        needsConfirm = e.message;
+      }
+    });
+    if (!mounted) return;
+    if (needsConfirm != null) {
+      final yes = await _confirm('Approve anyway?',
+          '$needsConfirm\n\nThe problems stay on record. Later chapters are written from the approved memory.');
+      if (yes == true) await _approve(withSuggestions, acceptProblems: true);
+      return;
+    }
+    final res = r;
+    if (res == null) return;
+    final skipped = (res['skipped'] as List?) ?? const [];
+    showStudioInfo(
+        context,
+        'Chapter ${widget.number} approved'
+        '${withSuggestions ? ' with ${res['approved_suggestions']} suggestions' : ''}'
+        '${skipped.isNotEmpty ? '. ${skipped.length} skipped: they contradict facts you locked.' : '.'}');
+  }
+
+  Future<bool?> _confirm(String title, String body) => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes')),
+          ],
+        ),
+      );
+
+  Future<void> _settle(Map<String, dynamic> p, String action) async {
+    final id = '${p['id']}';
+    if (action == 'intended') {
+      // Ask first, then save (no progress bar behind the dialog).
+      final j = Map<String, dynamic>.from((p['judgement'] as Map?) ?? const {});
+      final got = await showDialog<(String, bool)>(
+          context: context,
+          builder: (_) => _IntendedDialog(initial: '${j['verdict']}' == 'intended' ? '${j['why'] ?? ''}' : ''));
+      if (got == null || !mounted) return;
+      final (reason, untilEnd) = got;
+      return _do(() => widget.api
+          .decideProblem(widget.storyId, widget.number, _version, id, action, reason: reason, untilEnd: untilEnd));
+    }
+    var unlock = false;
+    while (mounted) {
+      try {
+        await _do(() async {
+          try {
+            await widget.api.decideProblem(widget.storyId, widget.number, _version, id, action, unlock: unlock);
+          } on StudioException catch (e) {
+            if (e.code == 'confirm_unlock' && !unlock) throw _NeedsUnlock(e.message);
+            rethrow;
+          }
+        });
+        return;
+      } on _NeedsUnlock catch (e) {
         if (!mounted) return;
-        final skipped = (r['skipped'] as List?) ?? const [];
-        showStudioInfo(
-            context,
-            'Chapter ${widget.number} approved'
-            '${withSuggestions ? ' with ${r['approved_suggestions']} suggestions' : ''}'
-            '${skipped.isNotEmpty ? '. ${skipped.length} skipped: they contradict facts you locked.' : '.'}');
-      });
+        final yes = await _confirm('Replace a locked fact?',
+            '${e.message}\n\nThe memory will follow this chapter from now on. Earlier chapters are not changed.');
+        if (yes != true) return;
+        unlock = true;
+      }
+    }
+  }
+
+  Widget _problem(Map<String, dynamic> p, bool approved) {
+    final j = Map<String, dynamic>.from((p['judgement'] as Map?) ?? const {});
+    final res = Map<String, dynamic>.from((p['resolution'] as Map?) ?? const {});
+    final actions = ((p['actions'] as List?) ?? const []).map((a) => '$a').toList();
+    const small = TextStyle(fontSize: 12, color: AppColors.textSecondary);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: AppTheme.card(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${p['reason']}', style: const TextStyle(fontSize: 13, color: AppColors.danger)),
+        if ('${p['quote'] ?? ''}'.isNotEmpty) Text('This chapter: “${p['quote']}”', style: small),
+        if ('${p['memory_statement'] ?? ''}'.isNotEmpty)
+          Text('The memory: ${p['memory_statement']}${p['memory_locked'] == true ? ' (locked by you)' : ''}',
+              style: small),
+        if (j.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(verdictLabel('${j['verdict']}'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          if ('${j['why'] ?? ''}'.isNotEmpty) Text('${j['why']}', style: small),
+          if ('${j['quote'] ?? ''}'.isNotEmpty) Text('“${j['quote']}”', style: small),
+        ],
+        const SizedBox(height: 6),
+        if (res.isNotEmpty)
+          Text('✓ ${resolutionLabel('${res['action']}')}',
+              style: const TextStyle(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w600))
+        else if (!approved)
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            if (actions.contains('fix_chapter'))
+              OutlinedButton(
+                  onPressed: _busy ? null : () => _settle(p, 'fix_chapter'), child: const Text('Fix the chapter')),
+            if (actions.contains('chapter_right'))
+              OutlinedButton(
+                  onPressed: _busy ? null : () => _settle(p, 'chapter_right'),
+                  child: const Text('The chapter is right')),
+            if (actions.contains('intended'))
+              OutlinedButton(
+                  onPressed: _busy ? null : () => _settle(p, 'intended'), child: const Text("It's intentional")),
+          ]),
+      ]),
+    );
+  }
 
   Future<void> _decide(String kind, String id, bool keep) => _do(() => widget.api.decide(
       widget.storyId,
@@ -256,9 +388,8 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
 
   List<Widget> _body(Map<String, dynamic> d) {
     final c = Map<String, dynamic>.from(d['chapter'] as Map);
-    final ex = Map<String, dynamic>.from((c['extraction'] as Map?) ?? const {});
     final s = Map<String, dynamic>.from((d['suggestions'] as Map?) ?? const {});
-    final issues = (ex['issues'] as List?) ?? const [];
+    final problems = ((d['problems'] as List?) ?? const []).map((x) => Map<String, dynamic>.from(x as Map)).toList();
     final approved = c['status'] == 'approved';
     const head = TextStyle(fontWeight: FontWeight.w700, fontSize: 14);
     return [
@@ -268,14 +399,12 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
           style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
       const SizedBox(height: 12),
       ..._review(Map<String, dynamic>.from((c['review_report'] as Map?) ?? const {})),
-      if (issues.isNotEmpty) ...[
+      if (problems.isNotEmpty) ...[
         const Text('Continuity problems', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.danger)),
-        for (final i in issues.map((x) => Map<String, dynamic>.from(x as Map)))
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('• ${i['reason']}${'${i['quote'] ?? ''}'.isNotEmpty ? '  “${i['quote']}”' : ''}',
-                style: const TextStyle(fontSize: 13, color: AppColors.danger)),
-          ),
+        if (!approved)
+          const Text('Decide each one. VIYO gives its opinion, but you decide.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        for (final p in problems) _problem(p, approved),
         const SizedBox(height: 12),
       ],
       SelectableText('${c['text']}', style: const TextStyle(fontSize: 15, height: 1.6)),
@@ -429,4 +558,50 @@ class _NovelChapterScreenState extends State<NovelChapterScreen> {
       ]),
     );
   }
+}
+
+/// The server asked the creator to confirm replacing a fact they locked.
+class _NeedsUnlock implements Exception {
+  final String message;
+  _NeedsUnlock(this.message);
+}
+
+/// Asks why a continuity problem is deliberate, and whether that holds for the rest of the story.
+class _IntendedDialog extends StatefulWidget {
+  final String initial;
+  const _IntendedDialog({required this.initial});
+  @override
+  State<_IntendedDialog> createState() => _IntendedDialogState();
+}
+
+class _IntendedDialogState extends State<_IntendedDialog> {
+  late final _why = TextEditingController(text: widget.initial);
+  bool _untilEnd = false;
+
+  @override
+  void dispose() {
+    _why.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text("It's intentional"),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+              controller: _why,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Why? (e.g. her ghost visits Amani)')),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _untilEnd,
+            onChanged: (v) => setState(() => _untilEnd = v ?? false),
+            title: const Text('Also for the rest of the story', style: TextStyle(fontSize: 13)),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, (_why.text.trim(), _untilEnd)), child: const Text('Save')),
+        ],
+      );
 }
