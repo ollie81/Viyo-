@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:viyo/screens/studio/episode_plan_screen.dart';
 import 'package:viyo/screens/studio/novel_chapters.dart';
 import 'package:viyo/screens/studio/story_bible_screen.dart';
 import 'package:viyo/services/creator_studio_service.dart';
@@ -187,6 +188,60 @@ class FakeChaptersApi extends ChaptersApi {
         ],
         'memory_problems': [],
       };
+
+  List<Map<String, dynamic>> plan = [];
+  List<String> planProblems = [];
+  List<Map<String, dynamic>> created = [];
+
+  Map<String, dynamic> _plan() => {
+        'plan': plan,
+        'problems': planProblems,
+        'version': plan.isEmpty ? 0 : 1,
+        'seconds': 90,
+        'episodes_wanted': 0,
+        'chapters': 12,
+        'created': created,
+        'price': 3,
+      };
+
+  @override
+  Future<Map<String, dynamic>> episodes(String storyId) async => _plan();
+
+  @override
+  Future<Map<String, dynamic>> planEpisodes(String storyId, int episodes, int seconds, String note) async {
+    calls.add('plan:$episodes:$seconds');
+    plan = [
+      for (var i = 1; i <= episodes; i++)
+        {
+          'number': i,
+          'title': 'Part $i',
+          'chapter_from': i,
+          'chapter_to': i,
+          'summary': 'Episode $i happens.',
+          'beats': ['a', 'b'],
+          'hook': 'A shock.',
+          'turn': 'A turn.',
+          'cliffhanger': 'A door opens.'
+        }
+    ];
+    return _plan();
+  }
+
+  @override
+  Future<Map<String, dynamic>> editEpisodePlan(String storyId, List<Map<String, dynamic>> episodes) async {
+    calls.add('edit:${episodes.first['title']}');
+    plan = episodes;
+    return _plan();
+  }
+
+  @override
+  Future<Map<String, dynamic>> approveEpisodePlan(String storyId, int version) async {
+    calls.add('approve-plan:$version');
+    created = [
+      for (final e in plan) {'number': e['number'], 'project_id': 'p${e['number']}', 'title': 'The Dress · Episode ${e['number']}'}
+    ];
+    return _plan();
+  }
 
   @override
   Future<Map<String, dynamic>> syncBible(String storyId) async {
@@ -389,5 +444,59 @@ void main() {
     await t.tap(find.text('Update the production from the memory'));
     await t.pumpAndSettle();
     expect(api.calls.last, 'sync');
+  });
+
+  testWidgets('the creator plans the episodes, edits one and creates them', (t) async {
+    tall(t);
+    final api = FakeChaptersApi();
+    await t.pumpWidget(MaterialApp(home: EpisodePlanScreen(storyId: 's1', api: api)));
+    await t.pumpAndSettle();
+    expect(find.text('Plan the episodes · up to 3 credits'), findsOneWidget);
+    await t.enterText(find.widgetWithText(TextField, 'Number of episodes'), '3');
+    await t.tap(find.text('Plan the episodes · up to 3 credits'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'plan:3:90');
+    expect(find.text('1. Part 1'), findsOneWidget);
+    expect(find.text('Ends: A door opens.'), findsNWidgets(3));
+    await t.tap(find.byTooltip('Edit').first);
+    await t.pumpAndSettle();
+    await t.enterText(find.widgetWithText(TextField, 'Title'), 'The Hem');
+    await t.tap(find.text('Save'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'edit:The Hem');
+    expect(find.text('1. The Hem'), findsOneWidget);
+    await t.tap(find.text('Approve and create 3 episodes'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Create'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'approve-plan:1');
+    expect(find.text('3 episodes created'), findsOneWidget);
+    expect(find.text('The Dress · Episode 2'), findsOneWidget);
+    await t.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a plan with problems cannot be approved', (t) async {
+    tall(t);
+    final api = FakeChaptersApi()
+      ..plan = [
+        {'number': 1, 'title': 'Part 1', 'chapter_from': 1, 'chapter_to': 1, 'summary': 's', 'beats': ['a'],
+         'hook': '', 'cliffhanger': 'x'}
+      ]
+      ..planProblems = ['Episode 1 has no opening hook.'];
+    await t.pumpWidget(MaterialApp(home: EpisodePlanScreen(storyId: 's1', api: api)));
+    await t.pumpAndSettle();
+    expect(find.text('• Episode 1 has no opening hook.'), findsOneWidget);
+    final button = t.widget<FilledButton>(find.ancestor(
+        of: find.text('Approve and create 1 episodes'), matching: find.byWidgetPredicate((w) => w is FilledButton)));
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('an approved novel offers to become episodes', (t) async {
+    final api = FakeChaptersApi()
+      ..allApproved = true
+      ..stage = 'novel_approved';
+    await t.pumpWidget(_wrap(NovelChaptersSection(storyId: 's1', api: api)));
+    await t.pumpAndSettle();
+    expect(find.text('Turn it into episodes'), findsOneWidget);
   });
 }

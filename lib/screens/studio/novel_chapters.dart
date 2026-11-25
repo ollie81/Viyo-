@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
+import 'episode_plan_screen.dart';
 import 'story_bible_screen.dart';
 import 'studio_widgets.dart';
 
@@ -49,6 +50,13 @@ class ChaptersApi {
   Future<Map<String, dynamic>> approveNovel(String storyId, int chapters, {bool acceptProblems = false}) =>
       CreatorStudioService.approveNovel(storyId, chapters, acceptProblems: acceptProblems);
   Future<Map<String, dynamic>> bible(String storyId) => CreatorStudioService.storyBible(storyId);
+  Future<Map<String, dynamic>> episodes(String storyId) => CreatorStudioService.episodePlan(storyId);
+  Future<Map<String, dynamic>> planEpisodes(String storyId, int episodes, int seconds, String note) =>
+      CreatorStudioService.planEpisodes(storyId, episodes, seconds, note);
+  Future<Map<String, dynamic>> editEpisodePlan(String storyId, List<Map<String, dynamic>> episodes) =>
+      CreatorStudioService.editEpisodePlan(storyId, episodes);
+  Future<Map<String, dynamic>> approveEpisodePlan(String storyId, int version) =>
+      CreatorStudioService.approveEpisodePlan(storyId, version);
   Future<Map<String, dynamic>> syncBible(String storyId) => CreatorStudioService.syncStoryBible(storyId);
   Future<Map<String, dynamic>> decide(
           String storyId, Map<String, List<String>> approve, Map<String, List<String>> reject) =>
@@ -217,10 +225,24 @@ class _NovelChaptersSectionState extends State<NovelChaptersSection> {
           ),
         ),
       if (d['stage'] == 'novel_approved')
-        const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text('The novel is approved. Its Story Bible is the production\'s story.',
-              style: TextStyle(color: AppColors.success)),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('The novel is approved. Its Story Bible is the production\'s story.',
+                style: TextStyle(color: AppColors.success)),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      await Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => EpisodePlanScreen(storyId: widget.storyId, api: widget.api)));
+                      await _load();
+                    },
+              icon: const Icon(Icons.movie_filter_outlined, size: 18),
+              label: const Text('Turn it into episodes'),
+            ),
+          ]),
         )
       else if (next == null && chapters.isNotEmpty && chapters.every((c) => c['status'] == 'approved'))
         Padding(
