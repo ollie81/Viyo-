@@ -2,23 +2,18 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/coin_purchase_service.dart';
 import '../../services/nardopay_service.dart';
-import '../../services/profile_service.dart';
 import '../../services/rewarded_ad_service.dart';
-import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/viyo_toast.dart';
 import '../mission_screen.dart';
 
-enum _PaymentProvider { stripe, paystack, flutterwave, lemonsqueezy, nardopay }
-
-/// Real-money coin purchases. Coins are only ever credited by the
-/// backend once the payment provider confirms the charge — this screen
-/// never marks a purchase as fulfilled itself.
+/// Real-money coin purchases, on the web through NardoPay (mobile money or card) only. Coins are only ever credited
+/// by the backend once NardoPay's signed confirmation arrives; this screen never marks a purchase as fulfilled itself.
+/// While NardoPay checkout is off, the packages are shown with a short "opening soon" note and no Buy button works.
 ///
 /// Android is a special case: Google Play policy requires any digital
 /// good consumed inside an app distributed through Google Play to be
@@ -37,19 +32,12 @@ class BuyCoinsScreen extends StatefulWidget {
   State<BuyCoinsScreen> createState() => _BuyCoinsScreenState();
 }
 
-class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObserver {
+class _BuyCoinsScreenState extends State<BuyCoinsScreen> {
   List<CoinPackage> _packages = [];
   bool _loading = true;
   String? _loadError;
   String? _purchasingPackageId;
   String? _toast;
-
-  // Set while waiting for the user to come back from a Paystack/
-  // Flutterwave checkout opened in the system browser — there's no
-  // callback into the app from a plain external browser tab, so app
-  // resume (didChangeAppLifecycleState) is the signal to start
-  // polling the balance, same as Stripe's payment sheet closing does.
-  int? _hostedCheckoutExpectedCoins;
 
   bool _watchingAd = false;
 
@@ -62,31 +50,12 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     // No purchase UI on Android (see module comment) — nothing to load.
     if (_isAndroidNative) {
       _loading = false;
     } else {
       _load();
     }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    final expected = _hostedCheckoutExpectedCoins;
-    if (expected == null) return;
-    _hostedCheckoutExpectedCoins = null;
-    final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
-    _showToast('Checking for your coins…');
-    _waitForCredit(userId, expected);
   }
 
   Future<void> _load() async {
@@ -122,153 +91,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
 
   static bool get _isAndroidNative => !kIsWeb && Platform.isAndroid;
 
-  Future<void> _buy(CoinPackage package) async {
-    if (_purchasingPackageId != null) return;
-
-    final provider = await _pickProvider();
-    if (provider == null) return;
-
-    switch (provider) {
-      case _PaymentProvider.stripe:
-        await _buyWithStripe(package);
-        break;
-      case _PaymentProvider.paystack:
-        await _buyWithHostedCheckout(package, provider: 'paystack');
-        break;
-      case _PaymentProvider.flutterwave:
-        await _buyWithHostedCheckout(package, provider: 'flutterwave');
-        break;
-      case _PaymentProvider.lemonsqueezy:
-        await _buyWithHostedCheckout(package, provider: 'lemonsqueezy');
-        break;
-      case _PaymentProvider.nardopay:
-        await _buyWithNardopay(package);
-        break;
-    }
-  }
-
-  Future<_PaymentProvider?> _pickProvider() {
-    return showModalBottomSheet<_PaymentProvider>(
-      context: context,
-      backgroundColor: AppColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Pay with', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 12),
-              _ProviderTile(
-                label: 'Card (Stripe)',
-                icon: Icons.credit_card,
-                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.stripe),
-              ),
-              _ProviderTile(
-                label: 'Paystack',
-                icon: Icons.account_balance_wallet_outlined,
-                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.paystack),
-              ),
-              _ProviderTile(
-                label: 'Flutterwave',
-                icon: Icons.payments_outlined,
-                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.flutterwave),
-              ),
-              _ProviderTile(
-                label: 'Lemon Squeezy',
-                icon: Icons.storefront_outlined,
-                onTap: () => Navigator.of(ctx).pop(_PaymentProvider.lemonsqueezy),
-              ),
-              if (kIsWeb && _nardopayAvailable)
-                _ProviderTile(
-                  label: 'Mobile money or card (NardoPay)',
-                  icon: Icons.phone_android_outlined,
-                  onTap: () => Navigator.of(ctx).pop(_PaymentProvider.nardopay),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _buyWithStripe(CoinPackage package) async {
-    final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
-
-    setState(() => _purchasingPackageId = package.id);
-    try {
-      final intent = await CoinPurchaseService.createIntent(package.id);
-
-      Stripe.publishableKey = intent.publishableKey;
-      await Stripe.instance.applySettings();
-
-      await Stripe.instance.initPaymentSheet(
-        paymentSheetParameters: SetupPaymentSheetParameters(
-          paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: 'Viyo',
-        ),
-      );
-      await Stripe.instance.presentPaymentSheet();
-
-      // Stripe has confirmed the charge — the backend webhook credits
-      // the balance asynchronously, usually within a second or two.
-      _showToast('Payment successful! Adding your coins…');
-      await _waitForCredit(userId, package.coins);
-    } on StripeException catch (e) {
-      final code = e.error.code;
-      if (code != FailureCode.Canceled) {
-        _showToast(e.error.localizedMessage ?? 'Payment failed. Please try again.');
-      }
-    } catch (e) {
-      _showToast('Purchase failed: $e');
-    } finally {
-      if (mounted) setState(() => _purchasingPackageId = null);
-    }
-  }
-
-  /// Paystack, Flutterwave and Lemon Squeezy all check out on a hosted
-  /// page rather than an in-app sheet — this opens it in the system
-  /// browser and relies on app-resume (didChangeAppLifecycleState
-  /// above) to know when to start polling for the credit, since
-  /// there's no direct callback from an external browser tab back into
-  /// the app.
-  Future<void> _buyWithHostedCheckout(CoinPackage package, {required String provider}) async {
-    setState(() => _purchasingPackageId = package.id);
-    try {
-      final HostedCheckout checkout;
-      switch (provider) {
-        case 'paystack':
-          checkout = await CoinPurchaseService.initializePaystack(package.id);
-          break;
-        case 'flutterwave':
-          checkout = await CoinPurchaseService.initializeFlutterwave(package.id);
-          break;
-        default:
-          checkout = await CoinPurchaseService.initializeLemonSqueezy(package.id);
-      }
-
-      final opened = await launchUrl(
-        Uri.parse(checkout.url),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened) {
-        _showToast('Could not open the checkout page.');
-        return;
-      }
-      _hostedCheckoutExpectedCoins = checkout.coins;
-      _showToast('Complete your payment in the browser, then come back here.');
-    } catch (e) {
-      _showToast('Purchase failed: $e');
-    } finally {
-      if (mounted) setState(() => _purchasingPackageId = null);
-    }
-  }
+  bool get _canBuy => kIsWeb && _nardopayAvailable;
 
   /// NardoPay (web only): the server creates and prices the order, NardoPay's page opens in a new tab, and this
   /// screen checks the order until the server has credited it. Nothing here marks a purchase paid.
@@ -330,25 +153,6 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     }
   }
 
-  Future<void> _waitForCredit(String userId, int expectedCoins) async {
-    final before = (await ProfileService.getProfile(userId)).pointsBalance;
-    for (var i = 0; i < 6; i++) {
-      await Future.delayed(const Duration(seconds: 2));
-      final profile = await ProfileService.getProfile(userId);
-      if (profile.pointsBalance >= before + expectedCoins) {
-        if (mounted) {
-          _showToast('+$expectedCoins coins added! 🪙');
-          Navigator.of(context).pop(true);
-        }
-        return;
-      }
-    }
-    if (mounted) {
-      _showToast("Payment received — coins will appear shortly if they haven't already.");
-      Navigator.of(context).pop(true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -388,15 +192,21 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
                               style: TextStyle(color: AppColors.textSecondary),
                             ),
                             const SizedBox(height: 16),
+                            if (!_canBuy) ...[
+                              const _OpeningSoonNote(),
+                              const SizedBox(height: 16),
+                            ],
                             ..._packages.map((p) => Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: _PackageCard(
                                     package: p,
                                     purchasing: _purchasingPackageId == p.id,
-                                    disabled: _purchasingPackageId != null,
-                                    onTap: () => _buy(p),
+                                    available: _canBuy,
+                                    disabled: _purchasingPackageId != null || _waitingForNardopay,
+                                    onTap: () => _buyWithNardopay(p),
                                   ),
                                 )),
+                            if (_canBuy) const _CheckoutNote(),
                           ],
                         ),
           if (_toast != null) ViyoToast(message: _toast!),
@@ -476,12 +286,14 @@ class _AndroidNoPurchaseView extends StatelessWidget {
 class _PackageCard extends StatelessWidget {
   final CoinPackage package;
   final bool purchasing;
+  final bool available;
   final bool disabled;
   final VoidCallback onTap;
 
   const _PackageCard({
     required this.package,
     required this.purchasing,
+    required this.available,
     required this.disabled,
     required this.onTap,
   });
@@ -490,7 +302,7 @@ class _PackageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: disabled ? null : onTap,
+      onTap: disabled || !available ? null : onTap,
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: AppTheme.glowCard(glowColor: AppColors.coin, glowOpacity: 0.14),
@@ -526,15 +338,20 @@ class _PackageCard extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.coin),
                       ),
                     )
-                  : ElevatedButton(
-                      onPressed: disabled ? null : onTap,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.coin,
-                        foregroundColor: AppColors.background,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      child: const Text('Buy', style: TextStyle(fontSize: 13)),
-                    ),
+                  : available
+                      ? ElevatedButton(
+                          onPressed: disabled ? null : onTap,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.coin,
+                            foregroundColor: AppColors.background,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          child: const Text('Buy', style: TextStyle(fontSize: 13)),
+                        )
+                      : const Center(
+                          child: Text('Soon',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ),
             ),
           ],
         ),
@@ -543,28 +360,54 @@ class _PackageCard extends StatelessWidget {
   }
 }
 
-class _ProviderTile extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  const _ProviderTile({required this.label, required this.icon, required this.onTap});
+/// Under the packages while checkout is open: how the buyer pays.
+class _CheckoutNote extends StatelessWidget {
+  const _CheckoutNote();
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.coin, size: 22),
-            const SizedBox(width: 14),
-            Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-            const Spacer(),
-            const Icon(Icons.chevron_right, color: AppColors.textMuted),
-          ],
-        ),
+    return const Padding(
+      padding: EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline, size: 14, color: AppColors.textMuted),
+          SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              'Pay with mobile money or card. Secure checkout by NardoPay.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Above the packages while checkout is off.
+class _OpeningSoonNote extends StatelessWidget {
+  const _OpeningSoonNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppTheme.card(),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.schedule_rounded, size: 18, color: AppColors.coin),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Buying coins opens soon, with mobile money or card. Until then, earn free coins with daily '
+              'check-ins and missions.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+            ),
+          ),
+        ],
       ),
     );
   }

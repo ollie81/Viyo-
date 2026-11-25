@@ -30,6 +30,7 @@ import '../widgets/insufficient_coins_sheet.dart';
 import '../widgets/retryable_network_image.dart';
 import '../widgets/up_next_overlay.dart';
 import 'profile/profile_screen.dart';
+import '../services/subscription_service.dart';
 import 'wallet/subscribe_screen.dart';
 import '../services/share_links.dart';
 
@@ -1273,7 +1274,8 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ],
               // Premium can't be bought in the Android app (Google Play), so it isn't offered there.
-              if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) ...[
+              if (kPremiumOnSale &&
+                  (kIsWeb || defaultTargetPlatform != TargetPlatform.android)) ...[
                 const SizedBox(height: 10),
                 TextButton(
                   onPressed: () => Navigator.of(context).push(

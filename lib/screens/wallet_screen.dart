@@ -13,6 +13,7 @@ import '../theme/app_theme.dart';
 import '../utils/coin_format.dart';
 import '../widgets/viyo_toast.dart';
 import 'wallet/buy_coins_screen.dart';
+import '../services/subscription_service.dart';
 import 'wallet/subscribe_screen.dart';
 import 'wallet/payout_settings_screen.dart';
 
@@ -220,7 +221,7 @@ class _WalletScreenState extends State<WalletScreen> {
                               ),
                             ],
                             // Premium can't be bought in the Android app (Google Play), so it isn't offered there.
-                            if (!_isAndroidApp) ...[
+                            if (kPremiumOnSale && !_isAndroidApp) ...[
                               const SizedBox(height: 10),
                               SizedBox(
                                 width: double.infinity,

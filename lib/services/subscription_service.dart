@@ -79,3 +79,7 @@ class SubscriptionService {
     return SubscriptionStatus.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 }
+
+/// Whether Viyo Premium can be bought. Off: there's no subscription checkout set up (Premium was built for Lemon
+/// Squeezy, which VIYO doesn't use), so no screen offers it. Turn on once a provider is connected.
+const bool kPremiumOnSale = false;
