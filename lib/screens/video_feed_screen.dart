@@ -12,6 +12,7 @@ import '../models/insufficient_coins_exception.dart';
 import '../models/post.dart';
 import '../models/series.dart';
 import '../services/bunny_stream_service.dart';
+import '../services/checkout_options_service.dart';
 import '../services/interstitial_ad_service.dart';
 import '../services/post_service.dart';
 import '../services/rewarded_ad_service.dart';
@@ -1272,8 +1273,10 @@ class _VideoPageState extends State<_VideoPage> {
                   label: const Text('Watch 2 ads to unlock', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ],
-              // Premium can't be bought in the Android app (Google Play), so it isn't offered there.
-              if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) ...[
+              // Premium can't be bought in the Android app (Google Play), so it isn't offered there; elsewhere only
+              // when the server says a plan can genuinely be bought (no dead-end link from a locked episode).
+              if ((kIsWeb || defaultTargetPlatform != TargetPlatform.android) &&
+                  CheckoutOptionsService.last?.premiumOnSale == true) ...[
                 const SizedBox(height: 10),
                 TextButton(
                   onPressed: () => Navigator.of(context).push(
