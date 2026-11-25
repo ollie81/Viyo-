@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viyo/screens/studio/novel_chapters.dart';
+import 'package:viyo/screens/studio/story_bible_screen.dart';
 import 'package:viyo/services/creator_studio_service.dart';
 
 /// A fake server for the chapter screens: chapter 1 approved, chapter 2 waiting for review, chapter 3 next.
@@ -11,7 +12,18 @@ class FakeChaptersApi extends ChaptersApi {
   bool approved2 = false;
 
   @override
-  Future<Map<String, dynamic>> list(String storyId) async => {
+  Future<Map<String, dynamic>> list(String storyId) async => allApproved
+      ? {
+          'chapters': [
+            {'number': 1, 'title': 'The Hem', 'status': 'approved', 'words': 3100, 'issues': 0},
+            {'number': 2, 'title': 'The Watch', 'status': 'approved', 'words': 2900, 'issues': 0},
+          ],
+          'next': null,
+          'writing': null,
+          'price': 11,
+          'stage': stage,
+        }
+      : {
         'chapters': [
           {'number': 1, 'title': 'The Hem', 'status': 'approved', 'words': 3100, 'issues': 0},
           {'number': 2, 'title': 'The Watch', 'status': approved2 ? 'approved' : 'draft', 'words': 2900, 'issues': 1},
@@ -115,6 +127,71 @@ class FakeChaptersApi extends ChaptersApi {
         {'statement': 'Amani is 19.', 'reason': 'creator-locked'}
       ]
     };
+  }
+
+  bool allApproved = false;
+  String stage = 'outline_approved';
+  bool memoryProblems = false;
+
+  @override
+  Future<Map<String, dynamic>> approveNovel(String storyId, int chapters, {bool acceptProblems = false}) async {
+    calls.add('novel:$chapters${acceptProblems ? ':accept' : ''}');
+    if (memoryProblems && !acceptProblems) {
+      throw StudioException('The story memory has 1 inconsistency(ies).', 409)..code = 'memory_problems';
+    }
+    stage = 'novel_approved';
+    return {'bible': {'characters_created': 3, 'elements_created': 2}};
+  }
+
+  @override
+  Future<Map<String, dynamic>> bible(String storyId) async => {
+        'approved': stage == 'novel_approved',
+        'characters': [
+          {
+            'id': 'c1',
+            'name': 'Amani Uwase',
+            'status': 'alive',
+            'where': 'the tailor shop',
+            'age': '25',
+            'wants': "clear her mother's name",
+            'has_locked_facts': true,
+            'cast_id': 'x',
+            'relationships': [
+              {'with': 'Mama Grace', 'kind': 'family', 'what': 'like a daughter'}
+            ],
+          },
+          {'id': 'c2', 'name': 'Mama Grace', 'status': 'dead', 'relationships': []},
+        ],
+        'secrets': [
+          {
+            'id': 's1',
+            'name': 'Who wrote the letter',
+            'known_by': [
+              {'who': 'Mama Grace', 'since_chapter': 0},
+              {'who': 'Amani Uwase', 'since_chapter': 9}
+            ]
+          }
+        ],
+        'places': [
+          {'id': 'p1', 'name': 'the tailor shop', 'description': 'a narrow shop'}
+        ],
+        'objects': [
+          {'id': 'o1', 'name': 'the letter', 'description': 'yellowed paper', 'where': 'the tailor shop'}
+        ],
+        'threads': [
+          {'id': 't1', 'kind': 'foreshadowing', 'description': 'The gold watch stops', 'state': 'resolved',
+           'planted_chapter': 2, 'resolved_chapter': 11}
+        ],
+        'timeline': [
+          {'chapter': 1, 'summary': 'Amani finds the letter.', 'story_time': ''}
+        ],
+        'memory_problems': [],
+      };
+
+  @override
+  Future<Map<String, dynamic>> syncBible(String storyId) async {
+    calls.add('sync');
+    return {'bible': {'characters_created': 0}};
   }
 
   @override
@@ -264,5 +341,53 @@ void main() {
     await t.tap(find.text('Yes'));
     await t.pumpAndSettle();
     expect(api.calls.last, 'approve:2:2:false:accept');
+  });
+
+  testWidgets('when every chapter is approved, the creator approves the novel', (t) async {
+    final api = FakeChaptersApi()..allApproved = true;
+    await t.pumpWidget(_wrap(NovelChaptersSection(storyId: 's1', api: api)));
+    await t.pumpAndSettle();
+    expect(find.text('Every chapter is written and approved.'), findsOneWidget);
+    await t.tap(find.text('Approve the novel'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Approve'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'novel:2');
+    expect(find.textContaining('The novel is approved'), findsOneWidget);
+    expect(find.text('Approve the novel'), findsNothing);
+  });
+
+  testWidgets('memory inconsistencies ask before approving the novel anyway', (t) async {
+    final api = FakeChaptersApi()
+      ..allApproved = true
+      ..memoryProblems = true;
+    await t.pumpWidget(_wrap(NovelChaptersSection(storyId: 's1', api: api)));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Approve the novel'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Approve'));
+    await t.pumpAndSettle();
+    expect(find.text('Approve anyway?'), findsOneWidget);
+    await t.tap(find.text('Approve anyway'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'novel:2:accept');
+  });
+
+  testWidgets('the Story Bible shows characters, secrets, objects, threads and the timeline', (t) async {
+    tall(t);
+    final api = FakeChaptersApi()..stage = 'novel_approved';
+    await t.pumpWidget(MaterialApp(home: StoryBibleScreen(storyId: 's1', api: api)));
+    await t.pumpAndSettle();
+    expect(find.text('Amani Uwase'), findsOneWidget);
+    expect(find.text('Age: 25'), findsOneWidget);
+    expect(find.text('Mama Grace — family: like a daughter'), findsOneWidget);
+    expect(find.text('dead'), findsOneWidget);
+    expect(find.text('Known by Mama Grace (from the start), Amani Uwase (from chapter 9)'), findsOneWidget);
+    expect(find.text('yellowed paper · Now at the tailor shop'), findsOneWidget);
+    expect(find.text('foreshadowing · planted in chapter 2, paid off in chapter 11'), findsOneWidget);
+    expect(find.text('Amani finds the letter.'), findsOneWidget);
+    await t.tap(find.text('Update the production from the memory'));
+    await t.pumpAndSettle();
+    expect(api.calls.last, 'sync');
   });
 }

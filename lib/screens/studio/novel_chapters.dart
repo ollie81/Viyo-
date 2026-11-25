@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
+import 'story_bible_screen.dart';
 import 'studio_widgets.dart';
 
 /// VIYO's opinion of a continuity problem, in plain words (it never decides).
@@ -45,6 +46,10 @@ class ChaptersApi {
           {String reason = '', bool untilEnd = false, bool unlock = false}) =>
       CreatorStudioService.decideProblem(storyId, n, version, problemId, action,
           reason: reason, untilEnd: untilEnd, unlock: unlock);
+  Future<Map<String, dynamic>> approveNovel(String storyId, int chapters, {bool acceptProblems = false}) =>
+      CreatorStudioService.approveNovel(storyId, chapters, acceptProblems: acceptProblems);
+  Future<Map<String, dynamic>> bible(String storyId) => CreatorStudioService.storyBible(storyId);
+  Future<Map<String, dynamic>> syncBible(String storyId) => CreatorStudioService.syncStoryBible(storyId);
   Future<Map<String, dynamic>> decide(
           String storyId, Map<String, List<String>> approve, Map<String, List<String>> reject) =>
       CreatorStudioService.decideMemory(storyId, approve, reject);
@@ -107,6 +112,65 @@ class _NovelChaptersSectionState extends State<NovelChaptersSection> {
     }
   }
 
+  Future<void> _openBible() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => StoryBibleScreen(storyId: widget.storyId, api: widget.api)));
+    await _load();
+  }
+
+  Future<void> _approveNovel(int chapters, {bool acceptProblems = false}) async {
+    if (!acceptProblems) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Approve the whole novel?'),
+          content: const Text('Its story memory becomes the production\'s Story Bible, and its characters, places and '
+              'objects join the production. This is free. Chapters can\'t be rewritten after this.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Approve')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    setState(() => _busy = true);
+    String? problems;
+    try {
+      final r = await widget.api.approveNovel(widget.storyId, chapters, acceptProblems: acceptProblems);
+      final b = Map<String, dynamic>.from((r['bible'] as Map?) ?? const {});
+      if (mounted) {
+        showStudioInfo(
+            context,
+            'Novel approved. ${b['characters_created'] ?? 0} characters and ${b['elements_created'] ?? 0} places '
+            'and objects were added to the production.');
+      }
+      await _load();
+    } on StudioException catch (e) {
+      if (e.code == 'memory_problems') {
+        problems = e.message;
+      } else if (mounted) {
+        showStudioError(context, e.message);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (problems != null && mounted) {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Approve anyway?'),
+          content: Text('$problems\n\nYou can look at them in the Story Bible first.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Approve anyway')),
+          ],
+        ),
+      );
+      if (yes == true) await _approveNovel(chapters, acceptProblems: true);
+    }
+  }
+
   Future<void> _open(int n) async {
     await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => NovelChapterScreen(storyId: widget.storyId, number: n, api: widget.api)));
@@ -152,10 +216,33 @@ class _NovelChaptersSectionState extends State<NovelChaptersSection> {
             label: Text('Write chapter $next · up to ${creditsLabel(price)}'),
           ),
         ),
-      if (next == null && chapters.isNotEmpty && chapters.every((c) => c['status'] == 'approved'))
+      if (d['stage'] == 'novel_approved')
         const Padding(
           padding: EdgeInsets.only(top: 8),
-          child: Text('Every chapter is written and approved.', style: TextStyle(color: AppColors.success)),
+          child: Text('The novel is approved. Its Story Bible is the production\'s story.',
+              style: TextStyle(color: AppColors.success)),
+        )
+      else if (next == null && chapters.isNotEmpty && chapters.every((c) => c['status'] == 'approved'))
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Every chapter is written and approved.', style: TextStyle(color: AppColors.success)),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: _busy ? null : () => _approveNovel(chapters.length),
+              icon: const Icon(Icons.verified_outlined, size: 18),
+              label: const Text('Approve the novel'),
+            ),
+          ]),
+        ),
+      if (chapters.any((c) => c['status'] == 'approved'))
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: OutlinedButton.icon(
+            onPressed: _busy ? null : _openBible,
+            icon: const Icon(Icons.menu_book_outlined, size: 18),
+            label: const Text('Story Bible'),
+          ),
         ),
     ]);
   }

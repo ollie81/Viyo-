@@ -669,6 +669,17 @@ class CreatorStudioService {
       Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/chapters/$number/approve',
           {'version': version, 'with_suggestions': withSuggestions, 'accept_problems': acceptProblems}) as Map);
 
+  /// Approves the whole novel: its memory becomes the production's Story Bible (free).
+  static Future<Map<String, dynamic>> approveNovel(String storyId, int chapters, {bool acceptProblems = false}) async =>
+      Map<String, dynamic>.from(await _send(
+          'POST', '/stories/$storyId/approve', {'chapters': chapters, 'accept_problems': acceptProblems}) as Map);
+
+  static Future<Map<String, dynamic>> storyBible(String storyId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/stories/$storyId/bible') as Map);
+
+  static Future<Map<String, dynamic>> syncStoryBible(String storyId) async =>
+      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/bible/sync') as Map);
+
   /// The creator settles one continuity problem: fix_chapter, chapter_right or intended.
   static Future<Map<String, dynamic>> decideProblem(String storyId, int number, int version, String problemId,
           String action, {String reason = '', bool untilEnd = false, bool unlock = false}) async =>
