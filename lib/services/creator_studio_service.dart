@@ -606,6 +606,7 @@ class CreatorStudioService {
         'GET' => http.get(uri, headers: h),
         'POST' => http.post(uri, headers: h, body: payload),
         'PATCH' => http.patch(uri, headers: h, body: payload),
+        'PUT' => http.put(uri, headers: h, body: payload),
         'DELETE' => http.delete(uri, headers: h),
         _ => throw ArgumentError(method),
       }
@@ -668,6 +669,22 @@ class CreatorStudioService {
           {bool acceptProblems = false}) async =>
       Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/chapters/$number/approve',
           {'version': version, 'with_suggestions': withSuggestions, 'accept_problems': acceptProblems}) as Map);
+
+  static Future<Map<String, dynamic>> episodePlan(String storyId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/stories/$storyId/episodes') as Map);
+
+  /// Plans the novel's episodes (a paid step).
+  static Future<Map<String, dynamic>> planEpisodes(String storyId, int episodes, int seconds, String note) async =>
+      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/episodes/plan',
+          {'request_id': newRequestId(), 'episodes': episodes, 'seconds': seconds, 'note': note}) as Map);
+
+  static Future<Map<String, dynamic>> editEpisodePlan(String storyId, List<Map<String, dynamic>> episodes) async =>
+      Map<String, dynamic>.from(await _send('PUT', '/stories/$storyId/episodes/plan', {'episodes': episodes}) as Map);
+
+  /// Approves the plan: the episode productions are created (free).
+  static Future<Map<String, dynamic>> approveEpisodePlan(String storyId, int version) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/stories/$storyId/episodes/plan/approve', {'version': version}) as Map);
 
   /// Approves the whole novel: its memory becomes the production's Story Bible (free).
   static Future<Map<String, dynamic>> approveNovel(String storyId, int chapters, {bool acceptProblems = false}) async =>
