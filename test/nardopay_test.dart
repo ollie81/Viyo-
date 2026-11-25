@@ -63,4 +63,12 @@ void main() {
     expect(await f, 'pending');
     expect(api.calls, lessThan(1000));
   });
+
+  test('the buyer sees the price in US dollars', () {
+    final o = NardopayOrder.fromJson(
+        {'order_id': 'o', 'status': 'pending', 'coins': 100, 'rwf_amount': 1396, 'usd_cents': 99});
+    expect(o.usdLabel, r'$0.99');
+    expect(const NardopayOrder(orderId: 'o', status: 'pending', coins: 550, rwfAmount: 7036, usdCents: 499).usdLabel,
+        r'$4.99');
+  });
 }

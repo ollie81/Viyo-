@@ -186,7 +186,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
               ),
               if (kIsWeb && _nardopayAvailable)
                 _ProviderTile(
-                  label: 'Mobile money or card (NardoPay, RWF)',
+                  label: 'Mobile money or card (NardoPay)',
                   icon: Icons.phone_android_outlined,
                   onTap: () => Navigator.of(ctx).pop(_PaymentProvider.nardopay),
                 ),
@@ -291,7 +291,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     }
     if (!mounted) return;
     setState(() => _waitingForNardopay = true);
-    _showToast('Pay ${order.rwfAmount} RWF in the NardoPay tab. Your coins appear here once it\'s confirmed.');
+    _showToast('Pay ${order.usdCents > 0 ? order.usdLabel : 'the amount shown'} in the NardoPay tab. Your coins appear here once it\'s confirmed.');
     final status = await waitForNardopayOrder(_nardopay, order.orderId, cancelled: () => !mounted);
     if (!mounted) return;
     setState(() => _waitingForNardopay = false);

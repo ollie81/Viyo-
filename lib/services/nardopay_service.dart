@@ -12,16 +12,26 @@ class NardopayOrder {
   final String status;
   final int coins;
   final int rwfAmount;
+  final int usdCents;
   final String? paymentLink;
 
   const NardopayOrder(
-      {required this.orderId, required this.status, required this.coins, required this.rwfAmount, this.paymentLink});
+      {required this.orderId,
+      required this.status,
+      required this.coins,
+      required this.rwfAmount,
+      this.usdCents = 0,
+      this.paymentLink});
+
+  /// The price the buyer sees, in US dollars (e.g. "$0.99").
+  String get usdLabel => '\$${(usdCents / 100).toStringAsFixed(2)}';
 
   factory NardopayOrder.fromJson(Map<String, dynamic> j) => NardopayOrder(
         orderId: '${j['order_id']}',
         status: '${j['status']}',
         coins: (j['coins'] as num).toInt(),
         rwfAmount: (j['rwf_amount'] as num).toInt(),
+        usdCents: (j['usd_cents'] as num?)?.toInt() ?? 0,
         paymentLink: j['payment_link'] as String?,
       );
 
