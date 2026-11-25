@@ -8,6 +8,7 @@ import '../../utils/friendly_error.dart';
 import '../../widgets/guest_gate.dart';
 import 'admin/ads_studio/ads_studio_home_screen.dart';
 import 'admin/moderation_review_screen.dart';
+import 'admin/nardopay_test_screen.dart';
 import 'admin/studio/viyo_studio_home_screen.dart';
 import 'auth/login_screen.dart';
 import 'copyright_screen.dart';
@@ -46,6 +47,14 @@ void _showAdminToolsSheet(BuildContext context) {
             onTap: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreatorPayoutsScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.science_outlined),
+            title: const Text('NardoPay test payment'),
+            onTap: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NardopayTestScreen()));
             },
           ),
           ListTile(
