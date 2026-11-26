@@ -82,7 +82,11 @@ class CheckoutOptions {
   final List<CoinPackage> packages;
   final List<PremiumPlan> premiumPlans;
 
-  const CheckoutOptions({required this.coinProviders, required this.packages, required this.premiumPlans});
+  /// The payment fee NardoPay adds on top for the customer on coin purchases (percent), or null when not shown.
+  final double? nardopayFeePercent;
+
+  const CheckoutOptions(
+      {required this.coinProviders, required this.packages, required this.premiumPlans, this.nardopayFeePercent});
 
   /// Premium is sold through NardoPay subscriptions, on the web only.
   bool get premiumOnSale => currentPurchasePlatform == PurchasePlatform.web && premiumPlans.any((p) => p.available);
@@ -98,6 +102,7 @@ class CheckoutOptions {
       premiumPlans: [
         for (final p in (premium['plans'] as List? ?? const [])) PremiumPlan.fromJson((p as Map).cast<String, dynamic>())
       ],
+      nardopayFeePercent: (coins['nardopay_fee_percent'] as num?)?.toDouble(),
     );
   }
 }

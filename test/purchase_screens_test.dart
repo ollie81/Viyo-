@@ -155,6 +155,30 @@ void main() {
       expect(find.text('test stop'), findsOneWidget);
     });
 
+    testWidgets('NardoPay: each package shows its bonus coins and the fee, and Pay says + fee', (t) async {
+      final withBonus = [
+        CoinPackage(id: 'starter', coins: 100, usdCents: 99, label: '100 Coins', bonusCoins: 20),
+        CoinPackage(id: 'creator', coins: 3000, usdCents: 1999, label: '3,000 Coins', bonusCoins: 600),
+      ];
+      await show(
+          t,
+          BuyCoinsScreen(
+              loadOptions: () async => CheckoutOptions(
+                  coinProviders: const ['nardopay'],
+                  packages: withBonus,
+                  premiumPlans: closedPlans,
+                  nardopayFeePercent: 17),
+              platform: PurchasePlatform.web),
+          phone);
+      expect(find.text('+20 bonus'), findsOneWidget);
+      expect(find.text('+600 bonus'), findsOneWidget);
+      expect(find.text(r'+ about $0.17 fee'), findsOneWidget); // 17% of $0.99
+      expect(find.text(r'+ about $3.40 fee'), findsOneWidget); // 17% of $19.99
+      expect(find.text(r'Pay $0.99 + fee'), findsOneWidget);
+      expect(find.textContaining('payment fee of about 17%'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
     testWidgets('a load failure shows a retry, not an empty screen', (t) async {
       var calls = 0;
       await show(

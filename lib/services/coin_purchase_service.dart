@@ -13,11 +13,15 @@ class CoinPackage {
   final int usdCents;
   final String label;
 
+  /// Free coins added to a NardoPay purchase (they never earn creators cash). 0 when not offered.
+  final int bonusCoins;
+
   CoinPackage({
     required this.id,
     required this.coins,
     required this.usdCents,
     required this.label,
+    this.bonusCoins = 0,
   });
 
   factory CoinPackage.fromJson(Map<String, dynamic> json) => CoinPackage(
@@ -25,6 +29,7 @@ class CoinPackage {
         coins: (json['coins'] as num).toInt(),
         usdCents: (json['usd_cents'] as num).toInt(),
         label: json['label'] as String,
+        bonusCoins: (json['bonus_coins'] as num?)?.toInt() ?? 0,
       );
 
   String get priceDisplay => '\$${(usdCents / 100).toStringAsFixed(2)}';

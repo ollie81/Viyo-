@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../services/checkout_options_service.dart';
+import '../../services/pending_purchase.dart';
 import '../../services/subscription_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/purchase_ui.dart';
@@ -59,10 +59,25 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     return null;
   }
 
+  // Bumped to stop a running check (Cancel, or a newer check starting).
+  int _waitToken = 0;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) => _resumePending());
+  }
+
+  /// Back from NardoPay's page (it opens in the same tab on the web): keep checking the purchase made there.
+  Future<void> _resumePending() async {
+    final pending = await PendingPurchase.peekKind('premium');
+    if (pending == null || !mounted) return;
+    if (_status?.isSubscribed == true) {
+      await PendingPurchase.clear();
+      if (mounted) _showToast('Welcome to VIYO Premium');
+      return;
+    }
+    await _waitForActive(pending.id);
   }
 
   Future<void> _load() async {
@@ -105,7 +120,15 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     try {
       sub = await widget.checkout.create(plan.plan);
       final link = sub.paymentLink;
-      if (link == null || !await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication)) {
+      if (link == null) {
+        setState(() => _purchaseError = 'The NardoPay page couldn\'t be opened. Please try again.');
+        return;
+      }
+      // Remember it first: on the web the page opens in this tab and VIYO resumes the check when NardoPay sends the
+      // viewer back.
+      await PendingPurchase.save('premium', sub.id);
+      if (!await openCheckoutPage(link)) {
+        await PendingPurchase.clear();
         setState(() => _purchaseError = 'The NardoPay page couldn\'t be opened. Please try again.');
         return;
       }
@@ -121,30 +144,45 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   /// Checks the server every few seconds (up to 15 minutes) until NardoPay's payment for this subscription has been
   /// verified there. Nothing here marks anything paid.
   Future<void> _waitForActive(String id) async {
+    final token = ++_waitToken;
+    bool stillMine() => mounted && token == _waitToken;
     setState(() => _checking = true);
     try {
-      for (var i = 0; i < 225 && mounted; i++) {
-        await Future.delayed(const Duration(seconds: 4));
+      for (var i = 0; i < 225 && stillMine(); i++) {
         try {
           final s = await widget.checkout.status(id);
+          if (!stillMine()) return;
           if (s.status == 'active') {
-            if (!mounted) return;
+            await PendingPurchase.clear();
+            if (!mounted || token != _waitToken) return;
             _showToast('Welcome to VIYO Premium');
             Navigator.of(context).pop(true);
             return;
           }
           if (s.status == 'failed') {
-            if (mounted) setState(() => _purchaseError = 'The subscription couldn\'t be started. Please try again.');
+            await PendingPurchase.clear();
+            if (stillMine()) setState(() => _purchaseError = 'The subscription couldn\'t be started. Please try again.');
             return;
           }
         } catch (_) {
           // A network blip: try again on the next check.
         }
+        await Future.delayed(const Duration(seconds: 4));
       }
-      if (mounted) _showToast('Still waiting for NardoPay. If you paid, Premium will switch on soon.');
+      if (stillMine()) {
+        await PendingPurchase.clear();
+        _showToast('Still waiting for NardoPay. If you paid, Premium will switch on soon.');
+      }
     } finally {
-      if (mounted) setState(() => _checking = false);
+      if (mounted && token == _waitToken) setState(() => _checking = false);
     }
+  }
+
+  /// The viewer didn't pay (or closed NardoPay): stop waiting and show the plans again. Nothing is charged by this.
+  Future<void> _cancelWaiting() async {
+    _waitToken++;
+    await PendingPurchase.clear();
+    if (mounted) setState(() => _checking = false);
   }
 
   void _showToast(String message) {
@@ -243,10 +281,11 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               ),
             ),
           if (_checking)
-            const PurchaseNotice(
+            PurchaseNotice(
               tone: NoticeTone.waiting,
               title: 'Waiting for payment confirmation',
-              message: 'Finish paying in the NardoPay tab. Premium switches on here once NardoPay confirms it.',
+              message: 'Premium switches on here as soon as NardoPay confirms your payment.',
+              action: OutlinedButton(onPressed: _cancelWaiting, child: const Text('I didn\'t pay · Cancel')),
             ),
           if (_purchaseError != null)
             PurchaseNotice(tone: NoticeTone.error, title: 'Subscription not started', message: _purchaseError),

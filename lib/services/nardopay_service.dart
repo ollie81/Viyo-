@@ -11,6 +11,7 @@ class NardopayOrder {
   final String orderId;
   final String status;
   final int coins;
+  final int bonusCoins;
   final int rwfAmount;
   final int usdCents;
   final String? paymentLink;
@@ -19,6 +20,7 @@ class NardopayOrder {
       {required this.orderId,
       required this.status,
       required this.coins,
+      this.bonusCoins = 0,
       required this.rwfAmount,
       this.usdCents = 0,
       this.paymentLink});
@@ -30,6 +32,7 @@ class NardopayOrder {
         orderId: '${j['order_id']}',
         status: '${j['status']}',
         coins: (j['coins'] as num).toInt(),
+        bonusCoins: (j['bonus_coins'] as num?)?.toInt() ?? 0,
         rwfAmount: (j['rwf_amount'] as num).toInt(),
         usdCents: (j['usd_cents'] as num?)?.toInt() ?? 0,
         paymentLink: j['payment_link'] as String?,
