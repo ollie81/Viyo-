@@ -17,13 +17,19 @@ import '../theme/app_theme.dart';
 class WebAdsConfig {
   final bool enabled;
   final String? client, slot;
-  const WebAdsConfig({required this.enabled, this.client, this.slot});
+  // Optional extra AdSense units: in-feed (native, needs its layout key) and multiplex (recommendations).
+  final String? infeedSlot, infeedLayoutKey, multiplexSlot;
+  const WebAdsConfig(
+      {required this.enabled, this.client, this.slot, this.infeedSlot, this.infeedLayoutKey, this.multiplexSlot});
   static const off = WebAdsConfig(enabled: false);
 
   factory WebAdsConfig.fromJson(Map j) => WebAdsConfig(
         enabled: j['enabled'] == true && j['client'] is String && j['slot'] is String,
         client: j['client'] as String?,
         slot: j['slot'] as String?,
+        infeedSlot: j['infeed_slot'] as String?,
+        infeedLayoutKey: j['infeed_layout_key'] as String?,
+        multiplexSlot: j['multiplex_slot'] as String?,
       );
 
   static Future<WebAdsConfig>? _cached;
@@ -109,6 +115,33 @@ class AdEligibility {
   }
 }
 
+/// What kind of AdSense unit a placement uses. Display ads are images/banners, never video ads.
+enum WebAdKind {
+  display, // the responsive display unit
+  infeed, // a native card between content cards (falls back to display until the in-feed unit is set up)
+  multiplex, // a grid of recommended-content ads (shown only once the multiplex unit is set up)
+}
+
+/// Where the ad sits: in the page's column, or in a side rail next to the video on wide screens.
+enum WebAdSize { inline, rail }
+
+/// Sizes that fit the space, so ads never crowd content on a phone or float in empty space on a desktop.
+class WebAdLayout {
+  const WebAdLayout._();
+  static const maxInlineWidth = 970.0; // never wider than a large leaderboard
+  static const railWidth = 336.0;
+  static const railMinScreen = 1100.0; // a side rail only when the screen is this wide
+
+  static double height(WebAdKind kind, WebAdSize size, double width) {
+    if (size == WebAdSize.rail) return 600;               // a 300x600 half-page next to the video
+    return switch (kind) {
+      WebAdKind.display => width < 600 ? 280 : (width < 1000 ? 250 : 200),
+      WebAdKind.infeed => width < 600 ? 300 : 260,
+      WebAdKind.multiplex => width < 600 ? 520 : (width < 1000 ? 420 : 380),
+    };
+  }
+}
+
 /// A clearly labelled responsive display ad (Google AdSense) for the web app, placed between content: never over a
 /// video or its controls. Shows nothing at all when ads are off, on Android/iOS, for Premium members, when an ad
 /// blocker stops the script, or when Google has no ad to show.
@@ -116,9 +149,18 @@ class WebAdCard extends StatefulWidget {
   /// One placement = one ad element per page load (e.g. 'discover', 'profile', 'series').
   final String placement;
   final EdgeInsetsGeometry margin;
-  const WebAdCard({super.key, required this.placement, this.margin = const EdgeInsets.symmetric(vertical: 12)});
-
-  static const height = 280.0;
+  final WebAdKind kind;
+  final WebAdSize size;
+  /// Called once if the ad won't show (ads off, blocked, no ad), so a screen can give the space back.
+  final VoidCallback? onHidden;
+  const WebAdCard({
+    super.key,
+    required this.placement,
+    this.margin = const EdgeInsets.symmetric(vertical: 12),
+    this.kind = WebAdKind.display,
+    this.size = WebAdSize.inline,
+    this.onHidden,
+  });
 
   @override
   State<WebAdCard> createState() => _WebAdCardState();
@@ -144,15 +186,19 @@ class _WebAdCardState extends State<WebAdCard> {
   Future<void> _start() async {
     if (!adsense.adsenseSupported) return;
     final cfg = await WebAdsConfig.get();
-    if (!mounted || !cfg.enabled) return;
+    if (!mounted || !cfg.enabled) return _hide();
+    final (slot, format, layoutKey) = switch (widget.kind) {
+      WebAdKind.infeed when cfg.infeedSlot != null => (cfg.infeedSlot!, 'fluid', cfg.infeedLayoutKey),
+      WebAdKind.multiplex => (cfg.multiplexSlot, 'autorelaxed', null),
+      _ => (cfg.slot!, 'auto', null),
+    };
+    if (slot == null) return _hide();                      // that unit isn't set up yet
     final status = adsense.adSlotStatus(widget.placement);
-    if (status == 'unfilled') return setState(() => _hidden = true);
-    if (!await adsense.loadAdsense(cfg.client!)) {
-      if (mounted) setState(() => _hidden = true);         // ad blocker or network: hide quietly
-      return;
-    }
+    if (status == 'unfilled') return _hide();
+    if (!await adsense.loadAdsense(cfg.client!)) return _hide();   // ad blocker or network: hide quietly
     if (!mounted) return;
-    setState(() => _viewType = adsense.registerAdSlot(placement: widget.placement, client: cfg.client!, slot: cfg.slot!));
+    setState(() => _viewType = adsense.registerAdSlot(
+        placement: widget.placement, client: cfg.client!, slot: slot, format: format, layoutKey: layoutKey));
     var checks = 0;
     _poll = Timer.periodic(const Duration(seconds: 1), (t) {
       final s = adsense.adSlotStatus(widget.placement);
@@ -161,9 +207,15 @@ class _WebAdCardState extends State<WebAdCard> {
         t.cancel();
       } else if (s == 'unfilled' || checks >= 15) {
         t.cancel();
-        if (mounted && s != 'filled') setState(() => _hidden = true);
+        if (s != 'filled') _hide();
       }
     });
+  }
+
+  void _hide() {
+    if (!mounted || _hidden) return;
+    setState(() => _hidden = true);
+    widget.onHidden?.call();
   }
 
   @override
@@ -172,21 +224,31 @@ class _WebAdCardState extends State<WebAdCard> {
     if (vt == null || _hidden) return const SizedBox.shrink();
     return Padding(
       padding: widget.margin,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 2, bottom: 4),
-          child: Text('Advertisement', style: TextStyle(fontSize: 10.5, color: AppColors.textMuted, letterSpacing: 0.3)),
-        ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            color: AppColors.surface,
-            height: WebAdCard.height,
-            width: double.infinity,
-            child: HtmlElementView(viewType: vt),
+      child: LayoutBuilder(builder: (context, c) {
+        final w = c.maxWidth.isFinite ? c.maxWidth : MediaQuery.sizeOf(context).width;
+        final width = widget.size == WebAdSize.inline && w > WebAdLayout.maxInlineWidth ? WebAdLayout.maxInlineWidth : w;
+        return Center(
+          child: SizedBox(
+            width: width,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 2, bottom: 4),
+                child: Text('Advertisement',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.textMuted, letterSpacing: 0.3)),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  color: AppColors.surface,
+                  width: width,
+                  height: WebAdLayout.height(widget.kind, widget.size, w),
+                  child: HtmlElementView(viewType: vt),
+                ),
+              ),
+            ]),
           ),
-        ),
-      ]),
+        );
+      }),
     );
   }
 }

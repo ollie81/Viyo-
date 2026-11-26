@@ -414,7 +414,7 @@ class _DiscoverBody extends StatelessWidget {
           const _EmptyDiscoverState()
         else ...[
           // Web only: one labelled ad between sections, never on a tile or a video.
-          const WebAdCard(placement: 'discover', margin: EdgeInsets.only(bottom: 18)),
+          const WebAdCard(placement: 'discover', kind: WebAdKind.infeed, margin: EdgeInsets.only(bottom: 18)),
           const _SectionLabel('TRENDING NOW'),
           const SizedBox(height: 10),
           MasonryGridView.count(

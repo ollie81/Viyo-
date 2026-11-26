@@ -47,7 +47,10 @@ Future<bool> loadAdsense(String client) {
   return done.future;
 }
 
-String? registerAdSlot({required String placement, required String client, required String slot}) {
+/// [format]: 'auto' (responsive display), 'fluid' (in-feed, with [layoutKey]) or 'autorelaxed' (multiplex).
+String? registerAdSlot(
+    {required String placement, required String client, required String slot, String format = 'auto',
+    String? layoutKey}) {
   final viewType = 'viyo-adsense-$placement';
   if (_registered.add(viewType)) {
     ui_web.platformViewRegistry.registerViewFactory(viewType, (int _) {
@@ -60,8 +63,9 @@ String? registerAdSlot({required String placement, required String client, requi
         ..style.height = '100%'
         ..setAttribute('data-ad-client', client)
         ..setAttribute('data-ad-slot', slot)
-        ..setAttribute('data-ad-format', 'auto')
-        ..setAttribute('data-full-width-responsive', 'true');
+        ..setAttribute('data-ad-format', format);
+      if (format == 'auto') ins.setAttribute('data-full-width-responsive', 'true');
+      if (layoutKey != null) ins.setAttribute('data-ad-layout-key', layoutKey);
       final box = html.DivElement()
         ..style.width = '100%'
         ..style.height = '100%'

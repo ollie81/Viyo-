@@ -51,9 +51,27 @@ void main() {
       'lib/screens/dramas/drama_home_screen.dart:1',
       'lib/screens/feed_screen.dart:1',
       'lib/screens/post/series_detail_screen.dart:1',
-      'lib/screens/post/video_player_screen.dart:1',
+      'lib/screens/post/video_player_screen.dart:3', // below the player OR the desktop side rail, + multiplex
       'lib/screens/profile/profile_screen.dart:1',
       'lib/screens/search_screen.dart:1',
     ]);
+  });
+
+  test('ad sizes adapt: phone, tablet, desktop', () {
+    double h(WebAdKind k, double w, [WebAdSize s = WebAdSize.inline]) => WebAdLayout.height(k, s, w);
+    expect([h(WebAdKind.display, 390), h(WebAdKind.display, 800), h(WebAdKind.display, 1440)], [280, 250, 200]);
+    expect([h(WebAdKind.infeed, 390), h(WebAdKind.infeed, 1280)], [300, 260]);
+    expect([h(WebAdKind.multiplex, 390), h(WebAdKind.multiplex, 800), h(WebAdKind.multiplex, 1440)], [520, 420, 380]);
+    expect(h(WebAdKind.display, 1440, WebAdSize.rail), 600);
+    expect(WebAdLayout.railMinScreen, 1100);          // laptops 1100+ and desktops get the side rail
+  });
+
+  test('the in-feed and multiplex units are used only once set up', () {
+    final c = WebAdsConfig.fromJson({'enabled': true, 'client': 'ca-pub-4161816109605295', 'slot': '6118261645'});
+    expect(c.infeedSlot, isNull);
+    expect(c.multiplexSlot, isNull);
+    final d = WebAdsConfig.fromJson({'enabled': true, 'client': 'ca-pub-1234567890', 'slot': '6118261645',
+        'infeed_slot': '111111', 'infeed_layout_key': '-fb+5w', 'multiplex_slot': '222222'});
+    expect([d.infeedSlot, d.infeedLayoutKey, d.multiplexSlot], ['111111', '-fb+5w', '222222']);
   });
 }
