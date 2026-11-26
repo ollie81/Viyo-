@@ -40,7 +40,7 @@ class BuyCoinsScreen extends StatefulWidget {
 
 /// How each live method is presented. Only the provider's own name: no payment types are claimed for it.
 const _methodInfo = <String, (String, String, IconData)>{
-  'nardopay': ('Mobile money or card', 'Checkout by NardoPay · charged in Rwandan francs', Icons.phone_iphone_rounded),
+  'nardopay': ('Mobile money or card', 'Checkout by NardoPay', Icons.phone_iphone_rounded),
   'stripe': ('Card', 'Secure card payment by Stripe', Icons.credit_card_rounded),
   'paystack': ('Paystack', 'Checkout by Paystack', Icons.account_balance_wallet_outlined),
   'flutterwave': ('Flutterwave', 'Checkout by Flutterwave', Icons.payments_outlined),
