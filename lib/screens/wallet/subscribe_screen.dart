@@ -6,23 +6,24 @@ import '../../theme/app_theme.dart';
 import '../../widgets/purchase_ui.dart';
 import '../../widgets/viyo_toast.dart';
 
-/// Viyo Premium: a real-money recurring subscription (never paid with coins) for unlimited episode access, through
-/// Lemon Squeezy's hosted checkout, with the same "open externally, check again on app resume" pattern as the coin
-/// hosted checkouts.
+/// Viyo Premium: a real-money recurring NardoPay subscription (never paid with coins) for unlimited episodes.
 ///
-/// Plans and prices come from the server (GET /api/v1/checkout/options), which reads each plan's real price from
-/// Lemon Squeezy and marks a plan purchasable only when its checkout is configured. A plan without a real price is
-/// shown as unavailable; no price is ever written into the app.
+/// Plans and the displayed USD prices come from the server (GET /api/v1/checkout/options), listed as purchasable only
+/// while NardoPay subscriptions can really be started. Subscribing asks the server for this user's own NardoPay
+/// subscription link, opens it in a new tab, and checks the server until NardoPay's signed payment has been verified
+/// there. The redirect back to VIYO proves nothing and activates nothing.
 ///
-/// Android-gated like BuyCoinsScreen: Google Play policy requires Play Billing for recurring digital goods inside a
-/// Play-distributed app, so the Android app doesn't offer Premium.
+/// Web only: Google Play (Android) and the App Store require their own billing for digital subscriptions, so the
+/// native apps don't offer Premium.
 class SubscribeScreen extends StatefulWidget {
-  /// For tests: where the options and the subscription status come from, and the platform.
+  /// For tests: where the options and the subscription status come from, the platform, and the checkout API.
   final Future<CheckoutOptions> Function()? loadOptions;
   final Future<SubscriptionStatus> Function()? loadStatus;
   final PurchasePlatform? platform;
+  final PremiumCheckoutApi checkout;
 
-  const SubscribeScreen({super.key, this.loadOptions, this.loadStatus, this.platform});
+  const SubscribeScreen(
+      {super.key, this.loadOptions, this.loadStatus, this.platform, this.checkout = const PremiumCheckoutApi()});
 
   @override
   State<SubscribeScreen> createState() => _SubscribeScreenState();
@@ -36,9 +37,10 @@ const _benefits = <(IconData, String, String)>[
   (Icons.monetization_on_outlined, 'Keep your coins', 'Your coin balance stays yours for AI features and boosts.'),
 ];
 
-class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingObserver {
+class _SubscribeScreenState extends State<SubscribeScreen> {
   PurchasePlatform get _platform => widget.platform ?? currentPurchasePlatform;
-  bool get _isAndroid => _platform == PurchasePlatform.android;
+  // Premium is sold on the web only (see the class comment).
+  bool get _nativeApp => _platform != PurchasePlatform.web;
 
   SubscriptionStatus? _status;
   List<PremiumPlan> _plans = [];
@@ -46,7 +48,6 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
   bool _loading = true;
   String? _error;
   bool _purchasing = false;
-  bool _awaitingCheckoutResult = false;
   bool _checking = false;
   String? _purchaseError;
   String? _toast;
@@ -61,21 +62,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _load();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !_awaitingCheckoutResult) return;
-    _awaitingCheckoutResult = false;
-    _pollForActive();
   }
 
   Future<void> _load() async {
@@ -86,7 +73,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
     try {
       final status = await (widget.loadStatus ?? SubscriptionService.getStatus)();
       CheckoutOptions? options;
-      if (!_isAndroid && !status.isSubscribed) {
+      if (!_nativeApp && !status.isSubscribed) {
         options = await (widget.loadOptions ?? CheckoutOptionsService.fetch)();
       }
       if (!mounted) return;
@@ -109,50 +96,52 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
 
   Future<void> _subscribe() async {
     final plan = _selected;
-    if (plan == null || _purchasing) return;
+    if (plan == null || _purchasing || _checking) return;
     setState(() {
       _purchasing = true;
       _purchaseError = null;
     });
+    PremiumSubscription sub;
     try {
-      final checkoutUrl = await SubscriptionService.createCheckout(plan.plan);
-      final opened = await launchUrl(Uri.parse(checkoutUrl), mode: LaunchMode.externalApplication);
-      if (!opened) {
-        setState(() => _purchaseError = 'The checkout page couldn\'t be opened. Please try again.');
+      sub = await widget.checkout.create(plan.plan);
+      final link = sub.paymentLink;
+      if (link == null || !await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication)) {
+        setState(() => _purchaseError = 'The NardoPay page couldn\'t be opened. Please try again.');
         return;
       }
-      _awaitingCheckoutResult = true;
-      _showToast('Finish subscribing on the checkout page, then come back here.');
     } catch (e) {
       setState(() => _purchaseError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''));
+      return;
     } finally {
       if (mounted) setState(() => _purchasing = false);
     }
+    if (mounted) await _waitForActive(sub.id);
   }
 
-  Future<void> _pollForActive() async {
+  /// Checks the server every few seconds (up to 15 minutes) until NardoPay's payment for this subscription has been
+  /// verified there. Nothing here marks anything paid.
+  Future<void> _waitForActive(String id) async {
     setState(() => _checking = true);
     try {
-      for (var i = 0; i < 6; i++) {
-        await Future.delayed(const Duration(seconds: 2));
+      for (var i = 0; i < 225 && mounted; i++) {
+        await Future.delayed(const Duration(seconds: 4));
         try {
-          final status = await SubscriptionService.getStatus();
-          if (status.isSubscribed) {
-            if (mounted) {
-              setState(() => _status = status);
-              _showToast('Welcome to VIYO Premium');
-              Navigator.of(context).pop(true);
-            }
+          final s = await widget.checkout.status(id);
+          if (s.status == 'active') {
+            if (!mounted) return;
+            _showToast('Welcome to VIYO Premium');
+            Navigator.of(context).pop(true);
+            return;
+          }
+          if (s.status == 'failed') {
+            if (mounted) setState(() => _purchaseError = 'The subscription couldn\'t be started. Please try again.');
             return;
           }
         } catch (_) {
-          // Keep checking: a passing network error shouldn't end the attempt early.
+          // A network blip: try again on the next check.
         }
       }
-      if (mounted) {
-        _showToast("Payment received. Premium will switch on shortly if it hasn't already.");
-        await _load();
-      }
+      if (mounted) _showToast('Still waiting for NardoPay. If you paid, Premium will switch on soon.');
     } finally {
       if (mounted) setState(() => _checking = false);
     }
@@ -200,7 +189,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
     final monthly = _plans.where((p) => p.plan == 'monthly' && p.available && p.interval == 'month').firstOrNull;
 
     return PurchaseBody(
-      bottom: _isAndroid
+      bottom: _nativeApp
           ? null
           : Column(
               mainAxisSize: MainAxisSize.min,
@@ -214,8 +203,8 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
                   onPressed: selected != null && !_checking ? _subscribe : null,
                 ),
                 PurchaseFinePrint(onSale
-                    ? 'Paid with money, not coins. Renews automatically until you cancel; manage or cancel it from '
-                        'your Lemon Squeezy receipt email.'
+                    ? 'Paid with money, not coins, through NardoPay. A recurring plan: Premium stays on while each '
+                        'payment goes through.'
                     : 'Premium is paid with money, not coins.'),
               ],
             ),
@@ -224,7 +213,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
         const _Hero(),
         const SizedBox(height: 20),
         for (final (icon, title, text) in _benefits) _Benefit(icon: icon, title: title, text: text),
-        if (_isAndroid) ...[
+        if (_nativeApp) ...[
           const SizedBox(height: 16),
           const PurchaseNotice(
             tone: NoticeTone.info,
@@ -256,8 +245,8 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
           if (_checking)
             const PurchaseNotice(
               tone: NoticeTone.waiting,
-              title: 'Checking your subscription',
-              message: 'This takes a few seconds after you finish paying.',
+              title: 'Waiting for payment confirmation',
+              message: 'Finish paying in the NardoPay tab. Premium switches on here once NardoPay confirms it.',
             ),
           if (_purchaseError != null)
             PurchaseNotice(tone: NoticeTone.error, title: 'Subscription not started', message: _purchaseError),
@@ -302,7 +291,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
             ]),
             if (renewsAt != null) ...[
               const SizedBox(height: 6),
-              Text('Renews ${renewsAt.split('T').first}',
+              Text('${status.provider == 'lemonsqueezy' ? 'Renews' : 'Next payment due'} ${renewsAt.split('T').first}',
                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
             ] else if (endsAt != null) ...[
               const SizedBox(height: 6),
@@ -310,9 +299,12 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
             ],
             const SizedBox(height: 12),
-            const Text(
-              'Manage or cancel your subscription from the receipt email Lemon Squeezy sent you.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+            Text(
+              status.provider == 'lemonsqueezy'
+                  ? 'Manage or cancel your subscription from the receipt email Lemon Squeezy sent you.'
+                  : 'Billed through NardoPay. Premium stays on while each payment goes through; to stop your plan, '
+                      'cancel it with NardoPay.',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
             ),
           ],
         ),

@@ -44,7 +44,6 @@ const _methodInfo = <String, (String, String, IconData)>{
   'stripe': ('Card', 'Secure card payment by Stripe', Icons.credit_card_rounded),
   'paystack': ('Paystack', 'Checkout by Paystack', Icons.account_balance_wallet_outlined),
   'flutterwave': ('Flutterwave', 'Checkout by Flutterwave', Icons.payments_outlined),
-  'lemonsqueezy': ('Card', 'Checkout by Lemon Squeezy', Icons.credit_card_rounded),
 };
 
 class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObserver {
@@ -58,7 +57,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
   String? _toast;
   String? _purchaseError;
 
-  // Set while waiting for the user to come back from a hosted checkout (Paystack, Flutterwave, Lemon Squeezy)
+  // Set while waiting for the user to come back from a hosted checkout (Paystack, Flutterwave)
   // opened in the browser: there's no callback from an external tab, so app resume (didChangeAppLifecycleState) is
   // the signal to start checking the balance, same as Stripe's payment sheet closing does.
   int? _hostedCheckoutExpectedCoins;
@@ -185,7 +184,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     }
   }
 
-  /// Paystack, Flutterwave and Lemon Squeezy check out on a hosted page: this opens it and relies on app resume
+  /// Paystack and Flutterwave check out on a hosted page: this opens it and relies on app resume
   /// (didChangeAppLifecycleState above) to know when to start checking for the credit.
   Future<void> _buyWithHostedCheckout(CoinPackage package, {required String provider}) async {
     setState(() => _purchasing = true);
@@ -194,10 +193,8 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       switch (provider) {
         case 'paystack':
           checkout = await CoinPurchaseService.initializePaystack(package.id);
-        case 'flutterwave':
-          checkout = await CoinPurchaseService.initializeFlutterwave(package.id);
         default:
-          checkout = await CoinPurchaseService.initializeLemonSqueezy(package.id);
+          checkout = await CoinPurchaseService.initializeFlutterwave(package.id);
       }
       final opened = await launchUrl(Uri.parse(checkout.url), mode: LaunchMode.externalApplication);
       if (!opened) {

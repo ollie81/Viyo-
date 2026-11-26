@@ -17,14 +17,15 @@ PurchasePlatform get currentPurchasePlatform {
 /// * Android: none. Google Play policy requires Play Billing for digital goods, so the Android app sells nothing.
 /// * Web: everything live except Stripe, whose in-app payment sheet isn't built for the web app.
 /// * Other native platforms: the hosted checkouts and Stripe, not NardoPay (web-only by design).
+/// Lemon Squeezy is never offered (VIYO no longer sells through it), whatever the server says.
 List<String> coinMethodsFor(PurchasePlatform platform, List<String> live) {
   switch (platform) {
     case PurchasePlatform.android:
       return const [];
     case PurchasePlatform.web:
-      return live.where((p) => p != 'stripe').toList();
+      return live.where((p) => p != 'stripe' && p != 'lemonsqueezy').toList();
     case PurchasePlatform.other:
-      return live.where((p) => p != 'nardopay').toList();
+      return live.where((p) => p != 'nardopay' && p != 'lemonsqueezy').toList();
   }
 }
 
@@ -83,7 +84,8 @@ class CheckoutOptions {
 
   const CheckoutOptions({required this.coinProviders, required this.packages, required this.premiumPlans});
 
-  bool get premiumOnSale => premiumPlans.any((p) => p.available);
+  /// Premium is sold through NardoPay subscriptions, on the web only.
+  bool get premiumOnSale => currentPurchasePlatform == PurchasePlatform.web && premiumPlans.any((p) => p.available);
 
   factory CheckoutOptions.fromJson(Map<String, dynamic> j) {
     final coins = (j['coins'] as Map?)?.cast<String, dynamic>() ?? const {};
