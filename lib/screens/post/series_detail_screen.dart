@@ -24,6 +24,7 @@ import '../dramas/series_analytics_screen.dart';
 import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
 import 'upload_ai_drama_screen.dart';
+import '../../widgets/web_ad_card.dart';
 
 /// A series' full episode list — Episode 1, 2, 3... in order, each
 /// showing its lock state at a glance. Tapping an episode opens it in
@@ -391,6 +392,10 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                             },
                           ),
                         ))),
+                  // Web only: one labelled ad below the episode list (dramas and movies), never on the owner's
+                  // own page and never on an episode or a video.
+                  if (viewerId != series.userId && _episodes.isNotEmpty)
+                    const WebAdCard(placement: 'series', margin: EdgeInsets.only(top: 18)),
                   if (_similarSeries.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     const Text('SIMILAR DRAMAS', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppColors.textMuted, fontWeight: FontWeight.w700)),

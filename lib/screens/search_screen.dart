@@ -21,6 +21,7 @@ import '../services/share_links.dart';
 import '../services/discover_service.dart';
 import '../services/promotion_service.dart';
 import '../widgets/ad_post_extras.dart';
+import '../widgets/web_ad_card.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -412,6 +413,8 @@ class _DiscoverBody extends StatelessWidget {
         if (posts.isEmpty)
           const _EmptyDiscoverState()
         else ...[
+          // Web only: one labelled ad between sections, never on a tile or a video.
+          const WebAdCard(placement: 'discover', margin: EdgeInsets.only(bottom: 18)),
           const _SectionLabel('TRENDING NOW'),
           const SizedBox(height: 10),
           MasonryGridView.count(

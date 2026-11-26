@@ -425,6 +425,7 @@ def page(path: str, title: str, description: str, body: str, *, schema: list | N
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="google-adsense-account" content="ca-pub-4161816109605295">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {home_redirect}<title>{e(title)}</title>
   <meta name="description" content="{e(description)}">
@@ -1046,11 +1047,13 @@ def main() -> None:
     # app-ads.txt: authorises Google AdMob to sell ads in the Viyo app
     # (publisher id from the app's AdMob app id, Google's standard cert id).
     app_ads = "google.com, pub-4006935524883605, DIRECT, f08c47fec0942fa0\n"
+    # ads.txt: authorises Google AdSense (the web app's ads) for viyo.site.
+    ads = "google.com, pub-4161816109605295, DIRECT, f08c47fec0942fa0\n"
     for name, text in [("sitemap.xml", sitemap()), ("robots.txt", robots()), ("llms.txt", llms()),
-                       ("app-ads.txt", app_ads)]:
+                       ("app-ads.txt", app_ads), ("ads.txt", ads)]:
         with open(os.path.join(OUT, name), "w", encoding="utf-8") as f:
             f.write(text)
-    print(f"wrote {len(PAGES)} pages + sitemap.xml, robots.txt, llms.txt, app-ads.txt to {OUT}")
+    print(f"wrote {len(PAGES)} pages + sitemap.xml, robots.txt, llms.txt, app-ads.txt, ads.txt to {OUT}")
 
 
 if __name__ == "__main__":
