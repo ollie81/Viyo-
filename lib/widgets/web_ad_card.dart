@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../constants/supabase_constants.dart';
+import '../models/post.dart';
+import '../models/series.dart';
 import '../services/adsense_stub.dart' if (dart.library.html) '../services/adsense_web.dart' as adsense;
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -60,6 +62,50 @@ class WebAdsConfig {
     } catch (_) {
       return true;                                         // unsure: don't risk showing ads to a member
     }
+  }
+}
+
+/// Which content may carry a web ad (beside it, never over the video). Premium members are handled by WebAdsConfig
+/// (they get no ads at all). Rules agreed with the owner:
+///   * free content only: free episodes (the first kFreeEpisodeCount, or ones the creator made free) and free videos;
+///   * never on content the viewer paid for (coins or ad tickets), never on a series the viewer has paid episodes in;
+///   * never on the viewer's own content;
+///   * never on payment screens (checkout, wallet, Premium, coins, donate, campaigns, Studio credits): see
+///     [noAdScreenFiles], which a test enforces.
+class AdEligibility {
+  const AdEligibility._();
+
+  /// Screens that must never show an ad (lib/screens/...). A test fails if one of them uses WebAdCard.
+  static const noAdScreenFiles = [
+    'wallet_screen.dart',
+    'wallet/buy_coins_screen.dart',
+    'wallet/subscribe_screen.dart',
+    'wallet/donate_screen.dart',
+    'creator/brand_campaigns_screen.dart',
+    'creator/brand_deals_screen.dart',
+    'admin/studio_credits_admin_screen.dart',
+    'store_screen.dart',
+  ];
+
+  static bool _paidEpisode(Post p) {
+    if (!p.isEpisode || !p.unlockedByMe) return false;
+    if (p.isFree != null) return !p.isFree!;
+    return (p.episodeNumber ?? 1) > kFreeEpisodeCount;
+  }
+
+  /// A single post or episode the viewer is looking at.
+  static bool forContent(Post post, {required String? viewerId}) {
+    if (viewerId != null && post.userId == viewerId) return false;
+    if (!post.isEpisode) return true;                          // creator videos and posts are free to watch
+    if (_paidEpisode(post)) return false;                      // they paid for it: no ads
+    if (post.isFree != null) return post.isFree!;
+    return (post.episodeNumber ?? 1) <= kFreeEpisodeCount;     // free episodes only (a locked one isn't watched)
+  }
+
+  /// A drama or movie page: no ads for its creator or for anyone who paid for any of its episodes.
+  static bool forSeries({required String seriesOwnerId, required List<Post> episodes, required String? viewerId}) {
+    if (viewerId != null && seriesOwnerId == viewerId) return false;
+    return !episodes.any(_paidEpisode);
   }
 }
 

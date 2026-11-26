@@ -394,7 +394,8 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                         ))),
                   // Web only: one labelled ad below the episode list (dramas and movies), never on the owner's
                   // own page and never on an episode or a video.
-                  if (viewerId != series.userId && _episodes.isNotEmpty)
+                  if (_episodes.isNotEmpty &&
+                      AdEligibility.forSeries(seriesOwnerId: series.userId, episodes: _episodes, viewerId: viewerId))
                     const WebAdCard(placement: 'series', margin: EdgeInsets.only(top: 18)),
                   if (_similarSeries.isNotEmpty) ...[
                     const SizedBox(height: 24),

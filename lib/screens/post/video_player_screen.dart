@@ -17,6 +17,7 @@ import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/retryable_network_image.dart';
+import '../../widgets/web_ad_card.dart';
 import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
 import '../../services/share_links.dart';
@@ -496,6 +497,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               ),
                             ],
                           ),
+                          // Web only: one labelled ad below the player and its buttons (never over the video),
+                          // for free content the viewer didn't make or pay for.
+                          if (AdEligibility.forContent(post, viewerId: SupabaseService.currentUserId))
+                            const WebAdCard(placement: 'player', margin: EdgeInsets.only(top: 22)),
                           if (_relatedVideos.isNotEmpty) ...[
                             const SizedBox(height: 22),
                             const Text(
