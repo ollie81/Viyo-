@@ -29,6 +29,19 @@ const readyDashboard = {
   'withdrawals': [
     {'status': 'paid', 'usd': 12.0, 'created_at': '2026-11-01T10:00:00Z', 'paid_at': '2026-11-03T10:00:00Z'},
   ],
+  'level': {
+    'key': 'rising', 'name': 'Rising', 'rank': 2, 'of': 4, 'hold_days': 14, 'perks': [], 'ready': true,
+    'share_note': 'Every level earns the same share of what viewers pay.',
+    'next': {
+      'key': 'pro', 'name': 'Pro', 'perk': 'Earnings available after 7 days instead of 14',
+      'requirements': [
+        {'key': 'followers', 'label': '1,000 followers', 'have': 250, 'need': 1000, 'met': false},
+        {'key': 'earned_usd', 'label': r'$50 earned', 'have': 12.5, 'need': 50, 'met': false},
+        {'key': 'account_days', 'label': 'Account at least 60 days old', 'have': 90, 'need': 60, 'met': true},
+        {'key': 'clean', 'label': 'No refunded earnings in the last 90 days', 'have': 0, 'need': 0, 'met': true},
+      ],
+    },
+  },
   'studio': {'projects': 1, 'active_jobs': 1, 'completed_jobs': 2, 'failed_jobs': 1, 'credits_used': 100, 'credits_used_period': 40},
 };
 
@@ -123,5 +136,33 @@ void main() {
     await t.pumpWidget(const SizedBox());
     await t.pump(CreatorHubScreen.refreshEvery * 2);
     expect(calls, 2);
+  });
+
+  test('the creator level: rank, perk of the next level, real progress', () {
+    final l = CreatorHub.fromJson(hubJson(dashboard: readyDashboard)).dashboard!.level!;
+    expect(l.name, 'Rising');
+    expect(l.nextName, 'Pro');
+    expect(l.nextRequirements.first.progress, 0.25);
+    expect(l.nextRequirements.last.progress, 1);
+  });
+
+  testWidgets('the level card shows the next level, its perk and progress', (t) async {
+    await open(t, hubJson(dashboard: readyDashboard));
+    expect(find.text('Your creator level'), findsOneWidget);
+    expect(find.text('Rising'), findsOneWidget);
+    expect(find.text('Level 2 of 4'), findsOneWidget);
+    expect(find.textContaining('To reach Pro (earnings available after 7 days'), findsOneWidget);
+    expect(find.text('250 / 1.0K'), findsOneWidget);
+    expect(find.text(r'$12.50 / $50'), findsOneWidget);
+    expect(find.textContaining('same share'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
+  });
+
+  testWidgets('a Pro creator sees their perk', (t) async {
+    final dash = Map<String, dynamic>.from(readyDashboard)
+      ..['level'] = {'key': 'pro', 'name': 'Pro', 'rank': 3, 'of': 4, 'hold_days': 7, 'ready': true,
+          'perks': ['Earnings available after 7 days instead of 14'], 'next': null};
+    await open(t, hubJson(dashboard: dash));
+    expect(find.text('Earnings available after 7 days instead of 14'), findsOneWidget);
   });
 }

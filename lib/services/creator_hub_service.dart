@@ -159,8 +159,9 @@ class CreatorDashboard {
   final double heldUsd, availableUsd;
   final List<({String status, double usd, DateTime? createdAt, DateTime? paidAt})> withdrawals;
   final int projects, activeJobs, completedJobs, failedJobs, creditsUsed, creditsUsedPeriod;
+  final CreatorLevel? level;
 
-  const CreatorDashboard({required this.ready, this.days = 30, this.computedAt, this.plays = 0,
+  const CreatorDashboard({this.level, required this.ready, this.days = 30, this.computedAt, this.plays = 0,
       this.uniqueViewers = 0, this.watchMinutes = 0, this.completionRate, this.byType = const {},
       this.advertisingNote, this.brandNote, this.heldCoins = 0, this.availableCoins = 0, this.holdDays = 14,
       this.heldUsd = 0, this.availableUsd = 0, this.withdrawals = const [], this.projects = 0, this.activeJobs = 0,
@@ -201,6 +202,54 @@ class CreatorDashboard {
       ],
       projects: i(s, 'projects'), activeJobs: i(s, 'active_jobs'), completedJobs: i(s, 'completed_jobs'),
       failedJobs: i(s, 'failed_jobs'), creditsUsed: i(s, 'credits_used'), creditsUsedPeriod: i(s, 'credits_used_period'),
+      level: j['level'] is Map ? CreatorLevel.fromJson(j['level'] as Map) : null,
+    );
+  }
+}
+
+/// One requirement for the next creator level, with the creator's real number (creator_levels.py).
+class LevelRequirement {
+  final String key, label;
+  final num have, need;
+  final bool met;
+  const LevelRequirement({required this.key, required this.label, required this.have, required this.need, required this.met});
+  factory LevelRequirement.fromJson(Map j) => LevelRequirement(
+        key: (j['key'] ?? '').toString(),
+        label: (j['label'] ?? '').toString(),
+        have: (j['have'] as num?) ?? 0,
+        need: (j['need'] as num?) ?? 0,
+        met: j['met'] == true,
+      );
+
+  /// 0..1 towards this requirement (the clean-record one is all or nothing).
+  double get progress => met ? 1 : (key == 'clean' || need <= 0 ? 0 : (have / need).clamp(0, 1).toDouble());
+}
+
+/// The creator's level (New, Rising, Pro, Star). Everyone earns the same share; Pro and Star get a shorter hold.
+class CreatorLevel {
+  final String key, name, shareNote;
+  final int rank, of, holdDays;
+  final bool ready;
+  final List<String> perks;
+  final String? nextName, nextPerk;
+  final List<LevelRequirement> nextRequirements;
+  const CreatorLevel({required this.key, required this.name, required this.rank, required this.of,
+      required this.holdDays, this.ready = true, this.perks = const [], this.shareNote = '', this.nextName,
+      this.nextPerk, this.nextRequirements = const []});
+  factory CreatorLevel.fromJson(Map j) {
+    final n = j['next'] as Map?;
+    return CreatorLevel(
+      key: (j['key'] ?? 'new').toString(),
+      name: (j['name'] ?? 'New').toString(),
+      rank: (j['rank'] as num?)?.toInt() ?? 1,
+      of: (j['of'] as num?)?.toInt() ?? 4,
+      holdDays: (j['hold_days'] as num?)?.toInt() ?? 14,
+      ready: j['ready'] != false,
+      perks: ((j['perks'] as List?) ?? const []).map((e) => e.toString()).toList(),
+      shareNote: (j['share_note'] ?? '').toString(),
+      nextName: n?['name']?.toString(),
+      nextPerk: n?['perk']?.toString(),
+      nextRequirements: [for (final r in (n?['requirements'] as List? ?? const [])) LevelRequirement.fromJson(r as Map)],
     );
   }
 }
