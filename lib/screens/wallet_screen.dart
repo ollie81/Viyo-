@@ -6,6 +6,7 @@ import '../models/transaction.dart';
 import '../models/user_profile.dart';
 import '../services/checkout_options_service.dart';
 import '../services/coin_service.dart';
+import '../services/donation_service.dart';
 import '../services/profile_service.dart';
 import '../services/rewarded_ad_service.dart';
 import '../services/supabase_service.dart';
@@ -37,6 +38,8 @@ class _WalletScreenState extends State<WalletScreen> {
   String? _toast;
   // Whether Premium can really be bought now (from the server); null until known.
   bool? _premiumOnSale;
+  // Real-money donations this creator received (best-effort; empty if none or unavailable).
+  List<ReceivedDonation> _donations = const [];
 
   @override
   void initState() {
@@ -55,12 +58,14 @@ class _WalletScreenState extends State<WalletScreen> {
     final earnings = await WalletService.getEarnings().catchError((_) => WalletEarnings.empty());
     // Best-effort too: without an answer the Premium button just doesn't show a status.
     final premiumOnSale = await CheckoutOptionsService.fetch().then((o) => o.premiumOnSale).catchError((_) => false);
+    final donations = await const DonationApi().received().catchError((_) => <ReceivedDonation>[]);
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _transactions = txs;
       _earnings = earnings;
       _premiumOnSale = premiumOnSale;
+      _donations = donations;
       _loading = false;
     });
   }
@@ -252,6 +257,10 @@ class _WalletScreenState extends State<WalletScreen> {
                           ],
                         ),
                       ),
+                      if (_donations.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _DonationsCard(donations: _donations),
+                      ],
                       if (_earnings.lifetimeCoins > 0) ...[
                         const SizedBox(height: 14),
                         _EarningsCard(
@@ -547,6 +556,62 @@ class _WalletSkeleton extends StatelessWidget {
             height: 180,
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Donations a creator received (real money through NardoPay). Their 80% share is in the earnings above, on hold for
+/// 14 days like every new earning.
+class _DonationsCard extends StatelessWidget {
+  final List<ReceivedDonation> donations;
+  const _DonationsCard({required this.donations});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = donations.fold<double>(0, (t, d) => t + d.shareUsd);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.card(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.volunteer_activism_rounded, size: 15, color: AppColors.coin),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('Donations received', style: TextStyle(fontWeight: FontWeight.w700))),
+            Text('\$${total.toStringAsFixed(2)}',
+                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.coin)),
+          ]),
+          const SizedBox(height: 4),
+          const Text('Your 80% share. It joins your earnings and is withdrawable after the 14-day hold.',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+          const SizedBox(height: 10),
+          for (final d in donations.take(5))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(d.from, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        if (d.message.isNotEmpty)
+                          Text('\u201c${d.message}\u201d',
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.35)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('+\$${d.shareUsd.toStringAsFixed(2)}',
+                      style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
         ],
       ),
     );

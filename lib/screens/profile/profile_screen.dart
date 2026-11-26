@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shimmer/shimmer.dart';
@@ -8,6 +9,7 @@ import '../../models/post.dart';
 import '../../models/series.dart';
 import '../../models/user_profile.dart';
 import '../../services/discover_spotlight_service.dart';
+import '../../services/donation_service.dart';
 import '../../services/moderation_service.dart';
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
@@ -24,6 +26,7 @@ import '../../widgets/retryable_network_image.dart';
 import '../settings_screen.dart';
 import '../post/series_detail_screen.dart';
 import '../wallet_screen.dart';
+import '../wallet/donate_screen.dart';
 import 'edit_profile.dart';
 import '../messages/chat_screen.dart';
 import '../post/viyo_post_viewer.dart';
@@ -54,6 +57,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isBlocked = false;
   String? _loadError;
 
+  // Real-money donations (NardoPay, web only), shown when the server says they're open.
+  bool _donationsOpen = false;
+
   bool get _isOwnProfile =>
       widget.userId == null || widget.userId == SupabaseService.currentUserId;
 
@@ -67,6 +73,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _load();
+    if (kIsWeb && !_isOwnProfile) {
+      const DonationApi().available().then((open) {
+        if (mounted) setState(() => _donationsOpen = open);
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -635,6 +646,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
+                    if (!_isOwnProfile && kIsWeb && _donationsOpen) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            if (!await GuestGate.allow(context, action: 'donate')) return;
+                            if (!context.mounted) return;
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => DonateScreen(
+                                creatorId: p.id,
+                                creatorName: p.displayName.isNotEmpty ? p.displayName : '@${p.username}',
+                              ),
+                            ));
+                          },
+                          icon: const Icon(Icons.volunteer_activism_rounded, size: 18),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.coin,
+                            foregroundColor: AppColors.background,
+                          ),
+                          label: const Text('Donate'),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     Container(
                       padding: const EdgeInsets.symmetric(
