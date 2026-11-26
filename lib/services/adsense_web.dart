@@ -63,7 +63,8 @@ String? registerAdSlot(
         ..style.height = '100%'
         ..setAttribute('data-ad-client', client)
         ..setAttribute('data-ad-slot', slot)
-        ..setAttribute('data-ad-format', format);
+        ..setAttribute('data-ad-format', format)
+        ..setAttribute('data-viyo-placement', placement);
       if (format == 'auto') ins.setAttribute('data-full-width-responsive', 'true');
       if (layoutKey != null) ins.setAttribute('data-ad-layout-key', layoutKey);
       final box = html.DivElement()

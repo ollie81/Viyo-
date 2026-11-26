@@ -357,7 +357,7 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
             if (hasRows)
               const SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: 12),
-                sliver: SliverToBoxAdapter(child: WebAdCard(placement: 'dramas')),
+                sliver: SliverToBoxAdapter(child: WebAdCard(placement: 'dramas', kind: WebAdKind.infeed)),
               ),
             if (!_loadingRows && _becauseYouWatched.isNotEmpty) ...[
               _SectionHeader(

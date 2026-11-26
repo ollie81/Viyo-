@@ -421,6 +421,11 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                         },
                       ),
                     ),
+                    // Web only: recommended-content ads below the recommendations, same eligibility as the
+                    // display ad above (free content, not the creator, nobody who paid for this series).
+                    if (AdEligibility.forSeries(seriesOwnerId: series.userId, episodes: _episodes, viewerId: viewerId))
+                      const WebAdCard(
+                          placement: 'series-multiplex', kind: WebAdKind.multiplex, margin: EdgeInsets.only(top: 20)),
                   ],
                 ],
               ),

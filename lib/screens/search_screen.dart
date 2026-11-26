@@ -1117,6 +1117,8 @@ class _CategoryFeedState extends State<_CategoryFeed> {
     ));
   }
 
+  static const _adAfterCards = 6;
+
   String get _emptyText => switch (_cat) {
         DiscoverCategory.shorts => 'No shorts yet',
         DiscoverCategory.movies => 'No movies yet',
@@ -1157,23 +1159,41 @@ class _CategoryFeedState extends State<_CategoryFeed> {
         ),
       ]);
     } else if (_cat.isSeries) {
-      grid = GridView.builder(
+      // Movies / Dramas: the poster grid, with one in-feed ad card (web only) spanning the row after the first
+      // [_adAfterCards] posters, never on a poster.
+      const delegate = SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.6,
+      );
+      Widget poster(int i) => SeriesPosterCard(
+            series: _series[i],
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: _series[i])),
+            ),
+          );
+      final split = _series.length > _adAfterCards ? _adAfterCards : _series.length;
+      grid = CustomScrollView(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(bottom: bottom),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.6,
-        ),
-        itemCount: _series.length,
-        itemBuilder: (_, i) => SeriesPosterCard(
-          series: _series[i],
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => SeriesDetailScreen(series: _series[i])),
-          ),
-        ),
+        slivers: [
+          SliverGrid(delegate: SliverChildBuilderDelegate((_, i) => poster(i), childCount: split), gridDelegate: delegate),
+          if (_series.length > _adAfterCards) ...[
+            SliverToBoxAdapter(
+              child: WebAdCard(
+                placement: 'discover-${_cat.name}',
+                kind: WebAdKind.infeed,
+                margin: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+            SliverGrid(
+              delegate: SliverChildBuilderDelegate((_, i) => poster(split + i), childCount: _series.length - split),
+              gridDelegate: delegate,
+            ),
+          ],
+          SliverPadding(padding: EdgeInsets.only(bottom: bottom)),
+        ],
       );
     } else if (_cat == DiscoverCategory.photos) {
       grid = GridView.builder(
