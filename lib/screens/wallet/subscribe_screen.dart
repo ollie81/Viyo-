@@ -203,8 +203,8 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                   onPressed: selected != null && !_checking ? _subscribe : null,
                 ),
                 PurchaseFinePrint(onSale
-                    ? 'Paid with money, not coins, through NardoPay. A recurring plan: Premium stays on while each '
-                        'payment goes through.'
+                    ? 'Pay by debit or credit card (or mobile money) through NardoPay. Paid with money, not coins. '
+                        'A recurring plan: Premium stays on while each payment goes through.'
                     : 'Premium is paid with money, not coins.'),
               ],
             ),
