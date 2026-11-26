@@ -7,6 +7,18 @@ import 'package:viyo/services/coin_purchase_service.dart';
 import 'package:viyo/services/nardopay_service.dart';
 import 'package:viyo/services/subscription_service.dart';
 
+/// Records which plan the server was asked to subscribe, then stops before any browser tab would open.
+class RecordingPremium extends PremiumCheckoutApi {
+  RecordingPremium();
+  final plans = <String>[];
+
+  @override
+  Future<PremiumSubscription> create(String plan) async {
+    plans.add(plan);
+    throw Exception('test stop');
+  }
+}
+
 final packages = [
   CoinPackage(id: 'starter', coins: 100, usdCents: 99, label: '100 Coins'),
   CoinPackage(id: 'popular', coins: 550, usdCents: 499, label: '550 Coins'),
@@ -63,11 +75,11 @@ ElevatedButton primary(WidgetTester t) => t.widget<ElevatedButton>(find.byType(E
 
 void main() {
   group('payment methods per platform', () {
-    test('Android sells nothing, the web never shows Stripe, NardoPay is web-only', () {
+    test('Android sells nothing, the web never shows Stripe, NardoPay is web-only, Lemon Squeezy never', () {
       const live = ['stripe', 'paystack', 'flutterwave', 'lemonsqueezy', 'nardopay'];
       expect(coinMethodsFor(PurchasePlatform.android, live), isEmpty);
-      expect(coinMethodsFor(PurchasePlatform.web, live), ['paystack', 'flutterwave', 'lemonsqueezy', 'nardopay']);
-      expect(coinMethodsFor(PurchasePlatform.other, live), ['stripe', 'paystack', 'flutterwave', 'lemonsqueezy']);
+      expect(coinMethodsFor(PurchasePlatform.web, live), ['paystack', 'flutterwave', 'nardopay']);
+      expect(coinMethodsFor(PurchasePlatform.other, live), ['stripe', 'paystack', 'flutterwave']);
       expect(coinMethodsFor(PurchasePlatform.web, const []), isEmpty);
     });
 
@@ -226,8 +238,8 @@ void main() {
       await show(
           t,
           SubscribeScreen(
-              loadStatus: () async =>
-                  SubscriptionStatus(isSubscribed: true, plan: 'monthly', renewsAt: '2026-12-25T00:00:00Z'),
+              loadStatus: () async => SubscriptionStatus(
+                  isSubscribed: true, plan: 'monthly', provider: 'lemonsqueezy', renewsAt: '2026-12-25T00:00:00Z'),
               platform: PurchasePlatform.web),
           desktop);
       expect(find.text("You're a Premium member"), findsOneWidget);
@@ -242,6 +254,53 @@ void main() {
               loadOptions: () async => options(plans: openPlans),
               loadStatus: notSubscribed,
               platform: PurchasePlatform.android),
+          phone);
+      expect(find.text("Premium isn't available in this app"), findsOneWidget);
+      expect(find.byType(ElevatedButton), findsNothing);
+    });
+
+    testWidgets('Subscribe asks the server for this viewer\'s own NardoPay subscription for the chosen plan',
+        (t) async {
+      final premium = RecordingPremium();
+      await show(
+          t,
+          SubscribeScreen(
+              loadOptions: () async => options(plans: openPlans),
+              loadStatus: notSubscribed,
+              platform: PurchasePlatform.web,
+              checkout: premium),
+          phone);
+      expect(find.textContaining('through NardoPay'), findsOneWidget);
+      expect(find.textContaining('Lemon Squeezy'), findsNothing);
+      await tapText(t, 'Yearly');
+      await t.ensureVisible(find.text(r'Subscribe · $49.99 / year'));
+      await t.tap(find.text(r'Subscribe · $49.99 / year'));
+      await t.pumpAndSettle();
+      expect(premium.plans, ['yearly']);
+      expect(find.text('test stop'), findsOneWidget);
+      expect(find.text('Waiting for payment confirmation'), findsNothing); // nothing to wait for without a link
+    });
+
+    testWidgets('a NardoPay member sees the next payment date and how to stop', (t) async {
+      await show(
+          t,
+          SubscribeScreen(
+              loadStatus: () async => SubscriptionStatus(
+                  isSubscribed: true, plan: 'weekly', provider: 'nardopay', renewsAt: '2026-12-03T10:00:00Z'),
+              platform: PurchasePlatform.web),
+          phone);
+      expect(find.text('Weekly plan'), findsOneWidget);
+      expect(find.text('Next payment due 2026-12-03'), findsOneWidget);
+      expect(find.textContaining('cancel it with NardoPay'), findsOneWidget);
+    });
+
+    testWidgets('the native apps never offer Premium', (t) async {
+      await show(
+          t,
+          SubscribeScreen(
+              loadOptions: () async => options(plans: openPlans),
+              loadStatus: notSubscribed,
+              platform: PurchasePlatform.other),
           phone);
       expect(find.text("Premium isn't available in this app"), findsOneWidget);
       expect(find.byType(ElevatedButton), findsNothing);

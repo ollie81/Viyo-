@@ -136,25 +136,6 @@ class CoinPurchaseService {
     );
   }
 
-  static Future<HostedCheckout> initializeLemonSqueezy(String packageId) async {
-    final res = await http.post(
-      Uri.parse('${AiBackendConstants.baseUrl}/api/v1/coins/purchase/lemonsqueezy/initialize'),
-      headers: await _headers(),
-      body: jsonEncode({'package_id': packageId}),
-    );
-    if (res.statusCode != 200) throw Exception(_errorFrom(res, 'Lemon Squeezy'));
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return HostedCheckout(
-      url: data['checkout_url'] as String,
-      // Lemon Squeezy's order id isn't known client-side until after
-      // checkout completes — there's nothing to poll against by
-      // reference the way Paystack/Flutterwave's own reference works,
-      // so this is just a label for the pending-purchase UI.
-      reference: 'lemonsqueezy',
-      coins: (data['coins'] as num).toInt(),
-    );
-  }
-
   /// Confirms a Play Billing purchase with the backend, which
   /// re-verifies the purchase token directly against Google before
   /// crediting anything — this call is what actually moves coins into
