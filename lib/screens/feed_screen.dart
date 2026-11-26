@@ -396,7 +396,10 @@ class _FeedTabBody extends StatelessWidget {
                 }
                 if (_withAd) {
                   if (i == _adAfter) {
-                    return WebAdCard(placement: adPlacement!, margin: const EdgeInsets.fromLTRB(6, 6, 6, 14));
+                    return WebAdCard(
+                        placement: adPlacement!,
+                        kind: WebAdKind.infeed,
+                        margin: const EdgeInsets.fromLTRB(6, 6, 6, 14));
                   }
                   if (i > _adAfter) i -= 1;
                 }

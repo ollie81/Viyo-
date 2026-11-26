@@ -7,7 +7,10 @@ bool get adsenseSupported => false;
 Future<bool> loadAdsense(String client) async => false;
 
 /// The view type of a registered ad slot for [placement], or null when not on the web.
-String? registerAdSlot({required String placement, required String client, required String slot}) => null;
+String? registerAdSlot(
+        {required String placement, required String client, required String slot, String format = 'auto',
+        String? layoutKey}) =>
+    null;
 
 /// 'filled' | 'unfilled' | 'blocked' | 'pending' for [placement].
 String adSlotStatus(String placement) => 'blocked';

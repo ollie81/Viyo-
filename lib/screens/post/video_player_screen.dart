@@ -17,6 +17,7 @@ import '../../services/watch_progress_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/comments_sheet.dart';
 import '../../widgets/retryable_network_image.dart';
+import '../../widgets/web_ad_card.dart';
 import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
 import '../../services/share_links.dart';
@@ -62,6 +63,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // YouTube's own expanded-comments view) while it keeps playing.
   bool _showComments = false;
   List<Post> _relatedVideos = [];
+  // Web ads: whether they're switched on (and the viewer isn't Premium), and whether the desktop side ad gave up.
+  bool _webAdsOn = false;
+  bool _railAdHidden = false;
 
   Duration? _lastSavedPosition;
   static const _savePositionInterval = Duration(seconds: 3);
@@ -76,6 +80,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WebAdsConfig.get().then((c) {
+      if (mounted && c.enabled) setState(() => _webAdsOn = true);
+    });
     _liked = widget.post.likedByMe;
     _commentCount = widget.post.commentCount;
     InterstitialAdService.preload();
@@ -400,7 +407,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ),
       ),
       body: SafeArea(
-        child: Column(
+        child: LayoutBuilder(builder: (context, box) {
+        // Desktop / large laptop: the ad sits in a side rail beside the video (never over it); on tablets and
+        // phones it sits below the player instead. One display ad per screen either way.
+        final adOk = _webAdsOn && AdEligibility.forContent(post, viewerId: SupabaseService.currentUserId);
+        final rail = adOk && !_railAdHidden && box.maxWidth >= WebAdLayout.railMinScreen;
+        final main = Column(
           children: [
             // When comments are open the video shrinks to a small fixed
             // band instead of disappearing behind a sheet — it keeps
@@ -496,6 +508,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               ),
                             ],
                           ),
+                          // Web only: one labelled ad below the player and its buttons (never over the video),
+                          // for free content the viewer didn't make or pay for.
+                          if (adOk && !rail)
+                            const WebAdCard(placement: 'player', margin: EdgeInsets.only(top: 22)),
                           if (_relatedVideos.isNotEmpty) ...[
                             const SizedBox(height: 22),
                             const Text(
@@ -504,13 +520,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             ),
                             const SizedBox(height: 10),
                             ..._relatedVideos.map(_buildRelatedTile),
+                            // Recommended-content ads at the very end (only once the multiplex unit is set up).
+                            if (adOk)
+                              const WebAdCard(
+                                  placement: 'player-multiplex',
+                                  kind: WebAdKind.multiplex,
+                                  margin: EdgeInsets.only(top: 18)),
                           ],
                         ],
                       ),
                     ),
             ),
           ],
-        ),
+        );
+        if (!rail) return main;
+        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: main),
+          SizedBox(
+            width: WebAdLayout.railWidth,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
+              child: WebAdCard(
+                placement: 'player-rail',
+                size: WebAdSize.rail,
+                margin: EdgeInsets.zero,
+                onHidden: () => setState(() => _railAdHidden = true),
+              ),
+            ),
+          ),
+        ]);
+        }),
       ),
     );
   }
