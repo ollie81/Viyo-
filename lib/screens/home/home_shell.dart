@@ -17,6 +17,7 @@ import '../search_screen.dart';
 import '../feed_screen.dart';
 import '../video_feed_screen.dart';
 import '../wallet/buy_coins_screen.dart';
+import '../wallet/donate_screen.dart';
 import '../wallet/subscribe_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -44,7 +45,11 @@ class _HomeShellState extends State<HomeShell> {
     final pending = await PendingPurchase.peek();
     if (pending == null || !mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => pending.kind == 'premium' ? const SubscribeScreen() : const BuyCoinsScreen(),
+      builder: (_) => switch (pending.kind) {
+        'premium' => const SubscribeScreen(),
+        'donation' => DonateScreen(creatorId: '', creatorName: 'the creator', resumeDonationId: pending.id),
+        _ => const BuyCoinsScreen(),
+      },
     ));
   }
 
