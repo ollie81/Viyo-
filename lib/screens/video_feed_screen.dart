@@ -963,6 +963,10 @@ class _VideoPageState extends State<_VideoPage> {
                         const SizedBox(width: 4),
                         const PromotedLabel(),
                       ],
+                      if (post.isSponsored) ...[
+                        const SizedBox(width: 6),
+                        Flexible(child: SponsoredLabel(brand: post.sponsoredBy!.trim())),
+                      ],
                     ],
                   ),
                   if (post.caption.trim().isNotEmpty) ...[

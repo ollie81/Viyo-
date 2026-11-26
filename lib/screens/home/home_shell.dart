@@ -6,6 +6,7 @@ import '../../services/post_service.dart';
 import '../../services/share_links.dart';
 import '../../widgets/create_menu_sheet.dart';
 import '../../widgets/viyo_glass_bottom_nav.dart';
+import '../creator/brand_campaigns_screen.dart';
 import '../dramas/drama_home_screen.dart';
 import '../mission_screen.dart';
 import '../post/ai_repurpose_screen.dart';
@@ -48,6 +49,7 @@ class _HomeShellState extends State<HomeShell> {
       builder: (_) => switch (pending.kind) {
         'premium' => const SubscribeScreen(),
         'donation' => DonateScreen(creatorId: '', creatorName: 'the creator', resumeDonationId: pending.id),
+        'campaign' => CampaignDetailScreen(campaignId: pending.id, waitForPayment: true),
         _ => const BuyCoinsScreen(),
       },
     ));
