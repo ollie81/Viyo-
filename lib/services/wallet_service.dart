@@ -64,6 +64,12 @@ class WalletEarnings {
   final double? pendingRequestUsd;
   final String? pendingRequestDestination;
 
+  /// New earnings are held for [holdDays] (refund / fraud protection) before they can be withdrawn.
+  final int heldCoins;
+  final double heldUsd;
+  final String? nextAvailableAt;
+  final int holdDays;
+
   WalletEarnings({
     required this.lifetimeCoins,
     required this.availableCoins,
@@ -78,9 +84,13 @@ class WalletEarnings {
     this.payoutSettings,
     this.pendingRequestUsd,
     this.pendingRequestDestination,
+    this.heldCoins = 0,
+    this.heldUsd = 0,
+    this.nextAvailableAt,
+    this.holdDays = 14,
   });
 
-  double get lifetimeUsd => availableUsd + pendingWithdrawalUsd + paidUsd;
+  double get lifetimeUsd => heldUsd + availableUsd + pendingWithdrawalUsd + paidUsd;
   bool get canWithdraw =>
       availableCoins >= minWithdrawalCoins && payoutSettings != null && pendingRequestUsd == null;
 
@@ -102,6 +112,10 @@ class WalletEarnings {
       payoutSettings: settings == null ? null : PayoutSettings.fromJson(settings),
       pendingRequestUsd: (pending?['usd_amount'] as num?)?.toDouble(),
       pendingRequestDestination: pending?['payout_destination'] as String?,
+      heldCoins: (json['held_coins'] as num?)?.toInt() ?? 0,
+      heldUsd: d('held_usd'),
+      nextAvailableAt: json['next_available_at'] as String?,
+      holdDays: (json['hold_days'] as num?)?.toInt() ?? 14,
     );
   }
 

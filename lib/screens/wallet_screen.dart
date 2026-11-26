@@ -431,10 +431,24 @@ class _EarningsCard extends StatelessWidget {
           Row(
             children: [
               Expanded(child: _EarningsStat(label: 'Available', usd: e.availableUsd, coins: e.availableCoins, color: AppColors.success)),
-              Expanded(child: _EarningsStat(label: 'Pending', usd: e.pendingWithdrawalUsd, coins: e.pendingWithdrawalCoins, color: AppColors.coin)),
+              Expanded(child: _EarningsStat(label: 'On hold', usd: e.heldUsd, coins: e.heldCoins, color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _EarningsStat(label: 'Requested', usd: e.pendingWithdrawalUsd, coins: e.pendingWithdrawalCoins, color: AppColors.coin)),
               Expanded(child: _EarningsStat(label: 'Paid out', usd: e.paidUsd, coins: e.paidCoins, color: AppColors.textSecondary)),
             ],
           ),
+          if (e.heldCoins > 0 && e.nextAvailableAt != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'New earnings are on hold for ${e.holdDays} days to protect against refunded purchases. '
+              'The next part becomes available on ${e.nextAvailableAt!.split('T').first}.',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+          ],
           const SizedBox(height: 10),
           Text(
             'You earn 65% of the coins viewers buy and spend on your titles. 1 coin = \$${e.coinUsd}. '
