@@ -39,6 +39,31 @@ class ReceivedDonation {
       );
 }
 
+/// What the donor can choose: US-dollar amounts (VIYO converts them to francs) and NardoPay's customer fee.
+class DonationOptions {
+  final bool available;
+  final List<int> presetsCents;
+  final int minCents;
+  final int maxCents;
+  final double? feePercent;
+
+  const DonationOptions({
+    required this.available,
+    this.presetsCents = const [100, 300, 500, 1000, 2000],
+    this.minCents = 100,
+    this.maxCents = 50000,
+    this.feePercent,
+  });
+
+  factory DonationOptions.fromJson(Map<String, dynamic> j) => DonationOptions(
+        available: j['available'] == true,
+        presetsCents: [for (final c in (j['presets_cents'] as List? ?? const [100, 300, 500, 1000, 2000])) (c as num).toInt()],
+        minCents: (j['min_cents'] as num?)?.toInt() ?? 100,
+        maxCents: (j['max_cents'] as num?)?.toInt() ?? 50000,
+        feePercent: (j['fee_percent'] as num?)?.toDouble(),
+      );
+}
+
 /// The server calls for fan donations (real money through NardoPay, never coins). A fake in tests.
 class DonationApi {
   const DonationApi();
@@ -59,19 +84,22 @@ class DonationApi {
   }
 
   /// Whether donations are open (a yes/no from the server).
-  Future<bool> available() async {
+  Future<bool> available() async => (await options()).available;
+
+  Future<DonationOptions> options() async {
     try {
       final res = await http.get(Uri.parse('$_base/donations/availability')).timeout(const Duration(seconds: 10));
-      return res.statusCode == 200 && jsonDecode(res.body)['available'] == true;
+      if (res.statusCode != 200) return const DonationOptions(available: false);
+      return DonationOptions.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
     } catch (_) {
-      return false;
+      return const DonationOptions(available: false);
     }
   }
 
-  /// Starts a donation to [creatorId]; the donor chooses the amount on NardoPay's page.
-  Future<Donation> start(String creatorId, String message) async {
+  /// Starts a donation of [usdCents] to [creatorId]; VIYO converts it to francs for NardoPay.
+  Future<Donation> start(String creatorId, String message, int usdCents) async {
     final res = await http.post(Uri.parse('$_base/creators/$creatorId/donate'),
-        headers: await _headers(), body: jsonEncode({'message': message}));
+        headers: await _headers(), body: jsonEncode({'message': message, 'usd_cents': usdCents}));
     if (res.statusCode != 200) throw Exception(_error(res));
     return Donation.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }

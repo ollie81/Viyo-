@@ -5,8 +5,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/purchase_ui.dart';
 import '../../widgets/viyo_toast.dart';
 
-/// Support a creator with real money through NardoPay (never coins). The donor writes an optional message here and
-/// chooses the amount on NardoPay's page, which opens in this tab; when NardoPay sends them back, this screen reopens
+/// Support a creator with real money through NardoPay (never coins). The donor picks a US-dollar amount and an
+/// optional message here; VIYO converts the amount to francs and NardoPay's page opens in this tab for exactly that; when NardoPay sends them back, this screen reopens
 /// (HomeShell) and checks the server until NardoPay's payment is confirmed. The creator receives 80%, available to
 /// withdraw after the 14-day hold.
 class DonateScreen extends StatefulWidget {
@@ -31,6 +31,10 @@ class DonateScreen extends StatefulWidget {
 
 class _DonateScreenState extends State<DonateScreen> {
   final _message = TextEditingController();
+  final _custom = TextEditingController();
+  DonationOptions _options = const DonationOptions(available: true);
+  int? _cents = 500; // $5 preselected
+  bool _customMode = false;
   bool _starting = false;
   bool _waiting = false;
   String? _error;
@@ -42,11 +46,28 @@ class _DonateScreenState extends State<DonateScreen> {
     super.initState();
     final resume = widget.resumeDonationId;
     if (resume != null) WidgetsBinding.instance.addPostFrameCallback((_) => _waitForPaid(resume));
+    widget.api.options().then((o) {
+      if (mounted && o.available) setState(() => _options = o);
+    });
   }
+
+  /// The chosen amount in cents, or null when the custom amount isn't valid.
+  int? get _chosenCents {
+    if (!_customMode) return _cents;
+    final v = double.tryParse(_custom.text.trim().replaceAll('\$', '').replaceAll(',', '.'));
+    if (v == null) return null;
+    final c = (v * 100).round();
+    return c >= _options.minCents && c <= _options.maxCents ? c : null;
+  }
+
+  static String _usd(int cents) => cents % 100 == 0
+      ? '\$${cents ~/ 100}'
+      : '\$${(cents / 100).toStringAsFixed(2)}';
 
   @override
   void dispose() {
     _message.dispose();
+    _custom.dispose();
     super.dispose();
   }
 
@@ -58,13 +79,14 @@ class _DonateScreenState extends State<DonateScreen> {
   }
 
   Future<void> _start() async {
-    if (_starting || _waiting) return;
+    final cents = _chosenCents;
+    if (_starting || _waiting || cents == null) return;
     setState(() {
       _starting = true;
       _error = null;
     });
     try {
-      final d = await widget.api.start(widget.creatorId, _message.text.trim());
+      final d = await widget.api.start(widget.creatorId, _message.text.trim(), cents);
       final link = d.paymentLink;
       if (link == null) throw Exception('The NardoPay page couldn\'t be opened. Please try again.');
       await PendingPurchase.save('donation', d.id);
@@ -134,13 +156,19 @@ class _DonateScreenState extends State<DonateScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 PurchaseButton(
-                  label: 'Continue to payment',
+                  label: _chosenCents == null
+                      ? 'Choose an amount'
+                      : 'Donate ${_usd(_chosenCents!)}${(_options.feePercent ?? 0) > 0 ? ' + fee' : ''}',
                   accent: AppColors.coin,
                   busy: _starting,
-                  onPressed: _waiting ? null : _start,
+                  onPressed: _waiting || _chosenCents == null ? null : _start,
                 ),
-                const PurchaseFinePrint('You choose the amount on NardoPay\'s secure page (card or mobile money). '
-                    'Donations are real money, not coins, and aren\'t refundable through VIYO.'),
+                PurchaseFinePrint([
+                  'Pay by card or mobile money on NardoPay\'s secure page.',
+                  if ((_options.feePercent ?? 0) > 0)
+                    'NardoPay adds a payment fee of about ${_options.feePercent!.round()}%.',
+                  'Donations are real money, not coins, and aren\'t refundable through VIYO.',
+                ].join(' ')),
               ],
             ),
             children: [
@@ -167,6 +195,48 @@ class _DonateScreenState extends State<DonateScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.45),
               ),
+              const PurchaseSectionLabel('Amount'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final c in _options.presetsCents)
+                    ChoiceChip(
+                      label: Text(_usd(c)),
+                      selected: !_customMode && _cents == c,
+                      onSelected: _waiting ? null : (_) => setState(() {
+                            _customMode = false;
+                            _cents = c;
+                          }),
+                    ),
+                  ChoiceChip(
+                    label: const Text('Other'),
+                    selected: _customMode,
+                    onSelected: _waiting ? null : (_) => setState(() => _customMode = true),
+                  ),
+                ],
+              ),
+              if (_customMode) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _custom,
+                  enabled: !_waiting,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    prefixText: '\$ ',
+                    hintText: 'Amount in US dollars',
+                    helperText: '${_usd(_options.minCents)} to ${_usd(_options.maxCents)}',
+                  ),
+                ),
+              ],
+              if (_chosenCents != null && (_options.feePercent ?? 0) > 0) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '${_usd(_chosenCents!)} + about \$${(_chosenCents! * _options.feePercent! / 10000).toStringAsFixed(2)} NardoPay fee',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                ),
+              ],
               const PurchaseSectionLabel('Message (optional)'),
               TextField(
                 controller: _message,
