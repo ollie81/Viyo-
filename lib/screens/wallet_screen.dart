@@ -4,6 +4,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../models/transaction.dart';
 import '../models/user_profile.dart';
+import '../services/checkout_options_service.dart';
 import '../services/coin_service.dart';
 import '../services/profile_service.dart';
 import '../services/rewarded_ad_service.dart';
@@ -34,6 +35,8 @@ class _WalletScreenState extends State<WalletScreen> {
   final _giftAmountCtrl = TextEditingController(text: '50');
   bool _gifting = false;
   String? _toast;
+  // Whether Premium can really be bought now (from the server); null until known.
+  bool? _premiumOnSale;
 
   @override
   void initState() {
@@ -50,11 +53,14 @@ class _WalletScreenState extends State<WalletScreen> {
     // Best-effort — a creator with no AI Short Drama earnings yet
     // (or a backend hiccup) shouldn't block the rest of the wallet.
     final earnings = await WalletService.getEarnings().catchError((_) => WalletEarnings.empty());
+    // Best-effort too: without an answer the Premium button just doesn't show a status.
+    final premiumOnSale = await CheckoutOptionsService.fetch().then((o) => o.premiumOnSale).catchError((_) => false);
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _transactions = txs;
       _earnings = earnings;
+      _premiumOnSale = premiumOnSale;
       _loading = false;
     });
   }
@@ -229,7 +235,17 @@ class _WalletScreenState extends State<WalletScreen> {
                                     MaterialPageRoute(builder: (_) => const SubscribeScreen()),
                                   ),
                                   icon: const Icon(Icons.workspace_premium_outlined, size: 18),
-                                  label: const Text('Go Premium — Unlimited Episodes'),
+                                  label: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Flexible(child: Text('VIYO Premium · Unlimited episodes')),
+                                      if (_premiumOnSale == false) ...[
+                                        const SizedBox(width: 8),
+                                        const Text('Soon',
+                                            style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
