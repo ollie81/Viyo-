@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import '../studio/studio_home_screen.dart';
+import '../../services/pending_purchase.dart';
 import '../../services/post_service.dart';
 import '../../services/share_links.dart';
 import '../../widgets/create_menu_sheet.dart';
@@ -15,6 +16,8 @@ import '../profile/profile_screen.dart';
 import '../search_screen.dart';
 import '../feed_screen.dart';
 import '../video_feed_screen.dart';
+import '../wallet/buy_coins_screen.dart';
+import '../wallet/subscribe_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -29,7 +32,20 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openSharedPost());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openSharedPost();
+      _resumePendingPurchase();
+    });
+  }
+
+  /// Back from NardoPay's payment page (viyo.site/app is its return address): reopen the screen the purchase was
+  /// started from, which keeps checking the server until NardoPay's payment is confirmed. Nothing is granted here.
+  Future<void> _resumePendingPurchase() async {
+    final pending = await PendingPurchase.peek();
+    if (pending == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => pending.kind == 'premium' ? const SubscribeScreen() : const BuyCoinsScreen(),
+    ));
   }
 
   /// Opened from a shared link (www.viyo.site/p/<id> -> /app/?post=<id>):

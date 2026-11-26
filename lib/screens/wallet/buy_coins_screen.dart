@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/checkout_options_service.dart';
 import '../../services/coin_purchase_service.dart';
 import '../../services/nardopay_service.dart';
+import '../../services/pending_purchase.dart';
 import '../../services/profile_service.dart';
 import '../../services/rewarded_ad_service.dart';
 import '../../services/supabase_service.dart';
@@ -84,8 +85,17 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     if (_isAndroid) {
       _loading = false;
     } else {
-      _load();
+      _load().then((_) => _resumePending());
     }
+  }
+
+  // Bumped to stop a running NardoPay check (Cancel, or a newer check starting).
+  int _waitToken = 0;
+
+  /// Back from NardoPay's page (it opens in the same tab on the web): keep checking the order paid there.
+  Future<void> _resumePending() async {
+    final pending = await PendingPurchase.peekKind('coins');
+    if (pending != null && mounted) await _waitForNardopay(pending.id);
   }
 
   @override
@@ -219,7 +229,15 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     try {
       order = await widget.nardopay.create(package.id);
       final link = order.paymentLink;
-      if (link == null || !await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication)) {
+      if (link == null) {
+        setState(() => _purchaseError = 'The NardoPay page couldn\'t be opened. Please try again.');
+        return;
+      }
+      // Remember it first: on the web the page opens in this tab and VIYO resumes the check when NardoPay sends the
+      // viewer back.
+      await PendingPurchase.save('coins', order.orderId);
+      if (!await openCheckoutPage(link)) {
+        await PendingPurchase.clear();
         setState(() => _purchaseError = 'The NardoPay page couldn\'t be opened. Please try again.');
         return;
       }
@@ -229,14 +247,34 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
     } finally {
       if (mounted) setState(() => _purchasing = false);
     }
-    if (!mounted) return;
+    if (mounted) await _waitForNardopay(order.orderId);
+  }
+
+  /// Checks the order until the server has credited it (after NardoPay's signed confirmation), failed or mismatched.
+  Future<void> _waitForNardopay(String orderId) async {
+    final token = ++_waitToken;
+    bool stillMine() => mounted && token == _waitToken;
     setState(() => _waitingForNardopay = true);
-    final status = await waitForNardopayOrder(widget.nardopay, order.orderId, cancelled: () => !mounted);
-    if (!mounted) return;
+    String status = 'pending';
+    int coins = 0;
+    for (var i = 0; i < 225 && stillMine(); i++) {
+      try {
+        final o = await widget.nardopay.status(orderId);
+        status = o.status;
+        coins = o.coins;
+        if (o.settled) break;
+      } catch (_) {
+        // A network blip: try again on the next check.
+      }
+      await Future.delayed(const Duration(seconds: 4));
+    }
+    if (!stillMine()) return;
+    await PendingPurchase.clear();
+    if (!stillMine()) return;
     setState(() => _waitingForNardopay = false);
     switch (status) {
       case 'credited':
-        _showToast('+${order.coins} coins added');
+        _showToast('+$coins coins added');
         Navigator.of(context).pop(true);
       case 'failed':
         setState(() => _purchaseError = 'The payment didn\'t go through, so no coins were added.');
@@ -246,6 +284,13 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       default:
         _showToast('Still waiting for NardoPay. If you paid, your coins will appear soon.');
     }
+  }
+
+  /// The viewer didn't pay: stop waiting. Nothing is charged by this.
+  Future<void> _cancelWaiting() async {
+    _waitToken++;
+    await PendingPurchase.clear();
+    if (mounted) setState(() => _waitingForNardopay = false);
   }
 
   static String _clean(Object e) => '$e'.replaceFirst(RegExp(r'^Exception:\s*'), '');
@@ -399,8 +444,11 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
             tone: NoticeTone.waiting,
             title: 'Waiting for payment confirmation',
             message: _waitingForNardopay
-                ? 'Finish paying in the NardoPay tab. Your coins appear here once NardoPay confirms the payment.'
+                ? 'Your coins appear here as soon as NardoPay confirms your payment.'
                 : 'Checking for your coins…',
+            action: _waitingForNardopay
+                ? OutlinedButton(onPressed: _cancelWaiting, child: const Text('I didn\'t pay · Cancel'))
+                : null,
           ),
         ],
         if (_purchaseError != null) ...[
