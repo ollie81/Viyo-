@@ -270,7 +270,7 @@ void main() {
               platform: PurchasePlatform.web,
               checkout: premium),
           phone);
-      expect(find.textContaining('through NardoPay'), findsOneWidget);
+      expect(find.textContaining('Pay by debit or credit card'), findsOneWidget);
       expect(find.textContaining('Lemon Squeezy'), findsNothing);
       await tapText(t, 'Yearly');
       await t.ensureVisible(find.text(r'Subscribe · $49.99 / year'));
