@@ -43,12 +43,13 @@ class CreatorHub {
   final List<String> doesNotEarn;
   final String payoutDetail;
   final String note;
+  final CreatorDashboard? dashboard;
   CreatorHub({required this.views, required this.likes, required this.comments, required this.shares, this.followers,
       required this.lifetimeCoins, required this.availableCoins, required this.pendingCoins, required this.paidCoins,
       required this.last30Coins, required this.lifetimeUsd, required this.availableUsd, required this.paidUsd,
       required this.canWithdraw, required this.payoutDetailsSaved, required this.withdrawalPending,
       required this.productions, required this.earns, required this.doesNotEarn, required this.payoutDetail,
-      required this.note});
+      required this.note, this.dashboard});
 
   factory CreatorHub.fromJson(Map<String, dynamic> j) {
     final a = (j['audience'] as Map?) ?? const {};
@@ -72,6 +73,7 @@ class CreatorHub {
       doesNotEarn: ((h['does_not_earn'] as List?) ?? []).map((e) => e.toString()).toList(),
       payoutDetail: (((h['payout'] as Map?) ?? const {})['detail'] ?? '').toString(),
       note: (h['note'] ?? '').toString(),
+      dashboard: j['dashboard'] is Map ? CreatorDashboard.fromJson(j['dashboard'] as Map) : null,
     );
   }
 }
@@ -124,5 +126,81 @@ class CreatorAnalytics {
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// One earning type in the dashboard (content, donations, adjustments), in coins from the earnings ledger.
+class EarningType {
+  final int coins, heldCoins, availableCoins, requestedCoins, paidCoins;
+  final double usd;
+  const EarningType({this.coins = 0, this.usd = 0, this.heldCoins = 0, this.availableCoins = 0,
+      this.requestedCoins = 0, this.paidCoins = 0});
+  factory EarningType.fromJson(Map j) => EarningType(
+        coins: (j['coins'] as num?)?.toInt() ?? 0,
+        usd: (j['usd'] as num?)?.toDouble() ?? 0,
+        heldCoins: (j['held_coins'] as num?)?.toInt() ?? 0,
+        availableCoins: (j['available_coins'] as num?)?.toInt() ?? 0,
+        requestedCoins: (j['requested_coins'] as num?)?.toInt() ?? 0,
+        paidCoins: (j['paid_coins'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// The unified creator dashboard from the server (creator_hub.dashboard): exact counts from real records.
+/// When [ready] is false the server couldn't add them up yet, and the app shows nothing estimated.
+class CreatorDashboard {
+  final bool ready;
+  final int days;
+  final DateTime? computedAt;
+  final int plays, uniqueViewers, watchMinutes;
+  final double? completionRate;
+  final Map<String, EarningType> byType;
+  final String? advertisingNote, brandNote;
+  final int heldCoins, availableCoins, holdDays;
+  final double heldUsd, availableUsd;
+  final List<({String status, double usd, DateTime? createdAt, DateTime? paidAt})> withdrawals;
+  final int projects, activeJobs, completedJobs, failedJobs, creditsUsed, creditsUsedPeriod;
+
+  const CreatorDashboard({required this.ready, this.days = 30, this.computedAt, this.plays = 0,
+      this.uniqueViewers = 0, this.watchMinutes = 0, this.completionRate, this.byType = const {},
+      this.advertisingNote, this.brandNote, this.heldCoins = 0, this.availableCoins = 0, this.holdDays = 14,
+      this.heldUsd = 0, this.availableUsd = 0, this.withdrawals = const [], this.projects = 0, this.activeJobs = 0,
+      this.completedJobs = 0, this.failedJobs = 0, this.creditsUsed = 0, this.creditsUsedPeriod = 0});
+
+  static String? _notYet(Object? m) =>
+      m is Map && m['available'] != true ? (m['note'] ?? 'Not available on VIYO yet.').toString() : null;
+
+  factory CreatorDashboard.fromJson(Map j) {
+    final a = (j['audience'] as Map?) ?? const {};
+    final e = (j['earnings'] as Map?) ?? const {};
+    final s = (j['studio'] as Map?) ?? const {};
+    int i(Map m, String k) => (m[k] as num?)?.toInt() ?? 0;
+    double d(Map m, String k) => (m[k] as num?)?.toDouble() ?? 0;
+    return CreatorDashboard(
+      ready: j['ready'] == true,
+      days: (j['days'] as num?)?.toInt() ?? 30,
+      computedAt: DateTime.tryParse((j['computed_at'] ?? '').toString()),
+      plays: i(a, 'plays'), uniqueViewers: i(a, 'unique_viewers'), watchMinutes: i(a, 'watch_minutes'),
+      completionRate: (a['completion_rate'] as num?)?.toDouble(),
+      byType: {
+        for (final en in ((e['by_type'] as Map?) ?? const {}).entries)
+          en.key.toString(): EarningType.fromJson(en.value as Map),
+      },
+      advertisingNote: _notYet(e['advertising'] ?? j['advertising']),
+      brandNote: _notYet(e['brand_campaigns'] ?? j['brand_campaigns']),
+      heldCoins: i(e, 'held_coins'), availableCoins: i(e, 'available_coins'),
+      holdDays: (e['hold_days'] as num?)?.toInt() ?? 14,
+      heldUsd: d(e, 'held_usd'), availableUsd: d(e, 'available_usd'),
+      withdrawals: [
+        for (final w in (j['withdrawals'] as List? ?? const []))
+          (
+            status: ((w as Map)['status'] ?? '').toString(),
+            usd: (w['usd'] as num?)?.toDouble() ?? 0,
+            createdAt: DateTime.tryParse((w['created_at'] ?? '').toString()),
+            paidAt: DateTime.tryParse((w['paid_at'] ?? '').toString()),
+          ),
+      ],
+      projects: i(s, 'projects'), activeJobs: i(s, 'active_jobs'), completedJobs: i(s, 'completed_jobs'),
+      failedJobs: i(s, 'failed_jobs'), creditsUsed: i(s, 'credits_used'), creditsUsedPeriod: i(s, 'credits_used_period'),
+    );
   }
 }

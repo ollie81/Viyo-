@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../services/creator_hub_service.dart';
 import '../../services/series_service.dart';
@@ -15,7 +17,14 @@ String _usd(double v) => '\$${v.toStringAsFixed(2)}';
 /// Every number comes from the server's real records; the earning rules come from the same constants the
 /// payment code uses, so nothing here promises more than VIYO pays.
 class CreatorHubScreen extends StatefulWidget {
-  const CreatorHubScreen({super.key});
+  const CreatorHubScreen({super.key, this.loadHub, this.loadAnalytics});
+
+  /// For tests; the real screen asks the server.
+  final Future<CreatorHub> Function()? loadHub;
+  final Future<CreatorAnalytics?> Function()? loadAnalytics;
+
+  /// While the screen is open it refreshes itself this often (quietly, no spinner).
+  static const refreshEvery = Duration(seconds: 60);
 
   @override
   State<CreatorHubScreen> createState() => _CreatorHubScreenState();
@@ -26,11 +35,29 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
   CreatorAnalytics? _analytics;
   String? _error;
   bool _loading = true;
+  DateTime? _updatedAt;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _timer = Timer.periodic(CreatorHubScreen.refreshEvery, (_) => _refreshQuietly());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetch() async {
+    final hub = await (widget.loadHub ?? CreatorHubService.load)();
+    final analytics = await (widget.loadAnalytics ?? CreatorAnalytics.load)();
+    if (!mounted) return;
+    _hub = hub;
+    _analytics = analytics;
+    _updatedAt = DateTime.now();
   }
 
   Future<void> _load() async {
@@ -39,13 +66,21 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
       _error = null;
     });
     try {
-      _hub = await CreatorHubService.load();
-      _analytics = await CreatorAnalytics.load();
+      await _fetch();
     } catch (e) {
       _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// The minute-by-minute refresh: keeps what's on screen if the server can't be reached this time.
+  Future<void> _refreshQuietly() async {
+    if (_loading || _hub == null || !mounted) return;
+    try {
+      await _fetch();
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   Future<void> _go(Widget screen) async {
@@ -110,7 +145,8 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
             if (h.followers != null) _stat('Followers', h.followers!),
           ]),
         ),
-        if (_analytics != null) ..._audienceDetail(_analytics!),
+        if (h.dashboard?.ready == true) ..._dashboardAudience(h.dashboard!),
+        if (_analytics != null) ..._audienceDetail(_analytics!, showTotals: h.dashboard?.ready != true),
         _label('Earnings'),
         Container(
           padding: const EdgeInsets.all(14),
@@ -146,6 +182,20 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
             ]),
           ]),
         ),
+        if (h.dashboard?.ready == true) ..._dashboardEarnings(h.dashboard!)
+        else if (h.dashboard != null)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('The detailed breakdown is being set up. Your totals above are up to date.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ),
+        if (h.dashboard?.ready == true) ..._dashboardStudio(h.dashboard!),
+        if (_updatedAt != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text('Updated ${_time(_updatedAt!)} · refreshes every minute while open',
+                style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ),
         _label('Your productions'),
         if (h.productions.isEmpty)
           const Text('Nothing published yet. Create something in Studio or upload an episode, and it shows here.',
@@ -197,9 +247,169 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
     );
   }
 
-  List<Widget> _audienceDetail(CreatorAnalytics a) {
+  List<Widget> _dashboardAudience(CreatorDashboard d) => [
+        _label('Last ${d.days} days'),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: AppTheme.card(),
+          child: Row(children: [
+            _stat('Plays', d.plays),
+            _stat('People', d.uniqueViewers),
+            _stat('Watch min', d.watchMinutes),
+            _statText('Finished', d.completionRate == null ? '—' : '${(d.completionRate! * 100).round()}%'),
+          ]),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text("Plays by other people; your own plays don't count. Finished = episodes watched to the end.",
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35)),
+        ),
+      ];
+
+  List<Widget> _dashboardEarnings(CreatorDashboard d) {
+    const names = {'content': 'Paid content', 'donations': 'Donations', 'adjustments': 'Refunds and corrections'};
+    return [
+      _label('Earnings by type'),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: AppTheme.card(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final e in names.entries)
+            if (e.key != 'adjustments' || (d.byType[e.key]?.coins ?? 0) != 0)
+              _earningRow(e.value, d.byType[e.key] ?? const EarningType()),
+          _notYetRow('Ad revenue', d.advertisingNote),
+          _notYetRow('Brand campaigns', d.brandNote),
+          const Divider(height: 20),
+          Row(children: [
+            Expanded(child: _money('On hold', d.heldUsd, '${_n(d.heldCoins)} coins')),
+            Expanded(child: _money('Available', d.availableUsd, '${_n(d.availableCoins)} coins')),
+          ]),
+          const SizedBox(height: 8),
+          Text('New earnings are held for ${d.holdDays} days in case of refunds, then become available to withdraw.',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.35)),
+        ]),
+      ),
+      if (d.withdrawals.isNotEmpty) ...[
+        _label('Withdrawals'),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: AppTheme.card(),
+          child: Column(children: [
+            for (final w in d.withdrawals)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(w.createdAt == null ? '—' : _date(w.createdAt!),
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                  ),
+                  Text(_usd(w.usd),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                  const SizedBox(width: 10),
+                  _statusChip(w.status),
+                ]),
+              ),
+          ]),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _dashboardStudio(CreatorDashboard d) => [
+        _label('Studio'),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: AppTheme.card(),
+          child: Row(children: [
+            _stat('Projects', d.projects),
+            _stat('In progress', d.activeJobs),
+            _stat('Finished', d.completedJobs),
+            _stat('Failed', d.failedJobs),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('${_n(d.creditsUsedPeriod)} credits used in the last ${d.days} days · ${_n(d.creditsUsed)} all time',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ),
+      ];
+
+  Widget _earningRow(String name, EarningType t) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              const SizedBox(height: 2),
+              Text(
+                [
+                  '${_n(t.coins)} coins',
+                  if (t.heldCoins > 0) '${_n(t.heldCoins)} on hold',
+                  if (t.paidCoins > 0) '${_n(t.paidCoins)} paid out',
+                ].join(' · '),
+                style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+              ),
+            ]),
+          ),
+          Text(t.usd < 0 ? '-${_usd(-t.usd)}' : _usd(t.usd),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+        ]),
+      );
+
+  Widget _notYetRow(String name, String? note) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(children: [
+          Expanded(child: Text(name, style: const TextStyle(fontSize: 13, color: AppColors.textMuted))),
+          Text(note == null ? '' : 'Not available yet', style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        ]),
+      );
+
+  Widget _money(String label, double usd, String sub) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        const SizedBox(height: 2),
+        Text(_usd(usd),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+        Text(sub, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+      ]);
+
+  Widget _statusChip(String status) {
+    final (text, color) = switch (status) {
+      'paid' => ('Paid', AppColors.success),
+      'pending' => ('Requested', AppColors.coin),
+      'approved' => ('Approved', AppColors.coin),
+      'rejected' => ('Rejected', AppColors.textMuted),
+      _ => (status.isEmpty ? '—' : status, AppColors.textMuted),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  String _date(DateTime d) {
+    final l = d.toLocal();
+    return '${_months[l.month - 1]} ${l.day}, ${l.year}';
+  }
+
+  String _time(DateTime d) {
+    final l = d.toLocal();
+    return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _statText(String label, String v) => Expanded(
+        child: Column(children: [
+          Text(v, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+        ]),
+      );
+
+  List<Widget> _audienceDetail(CreatorAnalytics a, {bool showTotals = true}) {
     final completion = a.uniqueViewers > 0 ? a.completers / a.uniqueViewers : null;
     return [
+      if (showTotals) ...[
       _label('Last 30 days'),
       Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
@@ -215,6 +425,12 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text('${(completion * 100).round()}% of the people who started your work finished something.',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ),
+      ] else if (a.newFollowers > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('${_n(a.newFollowers)} new followers in the last 30 days',
               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         ),
       if (a.advice.isNotEmpty) ...[
