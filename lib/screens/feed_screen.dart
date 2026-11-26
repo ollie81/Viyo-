@@ -20,6 +20,7 @@ import 'profile/profile_screen.dart';
 import 'video_feed_screen.dart';
 import '../services/share_links.dart';
 import '../services/notification_service.dart';
+import '../widgets/web_ad_card.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -289,6 +290,7 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
             onRefresh: _load,
             cardBuilder: _buildCard,
             showHeader: true,
+            adPlacement: 'home',
             emptyState: const _EmptyFeedState(
               title: 'No posts yet',
               subtitle: 'Be the first to share — your AI coach\nreviews every post right after you do.',
@@ -338,6 +340,8 @@ class _FeedTabBody extends StatelessWidget {
   final Widget Function(Post) cardBuilder;
   final Widget emptyState;
   final bool showHeader;
+  // Web only: one labelled ad between cards (after the 4th), never inside a post or its video.
+  final String? adPlacement;
 
   const _FeedTabBody({
     required this.loading,
@@ -348,7 +352,12 @@ class _FeedTabBody extends StatelessWidget {
     required this.cardBuilder,
     required this.emptyState,
     this.showHeader = false,
+    this.adPlacement,
   });
+
+  static const _adAfter = 4;
+
+  bool get _withAd => adPlacement != null && posts.length > _adAfter;
 
   @override
   Widget build(BuildContext context) {
@@ -379,11 +388,17 @@ class _FeedTabBody extends StatelessWidget {
             )
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(6, 6, 6, 20),
-              itemCount: posts.length + (showHeader ? 1 : 0),
+              itemCount: posts.length + (showHeader ? 1 : 0) + (_withAd ? 1 : 0),
               itemBuilder: (ctx, i) {
                 if (showHeader) {
                   if (i == 0) return const HomeHeaderSection();
-                  return cardBuilder(posts[i - 1]);
+                  i -= 1;
+                }
+                if (_withAd) {
+                  if (i == _adAfter) {
+                    return WebAdCard(placement: adPlacement!, margin: const EdgeInsets.fromLTRB(6, 6, 6, 14));
+                  }
+                  if (i > _adAfter) i -= 1;
                 }
                 return cardBuilder(posts[i]);
               },

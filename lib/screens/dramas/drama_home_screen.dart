@@ -17,6 +17,7 @@ import '../post/series_detail_screen.dart';
 import '../profile/profile_screen.dart';
 import '../video_feed_screen.dart';
 import 'watchlist_screen.dart';
+import '../../widgets/web_ad_card.dart';
 
 /// The dedicated Short Drama home — previously drama discovery was
 /// nested two levels deep (a tab inside Home's TabBar, and a section
@@ -352,6 +353,12 @@ class _DramaHomeScreenState extends State<DramaHomeScreen> {
                 child: _SeriesRow(series: _newReleases, onTap: _openSeries),
               ),
             ],
+            // Web only: one labelled ad between the rows (never on a poster or a video).
+            if (hasRows)
+              const SliverPadding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                sliver: SliverToBoxAdapter(child: WebAdCard(placement: 'dramas')),
+              ),
             if (!_loadingRows && _becauseYouWatched.isNotEmpty) ...[
               _SectionHeader(
                 'BECAUSE YOU WATCHED ${_becauseYouWatchedTitle?.toUpperCase() ?? ''}',

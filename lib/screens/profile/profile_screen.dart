@@ -31,6 +31,7 @@ import 'edit_profile.dart';
 import '../messages/chat_screen.dart';
 import '../post/viyo_post_viewer.dart';
 import '../post/post_detail_screen.dart';
+import '../../widgets/web_ad_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? userId;
@@ -706,6 +707,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 10),
                       _spotlightSection(),
                     ],
+                    // Web only: one labelled ad on other creators' profiles, spaced away from the buttons.
+                    if (!_isOwnProfile) const WebAdCard(placement: 'profile', margin: EdgeInsets.only(top: 18)),
                     const SizedBox(height: 16),
                     Row(
                       children: [
