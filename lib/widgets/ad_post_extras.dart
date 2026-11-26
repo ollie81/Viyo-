@@ -29,6 +29,22 @@ class PromotedLabel extends StatelessWidget {
       );
 }
 
+/// A post a creator made for a brand campaign (paid by the brand through VIYO).
+class SponsoredLabel extends StatelessWidget {
+  final String brand;
+  const SponsoredLabel({super.key, required this.brand});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: const Color(0xFF0EA5E9), borderRadius: BorderRadius.circular(4)),
+        child: Text('Sponsored · $brand',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+      );
+}
+
 /// The advertiser's own link ("Visit"): a website, a phone number (tel:) or an email (mailto:).
 class AdVisitButton extends StatelessWidget {
   final String link;

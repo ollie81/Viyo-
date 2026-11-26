@@ -36,6 +36,9 @@ class ViyoPostMedia {
   final String? adLink;
   final bool isPromoted;
   final String? promotionId;
+  // A post made for a brand campaign: labelled "Sponsored · <brand>".
+  final String? sponsoredBy;
+  bool get isSponsored => (sponsoredBy ?? '').trim().isNotEmpty;
 
   const ViyoPostMedia({
     required this.id,
@@ -56,6 +59,7 @@ class ViyoPostMedia {
     this.adLink,
     this.isPromoted = false,
     this.promotionId,
+    this.sponsoredBy,
   });
 
   factory ViyoPostMedia.fromPost(Post post) => ViyoPostMedia(
@@ -79,6 +83,7 @@ class ViyoPostMedia {
         adLink: post.adLink,
         isPromoted: post.isPromoted,
         promotionId: post.promotionId,
+        sponsoredBy: post.sponsoredBy,
       );
 }
 
@@ -383,6 +388,10 @@ class _CreatorMediaPageState extends State<_CreatorMediaPage> {
                             ),
                             if (post.isAd) ...[const SizedBox(width: 8), const AdLabel()],
                             if (post.isAd && post.isPromoted) ...[const SizedBox(width: 4), const PromotedLabel()],
+                            if (post.isSponsored) ...[
+                              const SizedBox(width: 6),
+                              Flexible(child: SponsoredLabel(brand: post.sponsoredBy!.trim())),
+                            ],
                           ]),
                           if (post.caption.trim().isNotEmpty) ...[
                             const SizedBox(height: 5),

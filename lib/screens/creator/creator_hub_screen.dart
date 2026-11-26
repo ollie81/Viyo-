@@ -8,6 +8,8 @@ import '../post/series_detail_screen.dart';
 import '../post/upload_ai_drama_screen.dart';
 import '../studio/studio_home_screen.dart';
 import '../wallet_screen.dart';
+import 'brand_campaigns_screen.dart';
+import 'brand_deals_screen.dart';
 import 'my_productions_screen.dart';
 
 String _n(int v) => v >= 1000000 ? '${(v / 1000000).toStringAsFixed(1)}M' : v >= 1000 ? '${(v / 1000).toStringAsFixed(1)}K' : '$v';
@@ -133,6 +135,16 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
           Expanded(child: _action(Icons.upload_outlined, 'Upload', 'Episodes, short films, movies',
               () => _go(const UploadAiDramaScreen()))),
         ]),
+        if (h.dashboard?.brandNote == null && h.dashboard != null) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: _action(Icons.handshake_outlined, 'Brand deals', 'Get paid by brands for a post',
+                () => _go(const BrandDealsScreen()))),
+            const SizedBox(width: 10),
+            Expanded(child: _action(Icons.campaign_outlined, 'Run a campaign', 'Pay creators to post about you',
+                () => _go(const BrandCampaignsScreen()))),
+          ]),
+        ],
         if (h.dashboard?.level?.ready == true) ..._levelCard(h.dashboard!.level!),
         _label('Your audience'),
         Container(
@@ -335,7 +347,12 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
       ];
 
   List<Widget> _dashboardEarnings(CreatorDashboard d) {
-    const names = {'content': 'Paid content', 'donations': 'Donations', 'adjustments': 'Refunds and corrections'};
+    const names = {
+      'content': 'Paid content',
+      'donations': 'Donations',
+      'brand_deals': 'Brand deals',
+      'adjustments': 'Refunds and corrections',
+    };
     return [
       _label('Earnings by type'),
       Container(
@@ -343,10 +360,11 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
         decoration: AppTheme.card(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (final e in names.entries)
-            if (e.key != 'adjustments' || (d.byType[e.key]?.coins ?? 0) != 0)
+            if ((e.key != 'adjustments' && (e.key != 'brand_deals' || d.brandNote == null)) ||
+                (d.byType[e.key]?.coins ?? 0) != 0)
               _earningRow(e.value, d.byType[e.key] ?? const EarningType()),
-          _notYetRow('Ad revenue', d.advertisingNote),
-          _notYetRow('Brand campaigns', d.brandNote),
+          if (d.advertisingNote != null) _notYetRow('Ad revenue', d.advertisingNote),
+          if (d.brandNote != null) _notYetRow('Brand campaigns', d.brandNote),
           const Divider(height: 20),
           Row(children: [
             Expanded(child: _money('On hold', d.heldUsd, '${_n(d.heldCoins)} coins')),

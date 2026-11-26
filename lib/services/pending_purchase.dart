@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// when NardoPay sends the viewer back to viyo.site/app. This only remembers WHICH order to check: whether it was
 /// paid is always asked from the server, which knows only after NardoPay's signed confirmation.
 class PendingPurchase {
-  final String kind; // premium | coins | donation
+  final String kind; // premium | coins | donation | campaign
   final String id; // subscription id or coin order id
   final DateTime savedAt;
 
@@ -33,7 +33,7 @@ class PendingPurchase {
       if (raw == null) return null;
       final parts = raw.split('|');
       final at = parts.length == 3 ? DateTime.tryParse(parts[2]) : null;
-      if (at == null || !const {'premium', 'coins', 'donation'}.contains(parts[0]) || parts[1].isEmpty ||
+      if (at == null || !const {'premium', 'coins', 'donation', 'campaign'}.contains(parts[0]) || parts[1].isEmpty ||
           DateTime.now().toUtc().difference(at) > maxAge) {
         await prefs.remove(_key);
         return null;
