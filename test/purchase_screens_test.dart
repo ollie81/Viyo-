@@ -130,7 +130,7 @@ void main() {
               loadOptions: () async => options(providers: ['stripe', 'paystack', 'nardopay']),
               platform: PurchasePlatform.web),
           phone);
-      expect(find.text('Mobile money or card'), findsOneWidget);
+      expect(find.text('Card'), findsOneWidget);
       expect(find.text('Paystack'), findsOneWidget);
       expect(find.textContaining('Stripe'), findsNothing); // not runnable on the web
     });
