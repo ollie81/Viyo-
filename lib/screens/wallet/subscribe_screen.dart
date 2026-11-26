@@ -312,7 +312,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> with WidgetsBindingOb
                 PurchaseFinePrint(!onSale
                     ? 'Premium is paid with money, not coins.'
                     : (_method == 'nardopay'
-                        ? 'Paid with money, not coins. One payment, charged in Rwandan francs at today\'s rate. '
+                        ? 'Paid with money, not coins. One payment. '
                             'It doesn\'t renew: you can add more time whenever you like.'
                         : 'Paid with money, not coins. Renews automatically until you cancel; manage or cancel it '
                             'from your Lemon Squeezy receipt email.')),
