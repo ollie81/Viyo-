@@ -13,6 +13,7 @@ import '../models/post.dart';
 import '../models/series.dart';
 import '../services/bunny_stream_service.dart';
 import '../services/checkout_options_service.dart';
+import '../services/ad_revenue_service.dart';
 import '../services/interstitial_ad_service.dart';
 import '../services/post_service.dart';
 import '../services/rewarded_ad_service.dart';
@@ -119,8 +120,13 @@ class _VideoFeedScreenState extends State<VideoFeedScreen> {
     if (_swipesSinceInterstitial >= _interstitialEverySwipes) {
       // Reset only once an ad actually showed: if none was loaded yet, try again on the
       // next swipe instead of silently waiting another full round.
+      final postId = i < _posts.length ? _posts[i].id : null;
       InterstitialAdService.showIfReady().then((shown) {
-        if (shown) _swipesSinceInterstitial = 0;
+        if (shown) {
+          _swipesSinceInterstitial = 0;
+          // The creator of the post the ad ran next to gets their share of the ad money.
+          if (postId != null) AdRevenueService.reportImpression(postId);
+        }
       });
     }
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../services/ad_revenue_service.dart';
 import '../../services/creator_hub_service.dart';
 import '../../services/series_service.dart';
 import '../../theme/app_theme.dart';
@@ -19,11 +20,12 @@ String _usd(double v) => '\$${v.toStringAsFixed(2)}';
 /// Every number comes from the server's real records; the earning rules come from the same constants the
 /// payment code uses, so nothing here promises more than VIYO pays.
 class CreatorHubScreen extends StatefulWidget {
-  const CreatorHubScreen({super.key, this.loadHub, this.loadAnalytics});
+  const CreatorHubScreen({super.key, this.loadHub, this.loadAnalytics, this.loadAdRevenue});
 
   /// For tests; the real screen asks the server.
   final Future<CreatorHub> Function()? loadHub;
   final Future<CreatorAnalytics?> Function()? loadAnalytics;
+  final Future<AdRevenueSummary> Function()? loadAdRevenue;
 
   /// While the screen is open it refreshes itself this often (quietly, no spinner).
   static const refreshEvery = Duration(seconds: 60);
@@ -35,6 +37,7 @@ class CreatorHubScreen extends StatefulWidget {
 class _CreatorHubScreenState extends State<CreatorHubScreen> {
   CreatorHub? _hub;
   CreatorAnalytics? _analytics;
+  AdRevenueSummary? _ads;
   String? _error;
   bool _loading = true;
   DateTime? _updatedAt;
@@ -56,9 +59,13 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
   Future<void> _fetch() async {
     final hub = await (widget.loadHub ?? CreatorHubService.load)();
     final analytics = await (widget.loadAnalytics ?? CreatorAnalytics.load)();
+    final ads = hub.dashboard?.advertisingNote == null && hub.dashboard != null
+        ? await (widget.loadAdRevenue ?? AdRevenueService.mine)()
+        : null;
     if (!mounted) return;
     _hub = hub;
     _analytics = analytics;
+    _ads = ads;
     _updatedAt = DateTime.now();
   }
 
@@ -202,6 +209,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
             child: Text('The detailed breakdown is being set up. Your totals above are up to date.',
                 style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
           ),
+        if (_ads?.available == true) ..._adRevenueCard(_ads!),
         if (h.dashboard?.ready == true) ..._dashboardStudio(h.dashboard!),
         if (_updatedAt != null)
           Padding(
@@ -351,6 +359,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
       'content': 'Paid content',
       'donations': 'Donations',
       'brand_deals': 'Brand deals',
+      'ads': 'Ad revenue',
       'adjustments': 'Refunds and corrections',
     };
     return [
@@ -360,7 +369,9 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
         decoration: AppTheme.card(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (final e in names.entries)
-            if ((e.key != 'adjustments' && (e.key != 'brand_deals' || d.brandNote == null)) ||
+            if ((e.key != 'adjustments' &&
+                    (e.key != 'brand_deals' || d.brandNote == null) &&
+                    (e.key != 'ads' || d.advertisingNote == null)) ||
                 (d.byType[e.key]?.coins ?? 0) != 0)
               _earningRow(e.value, d.byType[e.key] ?? const EarningType()),
           if (d.advertisingNote != null) _notYetRow('Ad revenue', d.advertisingNote),
@@ -398,6 +409,50 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
           ]),
         ),
       ],
+    ];
+  }
+
+  List<Widget> _adRevenueCard(AdRevenueSummary a) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    String label(String ym) {
+      final p = ym.split('-');
+      final m = p.length == 2 ? int.tryParse(p[1]) : null;
+      return m == null || m < 1 || m > 12 ? ym : '${months[m - 1]} ${p[0]}';
+    }
+
+    final t = a.thisMonth;
+    return [
+      _label('Ad revenue'),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: AppTheme.card(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('This month so far: ${_n(t.feedAds + t.unlockAds)} ads on your content',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 2),
+          Text('${_n(t.feedAds)} in your videos and feed · ${_n(t.unlockAds)} to unlock your episodes',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          Text('You get ${(a.creatorShare * 100).round()}% of what these ads really earn. The amount is added after '
+              'the month ends, from VIYO\'s ad report.',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35)),
+          if (a.months.isNotEmpty) ...[
+            const Divider(height: 20),
+            for (final m in a.months.take(6))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(children: [
+                  Expanded(child: Text(label(m.month), style: const TextStyle(fontSize: 12.5))),
+                  Text('${_n(m.feedAds + m.unlockAds)} ads',
+                      style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                  const SizedBox(width: 12),
+                  Text(_usd(m.usd),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
+                ]),
+              ),
+          ],
+        ]),
+      ),
     ];
   }
 

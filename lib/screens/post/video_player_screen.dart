@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../models/post.dart';
 import '../../services/bunny_stream_service.dart';
+import '../../services/ad_revenue_service.dart';
 import '../../services/interstitial_ad_service.dart';
 import '../../services/post_service.dart';
 import '../../services/supabase_service.dart';
@@ -234,6 +235,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _positionAtLastAdBreak = c.value.position;
       c.pause();
       unawaited(InterstitialAdService.showIfReady().then((shown) {
+        if (shown) unawaited(AdRevenueService.reportImpression(widget.post.id));   // the creator's share of the ad
         if (shown && mounted && _controller == c) c.play();
       }));
     }
