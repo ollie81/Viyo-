@@ -66,6 +66,10 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
   bool _watchingAd = false;
   bool _waitingForNardopay = false;
   bool _checkingBalance = false;
+  double? _feePercent; // NardoPay's customer fee on coin purchases, shown so nobody is surprised at checkout
+
+  /// The fee to show, only while NardoPay is the chosen method.
+  double? get _shownFee => _method == 'nardopay' && (_feePercent ?? 0) > 0 ? _feePercent : null;
 
   PurchasePlatform get _platform => widget.platform ?? currentPurchasePlatform;
   bool get _isAndroid => _platform == PurchasePlatform.android;
@@ -127,6 +131,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       setState(() {
         _packages = options.packages;
         _methods = methods;
+        _feePercent = options.nardopayFeePercent;
         _packageId = _packageId ?? (options.packages.isNotEmpty ? options.packages.first.id : null);
         _method = methods.contains(_method) ? _method : (methods.isNotEmpty ? methods.first : null);
         _loading = false;
@@ -261,7 +266,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
       try {
         final o = await widget.nardopay.status(orderId);
         status = o.status;
-        coins = o.coins;
+        coins = o.coins + o.bonusCoins;
         if (o.settled) break;
       } catch (_) {
         // A network blip: try again on the next check.
@@ -380,14 +385,19 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
         mainAxisSize: MainAxisSize.min,
         children: [
           PurchaseButton(
-            label: canPay ? 'Pay ${selected.priceDisplay}' : (_methods.isEmpty ? 'Purchases not available' : 'Choose a package'),
+            label: canPay
+                ? 'Pay ${selected.priceDisplay}${_shownFee != null ? ' + fee' : ''}'
+                : (_methods.isEmpty ? 'Purchases not available' : 'Choose a package'),
             accent: AppColors.coin,
             busy: _purchasing,
             onPressed: canPay && !busy ? _pay : null,
           ),
           PurchaseFinePrint(_methods.isEmpty
               ? 'Prices in US dollars.'
-              : 'Prices in US dollars. Coins are added as soon as the payment is confirmed.'),
+              : (_shownFee != null
+                  ? 'Prices in US dollars. NardoPay adds a payment fee of about ${_shownFee!.round()}% at checkout; '
+                      'bonus coins are included to make up for it. Coins are added once the payment is confirmed.'
+                  : 'Prices in US dollars. Coins are added as soon as the payment is confirmed.')),
         ],
       ),
       children: [
@@ -411,6 +421,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
                   child: _PackageCard(
                     package: p,
                     bonusPercent: baseRate == 0 ? 0 : ((p.coins / p.usdCents) / baseRate - 1) * 100,
+                    feePercent: _shownFee,
                     selected: p.id == _packageId,
                     enabled: !busy,
                     onTap: () => setState(() => _packageId = p.id),
@@ -463,6 +474,7 @@ class _BuyCoinsScreenState extends State<BuyCoinsScreen> with WidgetsBindingObse
 class _PackageCard extends StatelessWidget {
   final CoinPackage package;
   final double bonusPercent;
+  final double? feePercent;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
@@ -470,6 +482,7 @@ class _PackageCard extends StatelessWidget {
   const _PackageCard({
     required this.package,
     required this.bonusPercent,
+    this.feePercent,
     required this.selected,
     required this.enabled,
     required this.onTap,
@@ -483,7 +496,8 @@ class _PackageCard extends StatelessWidget {
       enabled: enabled,
       accent: AppColors.coin,
       onTap: onTap,
-      semanticsLabel: '${package.label}, ${package.priceDisplay}',
+      semanticsLabel: '${package.label}${package.bonusCoins > 0 ? ' plus ${package.bonusCoins} bonus coins' : ''}, '
+          '${package.priceDisplay}',
       child: Row(
         children: [
           Container(
@@ -508,14 +522,25 @@ class _PackageCard extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const Text('coins', style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
-                    if (bonus >= 5) PurchaseChip('+$bonus% coins', color: AppColors.coin),
+                    if (package.bonusCoins > 0)
+                      PurchaseChip('+${_groupedCoins(package.bonusCoins)} bonus', color: AppColors.coin)
+                    else if (bonus >= 5)
+                      PurchaseChip('+$bonus% coins', color: AppColors.coin),
                   ],
                 ),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(package.priceDisplay, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(package.priceDisplay, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              if (feePercent != null)
+                Text('+ about \$${(package.usdCents * feePercent! / 10000).toStringAsFixed(2)} fee',
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+            ],
+          ),
           const SizedBox(width: 14),
           SelectionDot(selected: selected, accent: AppColors.coin),
         ],
