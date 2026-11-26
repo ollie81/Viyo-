@@ -76,14 +76,50 @@ class PremiumPlan {
   }
 }
 
+/// Premium as a prepaid NardoPay pass: one payment for [days] days, no automatic renewal. Listed by the server only
+/// while NardoPay checkout is genuinely available; web only.
+class PremiumPass {
+  final String plan;
+  final int priceCents;
+  final String currency;
+  final int days;
+
+  const PremiumPass({required this.plan, required this.priceCents, required this.currency, required this.days});
+
+  factory PremiumPass.fromJson(Map<String, dynamic> j) => PremiumPass(
+        plan: j['plan'] as String,
+        priceCents: (j['price_cents'] as num).toInt(),
+        currency: (j['currency'] as String?) ?? 'USD',
+        days: (j['days'] as num).toInt(),
+      );
+
+  String get priceLabel {
+    final amount = (priceCents / 100).toStringAsFixed(2);
+    return currency == 'USD' ? '\$$amount' : '$currency $amount';
+  }
+
+  String get daysLabel => days == 7 ? '1 week' : (days == 365 ? '1 year' : '$days days');
+}
+
 class CheckoutOptions {
   final List<String> coinProviders;
   final List<CoinPackage> packages;
   final List<PremiumPlan> premiumPlans;
+  final List<PremiumPass> nardopayPasses;
 
-  const CheckoutOptions({required this.coinProviders, required this.packages, required this.premiumPlans});
+  const CheckoutOptions(
+      {required this.coinProviders,
+      required this.packages,
+      required this.premiumPlans,
+      this.nardopayPasses = const []});
 
-  bool get premiumOnSale => premiumPlans.any((p) => p.available);
+  /// The Premium payment methods this platform can use: 'nardopay' (web only) and/or 'lemonsqueezy'.
+  List<String> premiumMethodsFor(PurchasePlatform platform) => [
+        if (platform == PurchasePlatform.web && nardopayPasses.isNotEmpty) 'nardopay',
+        if (platform != PurchasePlatform.android && premiumPlans.any((p) => p.available)) 'lemonsqueezy',
+      ];
+
+  bool get premiumOnSale => premiumMethodsFor(currentPurchasePlatform).isNotEmpty;
 
   factory CheckoutOptions.fromJson(Map<String, dynamic> j) {
     final coins = (j['coins'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -95,6 +131,10 @@ class CheckoutOptions {
       ],
       premiumPlans: [
         for (final p in (premium['plans'] as List? ?? const [])) PremiumPlan.fromJson((p as Map).cast<String, dynamic>())
+      ],
+      nardopayPasses: [
+        for (final p in (premium['nardopay_plans'] as List? ?? const []))
+          PremiumPass.fromJson((p as Map).cast<String, dynamic>())
       ],
     );
   }

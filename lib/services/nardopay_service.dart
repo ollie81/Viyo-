@@ -5,8 +5,8 @@ import 'package:http/http.dart' as http;
 import '../constants/supabase_constants.dart';
 import 'supabase_service.dart';
 
-/// A web coin order paid through NardoPay. The server creates it, sets its price and coins, and credits the coins
-/// only after NardoPay's signed confirmation; this app never marks it paid.
+/// A web order paid through NardoPay: coins, or a Premium pass (kind 'premium', no coins). The server creates it,
+/// sets its price, and credits it only after NardoPay's signed confirmation; this app never marks it paid.
 class NardopayOrder {
   final String orderId;
   final String status;
@@ -14,6 +14,9 @@ class NardopayOrder {
   final int rwfAmount;
   final int usdCents;
   final String? paymentLink;
+  final String kind; // coins | premium
+  final String? plan;
+  final int? passDays;
 
   const NardopayOrder(
       {required this.orderId,
@@ -21,7 +24,10 @@ class NardopayOrder {
       required this.coins,
       required this.rwfAmount,
       this.usdCents = 0,
-      this.paymentLink});
+      this.paymentLink,
+      this.kind = 'coins',
+      this.plan,
+      this.passDays});
 
   /// The price the buyer sees, in US dollars (e.g. "$0.99").
   String get usdLabel => '\$${(usdCents / 100).toStringAsFixed(2)}';
@@ -29,10 +35,13 @@ class NardopayOrder {
   factory NardopayOrder.fromJson(Map<String, dynamic> j) => NardopayOrder(
         orderId: '${j['order_id']}',
         status: '${j['status']}',
-        coins: (j['coins'] as num).toInt(),
+        coins: (j['coins'] as num?)?.toInt() ?? 0,
         rwfAmount: (j['rwf_amount'] as num).toInt(),
         usdCents: (j['usd_cents'] as num?)?.toInt() ?? 0,
         paymentLink: j['payment_link'] as String?,
+        kind: (j['kind'] as String?) ?? 'coins',
+        plan: j['plan'] as String?,
+        passDays: (j['pass_days'] as num?)?.toInt(),
       );
 
   /// Statuses that won't change any more.
@@ -72,6 +81,14 @@ class NardopayApi {
   Future<NardopayOrder> create(String packageId) async {
     final res = await http.post(Uri.parse('$_base/create'),
         headers: await _headers(), body: jsonEncode({'package_id': packageId}));
+    if (res.statusCode != 200) throw Exception(_error(res));
+    return NardopayOrder.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// A VIYO Premium pass (paid with money, never coins): the server prices it from the plan and returns its link.
+  Future<NardopayOrder> createPremiumPass(String plan) async {
+    final res = await http.post(Uri.parse('${AiBackendConstants.baseUrl}/api/v1/subscription/nardopay/create'),
+        headers: await _headers(), body: jsonEncode({'plan': plan}));
     if (res.statusCode != 200) throw Exception(_error(res));
     return NardopayOrder.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }

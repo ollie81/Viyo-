@@ -26,8 +26,18 @@ const openPlans = [
   PremiumPlan(plan: 'yearly', available: true, priceCents: 4999, currency: 'USD', interval: 'year', intervalCount: 1),
 ];
 
-CheckoutOptions options({List<String> providers = const [], List<PremiumPlan> plans = closedPlans}) =>
-    CheckoutOptions(coinProviders: providers, packages: packages, premiumPlans: plans);
+const passes = [
+  PremiumPass(plan: 'weekly', priceCents: 399, currency: 'USD', days: 7),
+  PremiumPass(plan: 'monthly', priceCents: 999, currency: 'USD', days: 30),
+  PremiumPass(plan: 'yearly', priceCents: 5999, currency: 'USD', days: 365),
+];
+
+CheckoutOptions options(
+        {List<String> providers = const [],
+        List<PremiumPlan> plans = closedPlans,
+        List<PremiumPass> nardopayPasses = const []}) =>
+    CheckoutOptions(
+        coinProviders: providers, packages: packages, premiumPlans: plans, nardopayPasses: nardopayPasses);
 
 /// Records which package NardoPay was asked to charge, then fails before any browser tab would open.
 class RecordingNardopay extends NardopayApi {
@@ -37,6 +47,12 @@ class RecordingNardopay extends NardopayApi {
   @override
   Future<NardopayOrder> create(String packageId) async {
     created.add(packageId);
+    throw Exception('test stop');
+  }
+
+  @override
+  Future<NardopayOrder> createPremiumPass(String plan) async {
+    created.add('premium:$plan');
     throw Exception('test stop');
   }
 }
@@ -226,8 +242,9 @@ void main() {
       await show(
           t,
           SubscribeScreen(
-              loadStatus: () async =>
-                  SubscriptionStatus(isSubscribed: true, plan: 'monthly', renewsAt: '2026-12-25T00:00:00Z'),
+              loadOptions: () async => options(plans: openPlans),
+              loadStatus: () async => SubscriptionStatus(
+                  isSubscribed: true, plan: 'monthly', provider: 'lemonsqueezy', renewsAt: '2026-12-25T00:00:00Z'),
               platform: PurchasePlatform.web),
           desktop);
       expect(find.text("You're a Premium member"), findsOneWidget);
@@ -245,6 +262,77 @@ void main() {
           phone);
       expect(find.text("Premium isn't available in this app"), findsOneWidget);
       expect(find.byType(ElevatedButton), findsNothing);
+    });
+
+    testWidgets('NardoPay pass: chosen by default, priced as a one-time payment, Pay goes to its checkout', (t) async {
+      final nardopay = RecordingNardopay();
+      await show(
+          t,
+          SubscribeScreen(
+              loadOptions: () async => options(plans: openPlans, nardopayPasses: passes),
+              loadStatus: notSubscribed,
+              platform: PurchasePlatform.web,
+              nardopay: nardopay),
+          phone);
+      expect(find.text('Mobile money or card'), findsOneWidget);
+      expect(find.text('Card subscription'), findsOneWidget);
+      expect(find.text(r'Pay $9.99 for 30 days'), findsOneWidget);
+      expect(find.text("One payment for 30 days · doesn't renew"), findsOneWidget);
+      expect(find.text('Save 50%'), findsOneWidget); // 59.99 vs 9.99 x 365/30 = 121.55 -> 50.6%
+      await tapText(t, 'Yearly');
+      await t.ensureVisible(find.text(r'Pay $59.99 for 1 year'));
+      await t.tap(find.text(r'Pay $59.99 for 1 year'));
+      await t.pumpAndSettle();
+      expect(nardopay.created, ['premium:yearly']);
+      expect(find.text('Premium not added'), findsOneWidget);
+      // Switching to the card subscription shows Lemon Squeezy's own prices and wording.
+      await tapText(t, 'Card subscription');
+      expect(find.text(r'Subscribe · $49.99 / year'), findsOneWidget); // the test's Lemon Squeezy yearly price
+    });
+
+    testWidgets('NardoPay only (no Lemon Squeezy): no method choice, a single clear method line', (t) async {
+      await show(
+          t,
+          SubscribeScreen(
+              loadOptions: () async => options(nardopayPasses: passes),
+              loadStatus: notSubscribed,
+              platform: PurchasePlatform.web),
+          desktop);
+      expect(find.text('How you pay'), findsNothing);
+      expect(find.text('Mobile money or card'), findsOneWidget);
+      expect(find.text(r'Pay $9.99 for 30 days'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('NardoPay is never offered outside the web app', (t) async {
+      await show(
+          t,
+          SubscribeScreen(
+              loadOptions: () async => options(nardopayPasses: passes),
+              loadStatus: notSubscribed,
+              platform: PurchasePlatform.other),
+          phone);
+      expect(find.text('Mobile money or card'), findsNothing);
+      expect(find.text("Premium subscriptions aren't open yet"), findsOneWidget);
+    });
+
+    testWidgets('a NardoPay member sees when the pass ends and can add more time', (t) async {
+      await show(
+          t,
+          SubscribeScreen(
+              loadOptions: () async => options(nardopayPasses: passes),
+              loadStatus: () async => SubscriptionStatus(
+                  isSubscribed: true, plan: 'monthly', provider: 'nardopay', endsAt: '2026-12-26T10:00:00Z'),
+              platform: PurchasePlatform.web),
+          phone);
+      expect(find.text('Premium pass'), findsOneWidget);
+      expect(find.text('Ends 2026-12-26'), findsOneWidget);
+      expect(find.textContaining("doesn't renew automatically"), findsOneWidget);
+      await tapText(t, 'Add more time');
+      expect(find.text('Add more Premium time'), findsOneWidget);
+      expect(find.text(r'Pay $9.99 for 30 days'), findsOneWidget);
+      await tapText(t, 'Cancel');
+      expect(find.text('Premium pass'), findsOneWidget);
     });
   });
 }

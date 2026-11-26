@@ -13,6 +13,7 @@ import 'supabase_service.dart';
 class SubscriptionStatus {
   final bool isSubscribed;
   final String? plan;
+  final String? provider; // lemonsqueezy | nardopay
   final String? status;
   final String? renewsAt;
   final String? endsAt;
@@ -20,6 +21,7 @@ class SubscriptionStatus {
   SubscriptionStatus({
     required this.isSubscribed,
     this.plan,
+    this.provider,
     this.status,
     this.renewsAt,
     this.endsAt,
@@ -28,6 +30,7 @@ class SubscriptionStatus {
   factory SubscriptionStatus.fromJson(Map<String, dynamic> json) => SubscriptionStatus(
         isSubscribed: json['is_subscribed'] ?? false,
         plan: json['plan'] as String?,
+        provider: json['provider'] as String?,
         status: json['status'] as String?,
         renewsAt: json['renews_at'] as String?,
         endsAt: json['ends_at'] as String?,
