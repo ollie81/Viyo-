@@ -133,6 +133,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
           Expanded(child: _action(Icons.upload_outlined, 'Upload', 'Episodes, short films, movies',
               () => _go(const UploadAiDramaScreen()))),
         ]),
+        if (h.dashboard?.level?.ready == true) ..._levelCard(h.dashboard!.level!),
         _label('Your audience'),
         Container(
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
@@ -245,6 +246,73 @@ class _CreatorHubScreenState extends State<CreatorHubScreen> {
           ),
       ],
     );
+  }
+
+  List<Widget> _levelCard(CreatorLevel l) {
+    String fmt(num v) => v is double && v != v.roundToDouble() ? v.toStringAsFixed(2) : _n(v.round());
+    return [
+      _label('Your creator level'),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: AppTheme.card(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(20)),
+              child: Text(l.name,
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.primary)),
+            ),
+            const SizedBox(width: 8),
+            Text('Level ${l.rank} of ${l.of}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ]),
+          const SizedBox(height: 8),
+          for (final p in l.perks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(children: [
+                const Icon(Icons.bolt, size: 16, color: AppColors.success),
+                const SizedBox(width: 6),
+                Expanded(child: Text(p, style: const TextStyle(fontSize: 12.5))),
+              ]),
+            ),
+          if (l.nextName != null) ...[
+            const SizedBox(height: 4),
+            Text('To reach ${l.nextName}${l.nextPerk != null ? ' (${l.nextPerk!.toLowerCase()})' : ''}:',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+            const SizedBox(height: 8),
+            for (final r in l.nextRequirements)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Icon(r.met ? Icons.check_circle : Icons.radio_button_unchecked,
+                        size: 15, color: r.met ? AppColors.success : AppColors.textMuted),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(r.label, style: const TextStyle(fontSize: 12))),
+                    if (r.key != 'clean')
+                      Text('${r.key == 'earned_usd' ? '\$' : ''}${fmt(r.have)} / ${r.key == 'earned_usd' ? '\$' : ''}${fmt(r.need)}',
+                          style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted,
+                              fontFeatures: [FontFeature.tabularFigures()])),
+                  ]),
+                  if (r.key != 'clean' && !r.met)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 21, top: 4),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(value: r.progress, minHeight: 4),
+                      ),
+                    ),
+                ]),
+              ),
+          ] else if (l.rank >= l.of)
+            const Text("You're at the top level.", style: TextStyle(fontSize: 12.5)),
+          if (l.shareNote.isNotEmpty)
+            Text(l.shareNote, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        ]),
+      ),
+    ];
   }
 
   List<Widget> _dashboardAudience(CreatorDashboard d) => [
