@@ -941,6 +941,10 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> productionHistory(String runId) async =>
       Map<String, dynamic>.from(await _send('GET', '/production/$runId/history'));
 
+  /// The planned score: cues (mood, scenes, themes), planned silences, which cues are new and what they add.
+  static Future<Map<String, dynamic>> score(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/score'));
+
   /// The production's look bible: lens, light, palette, grade, framing... saved or proposed, and whether it applies.
   static Future<Map<String, dynamic>> look(String projectId) async =>
       Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/look'));
