@@ -941,6 +941,14 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> productionHistory(String runId) async =>
       Map<String, dynamic>.from(await _send('GET', '/production/$runId/history'));
 
+  /// The production's look bible: lens, light, palette, grade, framing... saved or proposed, and whether it applies.
+  static Future<Map<String, dynamic>> look(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/look'));
+
+  /// Saves the creator's look (only the fields given), or resets it to VIYO's proposal.
+  static Future<Map<String, dynamic>> saveLook(String projectId, Map<String, dynamic> fields, {bool reset = false}) async =>
+      Map<String, dynamic>.from(await _send('PUT', '/projects/$projectId/look', reset ? {'reset': true} : fields));
+
   /// The free whole-film report: duplicated or missing shots, camera repetition, pacing, screen time, continuity,
   /// the ending. It changes nothing and costs nothing.
   static Future<Map<String, dynamic>> filmReport(String projectId) async =>
