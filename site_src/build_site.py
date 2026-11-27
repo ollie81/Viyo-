@@ -98,7 +98,7 @@ NAV = [
 ]
 
 
-POLICY_DATE = "5 November 2026"
+POLICY_DATE = "27 November 2026"
 REFUND_DATE = "20 November 2026"
 
 
@@ -125,7 +125,8 @@ def privacy() -> str:
         Glow Up, a selfie) and what they produce.</li>
         <li><strong>Device and usage:</strong> a push notification token, crash reports, and in-app activity such as views
         and watch progress, used to run and improve the app. The Android app shows ads through Google AdMob, which uses
-        your device's advertising ID; you can reset or delete it in your phone's settings.</li>
+        your device's advertising ID; you can reset or delete it in your phone's settings. The website and web app show
+        ads through Google AdSense, which uses cookies (see <a href="#ads">Advertising and cookies</a>).</li>
       </ul>
 
       <h2>How we use it</h2>
@@ -133,7 +134,7 @@ def privacy() -> str:
         <li>To run your account, show your content, process coins, unlocks, payouts and purchases.</li>
         <li>To provide AI features you ask for. Nothing is sent to an AI provider unless you use an AI feature.</li>
         <li>To keep Viyo safe: moderation, reports, spam and fraud prevention.</li>
-        <li>To show ads in the free Android app (not to Premium subscribers).</li>
+        <li>To show ads to free viewers in the Android app and on the web (never to Premium subscribers).</li>
       </ul>
       <p>We do not sell your personal data, and we do not use your photos or videos to train AI models.</p>
 
@@ -145,12 +146,31 @@ def privacy() -> str:
         <li><strong>Railway</strong>: our servers.</li>
         <li><strong>OpenAI</strong> and <strong>Google (Gemini)</strong>: AI features you choose to use.</li>
         <li><strong>Google Firebase</strong>: push notifications. <strong>Sentry</strong>: crash reports.
-        <strong>Google AdMob</strong>: ads in the Android app.</li>
+        <strong>Google AdMob</strong>: ads in the Android app. <strong>Google AdSense</strong>: ads on the website and
+        web app.</li>
         <li><strong>Payment providers</strong> (such as Google Play, Lemon Squeezy, Stripe, Paystack, Flutterwave and
         PayPal): payments and payouts.</li>
       </ul>
       <p>Posts you make public can be seen by anyone, including through share links. Private posts and Viyo Studio
       projects are shown only to you.</p>
+
+      <h2 id="ads">Advertising and cookies</h2>
+      <p>Free viewers may see ads on viyo.site and in the web app. Premium subscribers don't see ads, and there are no
+      ads on content you paid to unlock or on payment pages.</p>
+      <ul class="plain">
+        <li>Third-party vendors, including Google, use cookies to serve ads based on your prior visits to this website
+        or other websites.</li>
+        <li>Google's use of advertising cookies enables it and its partners to serve ads to you based on your visit to
+        Viyo and/or other sites on the internet.</li>
+        <li>You can opt out of personalised advertising by visiting
+        <a href="https://adssettings.google.com" rel="noopener">Google Ads Settings</a>. You can also opt out of some
+        third-party vendors' use of cookies for personalised advertising at
+        <a href="https://www.aboutads.info/choices/" rel="noopener">aboutads.info</a>.</li>
+        <li>Learn how Google uses information from sites that use its services:
+        <a href="https://policies.google.com/technologies/partner-sites" rel="noopener">How Google uses data</a>.</li>
+        <li>If you are in the European Economic Area, the UK or Switzerland, you will be asked for your consent before
+        cookies are used for personalised ads, and you can change your choice at any time.</li>
+      </ul>
 
       <h2>Photos of faces</h2>
       <p>Glow Up is for adults (18+). Your selfie is analysed and then discarded unless you choose to save it; saved photos
@@ -282,7 +302,8 @@ def terms() -> str:
       </ul>
 
       <h2>Ads</h2>
-      <p>The free Android app shows ads from Google AdMob. Premium subscribers don't see them.</p>
+      <p>Free viewers see ads: from Google AdMob in the Android app and from Google AdSense on the website and web app.
+      Premium subscribers don't see them. See our <a href="/privacy#ads">privacy policy</a> for how ad cookies work.</p>
 
       <h2>Ending your account</h2>
       <p>You can delete your account at any time: see <a href="/delete-account">how to delete your account</a>. We may
