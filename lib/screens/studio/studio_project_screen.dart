@@ -10,6 +10,7 @@ import '../../services/file_saver_io.dart' if (dart.library.html) '../../service
 import '../../theme/app_theme.dart';
 import 'studio_chat_screen.dart';
 import 'studio_elements_section.dart';
+import 'studio_film_report.dart';
 import 'studio_identity_section.dart';
 import 'studio_novel_card.dart';
 import 'studio_production_panel.dart';
@@ -2610,6 +2611,11 @@ class _ExportPanelState extends State<_ExportPanel> {
               onPressed: canRender && !rendering ? () => widget.run('render') : null,
               icon: const Icon(Icons.movie_creation_outlined, size: 18),
               label: Text(d.renders.isEmpty ? 'Render film' : 'Render new version'),
+            ),
+            OutlinedButton.icon(
+              onPressed: scenes.isEmpty ? null : () => showFilmReport(context, d.project.id),
+              icon: const Icon(Icons.fact_check_outlined, size: 18),
+              label: const Text('Film report (free)'),
             ),
             if (rendering) _busyChip('Rendering… this can take a few minutes'),
           ]),

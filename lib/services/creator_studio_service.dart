@@ -937,6 +937,11 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> productionHistory(String runId) async =>
       Map<String, dynamic>.from(await _send('GET', '/production/$runId/history'));
 
+  /// The free whole-film report: duplicated or missing shots, camera repetition, pacing, screen time, continuity,
+  /// the ending. It changes nothing and costs nothing.
+  static Future<Map<String, dynamic>> filmReport(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/film-report'));
+
   /// Credits, budget, failures, revisions and publishing rules.
   static Future<Map<String, dynamic>> terms() async => Map<String, dynamic>.from(await _send('GET', '/terms'));
 
