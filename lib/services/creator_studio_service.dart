@@ -489,6 +489,9 @@ class StudioShot {
   final bool hasImage, hasVideo, approved;
   final List<Map<String, dynamic>> dialogue;
   final Map<String, dynamic>? voiceCheck;
+
+  /// Action scenes: the shot's beat, movement, what changes in the place, and what video models do badly here.
+  final Map<String, dynamic>? action;
   StudioShot.fromJson(Map j)
       : id = j['id'],
         sceneId = j['scene_id'] ?? '',
@@ -507,6 +510,7 @@ class StudioShot {
         hasVideo = j['has_video'] == true,
         approved = j['approved'] == true,
         voiceCheck = j['voice_check'] is Map ? Map<String, dynamic>.from(j['voice_check']) : null,
+        action = j['action'] is Map ? Map<String, dynamic>.from(j['action']) : null,
         dialogue = ((j['dialogue'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
   static const labels = {

@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../services/creator_studio_service.dart';
 import '../../services/file_saver_io.dart' if (dart.library.html) '../../services/file_saver_web.dart' as saver;
 import '../../theme/app_theme.dart';
+import 'studio_action_notes.dart';
 import 'studio_chat_screen.dart';
 import 'studio_elements_section.dart';
 import 'studio_film_report.dart';
@@ -1541,6 +1542,7 @@ class _SceneCardState extends State<_SceneCard> {
             Text(sh.description, style: const TextStyle(fontSize: 12.5, height: 1.3)),
             if (sh.reason.isNotEmpty)
               Text('Why: ${sh.reason}', style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, fontStyle: FontStyle.italic)),
+            ShotActionNotes(action: sh.action),
             for (final d in sh.dialogue)
               Text('${d['character']}: "${d['text']}"', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
             Text(sh.approved ? '$made · approved' : made,
