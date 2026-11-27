@@ -1460,6 +1460,38 @@ class _SceneCardState extends State<_SceneCard> {
     );
   }
 
+  /// A shot came out broken or doesn't match the approved characters/storyboard: VIYO checks it (free) and fixes a
+  /// confirmed defect for free, once per shot.
+  Future<void> _reportDefect(StudioShot sh, int scene, Future<void> Function(Future<void> Function()) call) async {
+    final target = sh.hasVideo ? 'clip' : 'picture';
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: StudioColors.panel,
+        title: Text('Report a defect: scene $scene, shot ${sh.position + 1}'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Text(
+              'VIYO checks this shot\'s $target against the approved characters, storyboard and references'
+              '${target == 'clip' ? ', and checks the clip itself (frozen, black, cut short or damaged)' : ''}.\n\n'
+              '• If it confirms a defect, the $target is remade for free. Each shot gets one free fix.\n'
+              '• If it finds none, nothing is remade and nothing is charged.\n'
+              '• Wanting it different is a creative remake: its price is shown first.',
+              style: const TextStyle(height: 1.4)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Check it (free)')),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    await call(() async {
+      await CreatorStudioService.reportShotDefect(sh.id, target);
+      if (mounted) showStudioInfo(context, 'VIYO is checking this shot. A confirmed defect is fixed for free.');
+    });
+  }
+
   Widget _shotRow(StudioShot sh, int scene, Future<void> Function(Future<void> Function()) call) {
     final s = widget.scene;
     final working = widget.d.jobs.where((j) => j.active && j.shotId == sh.id).toList();
@@ -1531,6 +1563,8 @@ class _SceneCardState extends State<_SceneCard> {
                 widget.run('shot_image', targets: [sh.id], title: 'Scene $scene, shot ${sh.position + 1}: picture');
               case 'video':
                 widget.run('shot_video', targets: [sh.id], title: 'Scene $scene, shot ${sh.position + 1}: clip');
+              case 'defect':
+                await _reportDefect(sh, scene, call);
               case 'approve':
                 await call(() => CreatorStudioService.approveShot(sh.id, !sh.approved));
               case 'up':
@@ -1547,10 +1581,12 @@ class _SceneCardState extends State<_SceneCard> {
           },
           itemBuilder: (_) => [
             if (!sh.approved) const PopupMenuItem(value: 'edit', child: Text('Edit shot')),
+            if (!sh.approved && (sh.hasImage || sh.hasVideo))
+              const PopupMenuItem(value: 'defect', child: Text('Report a defect (free check)')),
             if (!sh.approved && s.shotPlanApproved)
-              PopupMenuItem(value: 'picture', child: Text(sh.hasImage ? 'New picture' : 'Make picture')),
+              PopupMenuItem(value: 'picture', child: Text(sh.hasImage ? 'Creative remake: picture (paid)' : 'Make picture')),
             if (!sh.approved && s.shotPlanApproved && sh.hasImage)
-              PopupMenuItem(value: 'video', child: Text(sh.hasVideo ? 'New clip' : 'Make clip')),
+              PopupMenuItem(value: 'video', child: Text(sh.hasVideo ? 'Creative remake: clip (paid)' : 'Make clip')),
             if (sh.hasImage || sh.hasVideo)
               PopupMenuItem(value: 'approve', child: Text(sh.approved ? 'Unapprove shot' : 'Approve shot')),
             if (sh.position > 0) const PopupMenuItem(value: 'up', child: Text('Move earlier')),

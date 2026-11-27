@@ -559,8 +559,13 @@ class StudioEstimate {
   final List<Map<String, dynamic>> items;
   final StudioBalance balance;
   final String? note;
+  // How many of the items replace something that already exists (a paid creative remake), and what that means.
+  final int remakes;
+  final String? remakeNote;
   StudioEstimate.fromJson(Map j)
       : kind = j['kind'],
+        remakes = (j['remakes'] as num?)?.toInt() ?? 0,
+        remakeNote = j['remake_note'] as String?,
         totalCredits = (j['total_credits'] as num?)?.toInt() ?? 0,
         readyCount = (j['ready_count'] as num?)?.toInt() ?? 0,
         items = ((j['items'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e)).toList(),
@@ -580,7 +585,11 @@ class StudioException implements Exception {
 
   /// The character already speaks in recorded scenes: the change must be confirmed.
   bool get needsVoiceChangeConfirm => status == 409 && code == 'confirm_voice_change';
+
+  /// A paid remake whose price must be confirmed (or changed since it was shown).
+  bool get needsRemakeConfirm => status == 409 && code == 'confirm_remake';
   String? code;
+  Map<String, dynamic> detail = const {};
   @override
   String toString() => message;
 }
@@ -619,13 +628,17 @@ class CreatorStudioService {
     }
     var message = 'Something went wrong (${res.statusCode}).';
     String? code;
+    Map<String, dynamic> detailMap = const {};
     try {
       final d = jsonDecode(res.body)['detail'];
       if (d is String) message = d;
       if (d is Map && d['message'] is String) message = d['message'];
       if (d is Map && d['code'] is String) code = d['code'];
+      if (d is Map) detailMap = Map<String, dynamic>.from(d);
     } catch (_) {}
-    throw StudioException(message, res.statusCode)..code = code;
+    throw StudioException(message, res.statusCode)
+      ..code = code
+      ..detail = detailMap;
   }
 
   // ---- Story Intelligence: the novel (idea -> interview -> outline -> approval)
@@ -845,13 +858,15 @@ class CreatorStudioService {
       StudioEstimate.fromJson(
           await _send('POST', '/projects/$projectId/estimate', {'kind': kind, 'target_ids': targets, ...extra}));
 
+  /// confirmCredits: the exact total the creator was shown, required for a paid remake.
   static Future<StudioBalance> startJobs(String projectId, String kind, List<String> targets, String requestId,
-      {bool confirmReplace = false, Map<String, dynamic> extra = const {}}) async {
+      {bool confirmReplace = false, int? confirmCredits, Map<String, dynamic> extra = const {}}) async {
     final j = await _send('POST', '/projects/$projectId/jobs', {
       'kind': kind,
       'target_ids': targets,
       'request_id': requestId,
       if (confirmReplace) 'confirm_replace': true,
+      if (confirmCredits != null) 'confirm_credits': confirmCredits,
       ...extra
     });
     return StudioBalance.fromJson(j['balance']);
@@ -900,10 +915,36 @@ class CreatorStudioService {
       Map<String, dynamic>.from(
           await _send('POST', '/projects/$projectId/production/quote', {'sheets': sheets, 'direct': direct}));
 
+  /// storyboardReview: stop before paid video for the creator's approval (on unless turned off on purpose).
   static Future<Map<String, dynamic>> startProduction(String projectId,
-          {required int confirmCredits, bool sheets = true, bool direct = true}) async =>
-      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/production',
-          {'request_id': newRequestId(), 'confirm_credits': confirmCredits, 'sheets': sheets, 'direct': direct}));
+          {required int confirmCredits, bool sheets = true, bool direct = true, bool storyboardReview = true}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/projects/$projectId/production', {
+        'request_id': newRequestId(),
+        'confirm_credits': confirmCredits,
+        'sheets': sheets,
+        'direct': direct,
+        'storyboard_review': storyboardReview,
+      }));
+
+  /// The creator approves the exact extra amount the production asked for (reserved before it continues).
+  static Future<Map<String, dynamic>> approveProductionBudget(String runId, int credits) async =>
+      Map<String, dynamic>.from(await _send('POST', '/production/$runId/budget', {'credits': credits}));
+
+  /// The creator has reviewed the storyboard: video may start.
+  static Future<void> approveStoryboard(String runId) => _send('POST', '/production/$runId/storyboard/approve');
+
+  /// Where every credit of a production went.
+  static Future<Map<String, dynamic>> productionHistory(String runId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/production/$runId/history'));
+
+  /// Credits, budget, failures, revisions and publishing rules.
+  static Future<Map<String, dynamic>> terms() async => Map<String, dynamic>.from(await _send('GET', '/terms'));
+
+  /// Report that a shot's picture or clip is broken or doesn't match the approved characters/storyboard.
+  /// VIYO checks it; a confirmed defect is fixed for free (once per shot).
+  static Future<Map<String, dynamic>> reportShotDefect(String shotId, String target) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/shots/$shotId/fix', {'target': target, 'request_id': newRequestId()}));
 
   /// Rearranges a scene's shots (refused if it would change the order of the lines).
   static Future<void> reorderShots(String sceneId, List<String> shotIds) =>

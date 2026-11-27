@@ -100,6 +100,7 @@ const _kindTitles = {
   'shot_image': 'Shot pictures',
   'shot_video': 'Shot clips',
   'shot_inspect': 'Check shots',
+  'shot_fix': 'Free defect fix',
 };
 
 String kindTitle(String kind) => _kindTitles[kind] ?? kind;
@@ -135,7 +136,8 @@ Future<bool> confirmAndRun(
     builder: (ctx) => AlertDialog(
       backgroundColor: StudioColors.panel,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: StudioColors.panelBorder)),
-      title: Text(title ?? kindTitle(kind), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      title: Text('${title ?? kindTitle(kind)}${est.remakes > 0 ? ' · paid remake' : ''}',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -157,6 +159,10 @@ Future<bool> confirmAndRun(
             const SizedBox(height: 8),
             Text(extraWarning, style: const TextStyle(color: AppColors.coin, fontSize: 12, height: 1.4)),
           ],
+          if (est.remakeNote != null) ...[
+            const SizedBox(height: 8),
+            Text(est.remakeNote!, style: const TextStyle(color: AppColors.coin, fontSize: 12, height: 1.4)),
+          ],
           if (short) ...[
             const SizedBox(height: 10),
             Text('You need ${creditsLabel(est.totalCredits - est.balance.available)} more.',
@@ -177,7 +183,7 @@ Future<bool> confirmAndRun(
         else
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Start · ${creditsLabel(est.totalCredits)}'),
+            child: Text('${est.remakes > 0 ? 'Confirm remake' : 'Start'} · ${creditsLabel(est.totalCredits)}'),
           ),
       ],
     ),
@@ -189,7 +195,7 @@ Future<bool> confirmAndRun(
   for (var attempt = 0; attempt < 2; attempt++) {
     try {
       final bal = await CreatorStudioService.startJobs(projectId, kind, targets, CreatorStudioService.newRequestId(),
-          confirmReplace: confirmReplace, extra: extra);
+          confirmReplace: confirmReplace, confirmCredits: est.remakes > 0 ? est.totalCredits : null, extra: extra);
       onStarted(bal);
       return true;
     } on StudioException catch (e) {
@@ -212,6 +218,12 @@ Future<bool> confirmAndRun(
         if (yes != true || !context.mounted) return false;
         confirmReplace = true;
         continue;
+      }
+      if (e.needsRemakeConfirm) {
+        // The price changed between showing it and confirming: never charge a price the creator didn't see.
+        showStudioError(context, 'The price changed to ${creditsLabel((e.detail['total_credits'] as num?)?.toInt() ?? 0)}. '
+            'Open it again to see the new price.');
+        return false;
       }
       _startFailed(context, e, onNeedCredits);
       return false;
