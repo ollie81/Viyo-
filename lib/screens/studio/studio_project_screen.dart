@@ -13,6 +13,7 @@ import 'studio_chat_screen.dart';
 import 'studio_elements_section.dart';
 import 'studio_film_report.dart';
 import 'studio_identity_section.dart';
+import 'studio_look_card.dart';
 import 'studio_novel_card.dart';
 import 'studio_production_panel.dart';
 import 'studio_widgets.dart';
@@ -628,6 +629,8 @@ class _StoryPanelState extends State<_StoryPanel> {
           StudioNovelCard(projectId: widget.d.project.id, logline: widget.d.project.logline),
           const SizedBox(height: 14),
           StudioWorldCard(projectId: widget.d.project.id, reload: widget.reload),
+          const SizedBox(height: 14),
+          StudioLookCard(projectId: widget.d.project.id),
           const SizedBox(height: 14),
           if (widget.d.project.storyBible != null &&
               (widget.d.project.storyBible!['beats'] != null || widget.d.project.storyBible!['logline'] != null)) ...[
