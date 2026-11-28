@@ -16,6 +16,7 @@ import 'studio_identity_section.dart';
 import 'studio_look_card.dart';
 import 'studio_novel_card.dart';
 import 'studio_production_panel.dart';
+import 'studio_score_card.dart';
 import 'studio_widgets.dart';
 import 'studio_world_card.dart';
 
@@ -2628,6 +2629,8 @@ class _ExportPanelState extends State<_ExportPanel> {
       ),
       const SizedBox(height: 16),
       _SoundQualityCard(d.project, reload: widget.reload),
+      const SizedBox(height: 16),
+      StudioScoreCard(projectId: d.project.id),
       const SizedBox(height: 18),
       const Text('Versions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
       const SizedBox(height: 8),
