@@ -691,9 +691,16 @@ class CreatorStudioService {
       Map<String, dynamic>.from(await _send('GET', '/stories/$storyId/episodes') as Map);
 
   /// Plans the novel's episodes (a paid step).
-  static Future<Map<String, dynamic>> planEpisodes(String storyId, int episodes, int seconds, String note) async =>
-      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/episodes/plan',
-          {'request_id': newRequestId(), 'episodes': episodes, 'seconds': seconds, 'note': note}) as Map);
+  static Future<Map<String, dynamic>> planEpisodes(String storyId, int episodes, int seconds, String note,
+          {String format = 'episodes', int minutes = 0}) async =>
+      Map<String, dynamic>.from(await _send('POST', '/stories/$storyId/episodes/plan', {
+        'request_id': newRequestId(), 'episodes': episodes, 'seconds': seconds, 'note': note,
+        if (format == 'feature') ...{'format': 'feature', 'minutes': minutes},
+      }) as Map);
+
+  /// A feature film: its parts, what each still costs, which are rendered, and the joined movie.
+  static Future<Map<String, dynamic>> feature(String featureId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/features/$featureId') as Map);
 
   static Future<Map<String, dynamic>> editEpisodePlan(String storyId, List<Map<String, dynamic>> episodes) async =>
       Map<String, dynamic>.from(await _send('PUT', '/stories/$storyId/episodes/plan', {'episodes': episodes}) as Map);
