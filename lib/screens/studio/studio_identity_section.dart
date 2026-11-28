@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
+import 'studio_dna.dart';
 import 'studio_widgets.dart';
 
 /// Starts a paid job after showing its price (the project screen's runner).
@@ -407,6 +408,11 @@ class _CharacterIdentitySectionState extends State<CharacterIdentitySection> {
             onPressed: busy ? null : _editIdentity,
             icon: Icon(locked ? Icons.visibility_outlined : Icons.tune, size: 18),
             label: Text(locked ? 'Identity details' : 'Edit identity'),
+          ),
+          TextButton.icon(
+            onPressed: () => showCharacterDna(context, c.id),
+            icon: const Icon(Icons.fingerprint, size: 18),
+            label: const Text('Character DNA'),
           ),
         ]),
         if (!locked && c.lockProblem != null) ...[

@@ -10,6 +10,7 @@ import '../../services/file_saver_io.dart' if (dart.library.html) '../../service
 import '../../theme/app_theme.dart';
 import 'studio_action_notes.dart';
 import 'studio_chat_screen.dart';
+import 'studio_dna.dart';
 import 'studio_elements_section.dart';
 import 'studio_film_report.dart';
 import 'studio_identity_section.dart';
@@ -760,6 +761,7 @@ class _CastPanel extends StatelessWidget {
             label: Text('Make ${missing.length} portrait${missing.length == 1 ? '' : 's'}'),
           ),
       ]),
+      if (d.characters.length >= 2) CastCheckBanner(projectId: d.project.id),
       if (d.characters.isEmpty)
         Container(
           decoration: studioPanel(),
