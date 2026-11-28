@@ -27,6 +27,12 @@ class _StudioLookCardState extends State<StudioLookCard> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(StudioLookCard old) {
+    super.didUpdateWidget(old);
+    if (old.projectId != widget.projectId) _load();
+  }
+
   Future<void> _load() async {
     try {
       final s = await (widget.load ?? CreatorStudioService.look)(widget.projectId);

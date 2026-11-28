@@ -35,8 +35,19 @@ class _StudioScoreCardState extends State<StudioScoreCard> {
   @override
   void initState() {
     super.initState();
-    (widget.load ?? CreatorStudioService.score)(widget.projectId).then((v) {
-      if (mounted) setState(() => s = v);
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(StudioScoreCard old) {
+    super.didUpdateWidget(old);
+    if (old.projectId != widget.projectId) _load();
+  }
+
+  void _load() {
+    final id = widget.projectId;
+    (widget.load ?? CreatorStudioService.score)(id).then((v) {
+      if (mounted && id == widget.projectId) setState(() => s = v);
     }).catchError((_) {});
   }
 

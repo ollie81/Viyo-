@@ -941,6 +941,14 @@ class CreatorStudioService {
   static Future<Map<String, dynamic>> productionHistory(String runId) async =>
       Map<String, dynamic>.from(await _send('GET', '/production/$runId/history'));
 
+  /// Characters who look alike (in this drama or repeating another of your dramas), with what to change first.
+  static Future<Map<String, dynamic>> castCheck(String projectId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/cast-check'));
+
+  /// Everything that defines one character: look, views, outfits, voice, story, relationships, where they appear.
+  static Future<Map<String, dynamic>> characterDna(String characterId) async =>
+      Map<String, dynamic>.from(await _send('GET', '/characters/$characterId/dna'));
+
   /// The planned score: cues (mood, scenes, themes), planned silences, which cues are new and what they add.
   static Future<Map<String, dynamic>> score(String projectId) async =>
       Map<String, dynamic>.from(await _send('GET', '/projects/$projectId/score'));
