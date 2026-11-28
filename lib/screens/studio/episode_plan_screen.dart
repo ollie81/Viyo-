@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/creator_studio_service.dart';
 import '../../theme/app_theme.dart';
+import 'feature_screen.dart';
 import 'novel_chapters.dart';
 import 'studio_project_screen.dart';
 import 'studio_widgets.dart';
@@ -22,6 +23,8 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
   final _count = TextEditingController();
   final _seconds = TextEditingController();
   final _note = TextEditingController();
+  final _minutes = TextEditingController(text: '30');
+  bool _feature = false;
 
   @override
   void initState() {
@@ -34,6 +37,7 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
     _count.dispose();
     _seconds.dispose();
     _note.dispose();
+    _minutes.dispose();
     super.dispose();
   }
 
@@ -46,7 +50,11 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
         _count.text = '${wanted > 0 ? wanted : (d['chapters'] as num?)?.toInt() ?? 10}';
       }
       if (_seconds.text.isEmpty) _seconds.text = '${(d['seconds'] as num?)?.toInt() ?? 90}';
-      setState(() => _d = d);
+      setState(() {
+        _d = d;
+        _feature = d['format'] == 'feature';
+        if (d['feature_minutes'] != null) _minutes.text = '${d['feature_minutes']}';
+      });
     } on StudioException catch (e) {
       if (mounted) showStudioError(context, e.message);
     }
@@ -107,12 +115,16 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
 
   Future<void> _approve() async {
     final n = _plan.length;
+    final feature = _d?['format'] == 'feature';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Create $n episodes?'),
-        content: const Text('Each episode becomes a production in a new series, with the novel\'s cast, places and '
-            'Story Bible. This is free; writing and filming each episode is paid as usual.'),
+        title: Text(feature ? 'Create the feature film in $n parts?' : 'Create $n episodes?'),
+        content: Text(feature
+            ? 'The movie and its $n parts become productions with the novel\'s cast, places and Story Bible. This is '
+                'free; writing and filming each part is paid as usual, and the parts are joined into one film at the end.'
+            : 'Each episode becomes a production in a new series, with the novel\'s cast, places and '
+                'Story Bible. This is free; writing and filming each episode is paid as usual.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
@@ -121,14 +133,14 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
     );
     if (ok != true || !mounted) return;
     await _run(() => widget.api.approveEpisodePlan(widget.storyId, (_d!['version'] as num).toInt()),
-        done: '$n episodes created.');
+        done: feature ? 'The feature film and its $n parts are created.' : '$n episodes created.');
   }
 
   @override
   Widget build(BuildContext context) {
     final d = _d;
     return Scaffold(
-      appBar: AppBar(title: const Text('Episodes')),
+      appBar: AppBar(title: Text(d?['format'] == 'feature' ? 'Feature film' : 'Episodes')),
       body: d == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.all(16), children: [
@@ -140,6 +152,19 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
 
   List<Widget> _created(Map<String, dynamic> d) {
     final eps = ((d['created'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final featureId = d['feature_id'] ?? (d['feature'] as Map?)?['id'];
+    if (featureId != null) {
+      return [
+        Text('Feature film in ${eps.length} parts', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => FeatureScreen(featureId: '$featureId'))),
+          icon: const Icon(Icons.movie_outlined, size: 18),
+          label: const Text('Open the movie'),
+        ),
+      ];
+    }
     return [
       Text('${eps.length} episodes created', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
       const Text('Open one to write its screenplay: VIYO writes it from the plan, the novel\'s own words and the '
@@ -162,6 +187,22 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
     final problems = ((d['problems'] as List?) ?? const []).map((p) => '$p').toList();
     final price = (d['price'] as num?)?.toInt() ?? 0;
     return [
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: false, label: Text('Episodes'), icon: Icon(Icons.view_list_outlined, size: 18)),
+          ButtonSegment(value: true, label: Text('Feature film'), icon: Icon(Icons.movie_outlined, size: 18)),
+        ],
+        selected: {_feature},
+        onSelectionChanged: _busy ? null : (v) => setState(() => _feature = v.first),
+      ),
+      const SizedBox(height: 10),
+      if (_feature) ...[
+        TextField(
+            controller: _minutes,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+                labelText: 'Length of the movie (minutes, 15 to 90)', helperText: _partsText())),
+      ] else
       Row(children: [
         Expanded(
           child: TextField(
@@ -183,10 +224,13 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
       FilledButton.icon(
         onPressed: _busy
             ? null
-            : () => _run(() => widget.api.planEpisodes(widget.storyId, int.tryParse(_count.text.trim()) ?? 0,
-                int.tryParse(_seconds.text.trim()) ?? 90, _note.text.trim())),
+            : () => _run(() => _feature
+                ? widget.api.planFeature(widget.storyId, int.tryParse(_minutes.text.trim()) ?? 30, _note.text.trim())
+                : widget.api.planEpisodes(widget.storyId, int.tryParse(_count.text.trim()) ?? 0,
+                    int.tryParse(_seconds.text.trim()) ?? 90, _note.text.trim())),
         icon: const Icon(Icons.auto_awesome, size: 18),
-        label: Text('${plan.isEmpty ? 'Plan the episodes' : 'Plan again'} · up to ${creditsLabel(price)}'),
+        label: Text('${plan.isEmpty ? (_feature ? 'Plan the movie' : 'Plan the episodes') : 'Plan again'} · up to '
+            '${creditsLabel(price)}'),
       ),
       if (problems.isNotEmpty) ...[
         const SizedBox(height: 12),
@@ -199,10 +243,20 @@ class _EpisodePlanScreenState extends State<EpisodePlanScreen> {
         FilledButton.icon(
           onPressed: _busy || problems.isNotEmpty ? null : _approve,
           icon: const Icon(Icons.check, size: 18),
-          label: Text('Approve and create ${plan.length} episodes'),
+          label: Text(d['format'] == 'feature'
+              ? 'Approve and create the movie (${plan.length} parts)'
+              : 'Approve and create ${plan.length} episodes'),
         ),
       ],
     ];
+  }
+
+  /// "3 parts of about 10 minutes": the same split the server makes (studio_feature.parts_for).
+  String _partsText() {
+    final m = (int.tryParse(_minutes.text.trim()) ?? 30).clamp(15, 90);
+    final n = (m / 10).ceil();
+    return '$n parts of about ${(m / n).round()} minutes, joined into one film. Feature films are new: try a short '
+        'one first.';
   }
 
   Widget _episode(int i, Map<String, dynamic> e) {

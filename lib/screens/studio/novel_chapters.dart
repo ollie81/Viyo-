@@ -53,6 +53,8 @@ class ChaptersApi {
   Future<Map<String, dynamic>> episodes(String storyId) => CreatorStudioService.episodePlan(storyId);
   Future<Map<String, dynamic>> planEpisodes(String storyId, int episodes, int seconds, String note) =>
       CreatorStudioService.planEpisodes(storyId, episodes, seconds, note);
+  Future<Map<String, dynamic>> planFeature(String storyId, int minutes, String note) =>
+      CreatorStudioService.planEpisodes(storyId, 0, 0, note, format: 'feature', minutes: minutes);
   Future<Map<String, dynamic>> editEpisodePlan(String storyId, List<Map<String, dynamic>> episodes) =>
       CreatorStudioService.editEpisodePlan(storyId, episodes);
   Future<Map<String, dynamic>> approveEpisodePlan(String storyId, int version) =>
